@@ -13,5 +13,6 @@ debug/
 config/user.json
 .idea/
 .vscode/
+.codex/
 *.log
 src-tauri/gen/
