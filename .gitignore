@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+.tools/
+frontend/node_modules/
+frontend/dist/
+src-tauri/target/
+engine/.venv/
+engine/.pytest_cache/
+engine/**/__pycache__/
+*.py[cod]
+logs/
+debug/
+config/user.json
+.idea/
+.vscode/
+*.log
+src-tauri/gen/
