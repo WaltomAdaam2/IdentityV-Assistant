@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import asyncio
+from contextlib import suppress
+from pathlib import Path
+from typing import Any
+
+from app.context import AutomationContext
+from capture.manager import CaptureManager
+from config.schema import EngineConfig
+from core.enums import EngineStatus, ErrorCode, TaskFinishReason
+from input.controller import InputController
+from input.windows_sendinput import WindowsSendInput
+from ipc.messages import ENGINE_VERSION, event
+from ipc.reader import NdjsonReader
+from ipc.writer import NdjsonWriter
+from runtime.cancellation import CancellationToken
+from runtime.metrics import RuntimeMetrics
+from states.history import StateHistory
+from tasks.base import AutomationTask, TaskControl
+from tasks.mock_task import MockTask
+from tasks.weekly_task import WeeklyTask
+from window.windows import WindowsWindowManager
+
+
+class AutomationEngine:
+    def __init__(self, config: EngineConfig) -> None:
+        self.config = config
+        self.writer = NdjsonWriter()
+        self.reader = NdjsonReader()
+        self.status = EngineStatus.STARTING
+        self.task_status = "idle"
+        self._shutdown = asyncio.Event()
+        self._task_control: TaskControl | None = None
+        self._task_runner: asyncio.Task[None] | None = None
+        self._developer_input_enabled = False
+        self.context = AutomationContext(config, WindowsWindowManager(config.window), CaptureManager(config.capture), InputController(WindowsSendInput(), config.dry_run), RuntimeMetrics(), CancellationToken(), StateHistory(config.vision.state_confirmation_count), self.emit)
+
+    async def emit(self, event_type: str, **payload: object) -> None:
+        await self.writer.send(event(event_type, **payload))
+
+    async def run(self) -> None:
+        self.status = EngineStatus.IDLE
+        await self.emit("ready", engine_version=ENGINE_VERSION)
+        heartbeat = asyncio.create_task(self._heartbeat_loop())
+        try:
+            async for command in self.reader.messages():
+                await self._handle_command(command)
+                if self._shutdown.is_set():
+                    break
+        finally:
+            self.status = EngineStatus.STOPPING
+            await self._stop_task(TaskFinishReason.USER_STOPPED)
+            self.context.input.release_all()
+            heartbeat.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat
+            self.status = EngineStatus.STOPPED
+
+    async def _heartbeat_loop(self) -> None:
+        while not self._shutdown.is_set():
+            await self.emit("heartbeat", engine_status=self.status.value, task_status=self.task_status)
+            await self.emit("metrics", **self.context.metrics.snapshot())
+            try:
+                await asyncio.wait_for(self._shutdown.wait(), timeout=self.config.heartbeat_interval_seconds)
+            except TimeoutError:
+                continue
+
+    async def _handle_command(self, command: dict) -> None:
+        command_type = command["type"]
+        if command_type == "ping":
+            await self.emit("heartbeat", engine_status=self.status.value, task_status=self.task_status)
+        elif command_type == "start_task":
+            await self._start_task(str(command.get("task", "mock_weekly")))
+        elif command_type == "pause_task" and self._task_control:
+            self._task_control.pause()
+            self.status, self.task_status = EngineStatus.PAUSED, "paused"
+            self.context.input.release_all()
+        elif command_type == "resume_task" and self._task_control:
+            self._task_control.resume()
+            self.status, self.task_status = EngineStatus.RUNNING, "running"
+        elif command_type == "stop_task":
+            await self._stop_task(TaskFinishReason.USER_STOPPED)
+        elif command_type == "detect_window":
+            await self._detect_window()
+        elif command_type == "capture_frame":
+            await self._capture_frame()
+        elif command_type == "test_template":
+            await self._test_template(command)
+        elif command_type == "input_test":
+            await self._input_test(command)
+        elif command_type == "shutdown":
+            self._shutdown.set()
+
+    async def _detect_window(self) -> None:
+        window = self.context.window.find_window()
+        if window is None:
+            await self.emit("window_diagnostics", found=False, hwnd=None, title=None, process_id=None, client_rect=None, dpi_scale=None, capture_backend=self.context.capture.backend_name)
+            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Configured game window was not found", recoverable=True, details={})
+            return
+        rect = window.client_rect
+        await self.emit("window_diagnostics", found=True, hwnd=window.hwnd, title=window.title, process_id=window.process_id, class_name=window.class_name, client_rect={"left": rect.left, "top": rect.top, "width": rect.width, "height": rect.height}, dpi_scale=window.dpi_scale, capture_backend=self.context.capture.backend_name)
+
+    async def _capture_frame(self) -> None:
+        window = self.context.window.find_window()
+        try:
+            frame = self.context.capture.capture(window.client_rect if window else None)
+            self.context.metrics.screenshots += 1
+            path = self._save_debug_frame(frame.image)
+        except Exception as error:
+            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={})
+            return
+        await self.emit("debug_frame", path=str(path), width=frame.width, height=frame.height, state=self.context.state_history.current.value, source=frame.source)
+
+    async def _test_template(self, command: dict[str, Any]) -> None:
+        template_value = command.get("template")
+        if not isinstance(template_value, str) or not template_value:
+            await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="A template path is required", recoverable=True, details={})
+            return
+        template_root = Path(__file__).resolve().parents[2] / "assets" / "templates"
+        template_path = (template_root / template_value).resolve()
+        if not template_path.is_relative_to(template_root.resolve()) or not template_path.is_file():
+            await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="Template must be an existing file under assets/templates", recoverable=True, details={"template": template_value})
+            return
+        try:
+            import cv2
+            from vision.template_matcher import TemplateMatcher
+            window = self.context.window.find_window()
+            frame = self.context.capture.capture(window.client_rect if window else None)
+            self.context.metrics.screenshots += 1
+            template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
+            match = TemplateMatcher().match(frame.image, template, self.config.vision.template_threshold)
+        except Exception as error:
+            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={"template": template_value})
+            return
+        await self.emit("template_match", template=template_value, found=match.found, confidence=match.confidence, bbox=match.bbox, threshold=self.config.vision.template_threshold)
+
+    async def _input_test(self, command: dict[str, Any]) -> None:
+        action = command.get("action")
+        if not isinstance(action, dict):
+            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="input_test action must be an object", recoverable=True, details={})
+            return
+        if action.get("type") == "set_enabled":
+            self._developer_input_enabled = bool(action.get("enabled"))
+            await self.emit("planned_action", action="input_test_enabled", input="none", target=None, dry_run=self.context.input.dry_run, enabled=self._developer_input_enabled)
+            return
+        if not self._developer_input_enabled:
+            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="Developer input test mode is disabled", recoverable=True, details={})
+            return
+        try:
+            if action.get("type") == "click":
+                from core.models import Point
+                point = Point(int(action["x"]), int(action["y"]))
+                self.context.input.click(point)
+                await self.emit("planned_action", action="input_test_click", input="click", target={"x": point.x, "y": point.y}, dry_run=self.context.input.dry_run)
+            elif action.get("type") == "press":
+                key = str(action["key"])
+                self.context.input.press(key)
+                await self.emit("planned_action", action="input_test_press", input="key", target={"key": key}, dry_run=self.context.input.dry_run)
+            else:
+                raise ValueError("input_test supports click and press actions")
+        except (KeyError, TypeError, ValueError, RuntimeError) as error:
+            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message=str(error), recoverable=True, details={})
+
+    def _save_debug_frame(self, image: Any) -> Path:
+        import cv2
+        path = Path.cwd() / "debug" / "latest.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not cv2.imwrite(str(path), image):
+            raise RuntimeError("could not save debug frame")
+        return path
+
+    async def _start_task(self, task_name: str) -> None:
+        if self._task_runner and not self._task_runner.done():
+            await self.emit("error", code="TASK_ALREADY_RUNNING", message="A task is already running", recoverable=True, details={})
+            return
+        factories: dict[str, type[AutomationTask]] = {"mock_weekly": MockTask, "weekly": WeeklyTask}
+        if task_name not in factories:
+            await self.emit("error", code="TASK_UNKNOWN", message=f"Unknown task: {task_name}", recoverable=True, details={})
+            return
+        self._task_control = TaskControl()
+        self.status, self.task_status = EngineStatus.RUNNING, "running"
+        self._task_runner = asyncio.create_task(self._run_task(factories[task_name]()))
+
+    async def _run_task(self, task: AutomationTask) -> None:
+        try:
+            reason = await task.run(self.context, self._task_control or TaskControl())
+        except Exception as error:
+            self.status, self.task_status = EngineStatus.ERROR, "error"
+            await self.emit("error", code=ErrorCode.ENGINE_CRASHED.value, message=str(error), recoverable=False, details={})
+            reason = TaskFinishReason.ENGINE_ERROR
+        self.context.input.release_all()
+        if self.status != EngineStatus.ERROR:
+            self.status, self.task_status = EngineStatus.IDLE, "idle"
+        await self.emit("task_finished", reason=reason.value, stats=self.context.metrics.snapshot())
+
+    async def _stop_task(self, reason: TaskFinishReason) -> None:
+        if not self._task_runner or self._task_runner.done():
+            return
+        if self._task_control:
+            self._task_control.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._task_runner
+        self.context.input.release_all()
+        self.status, self.task_status = EngineStatus.IDLE, "idle"

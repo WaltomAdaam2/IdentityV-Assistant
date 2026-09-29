@@ -1,0 +1,7 @@
+{
+  "engine": {"dry_run": true, "heartbeat_interval_seconds": 2.0, "mock_step_delay_seconds": 1.0},
+  "game_window": {"process_names": ["dwrg.exe", "IdentityV.exe"], "title_contains": ["第五人格", "Identity V"], "class_names": []},
+  "capture": {"backend": "auto", "idle_fps": 3, "active_fps": 10},
+  "vision": {"template_threshold": 0.85, "state_confirmation_count": 2},
+  "debug": {"save_debug_screenshots": false, "verbose_logs": false}
+}
