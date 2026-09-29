@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
 import type {
   CaptureFrame,
@@ -42,6 +43,11 @@ const translations = {
     localConsole: "本地运行",
     localOnly: "数据仅保存在此设备",
     engine: "自动化服务",
+    windowControls: {
+      minimize: "最小化",
+      maximize: "最大化或还原",
+      close: "关闭",
+    },
     closeNotice: "关闭提示",
     ready: "应用已就绪，等待自动化服务连接。",
     states: {
@@ -245,6 +251,11 @@ const translations = {
     localConsole: "Local service",
     localOnly: "Data stays on this device",
     engine: "Automation service",
+    windowControls: {
+      minimize: "Minimize",
+      maximize: "Maximize or restore",
+      close: "Close",
+    },
     closeNotice: "Dismiss notification",
     ready: "The app is ready and waiting for the automation service.",
     states: {
@@ -522,6 +533,60 @@ function taskCopy(task: TaskItem, language: Language) {
     translations[language].taskNames[
       task.id as keyof (typeof translations)["zh-CN"]["taskNames"]
     ] ?? [task.name, task.description]
+  );
+}
+
+function WindowTitleBar({ language }: { language: Language }) {
+  const labels = translations[language].windowControls;
+  const appWindow = getCurrentWindow();
+  const runWindowAction = (action: () => Promise<unknown>) => {
+    void action().catch(() => undefined);
+  };
+  return (
+    <header className="window-titlebar">
+      <div className="window-title" data-tauri-drag-region>
+        <span className="window-title-mark" data-tauri-drag-region>
+          V
+        </span>
+        <span data-tauri-drag-region>Identity V Assistant</span>
+      </div>
+      <div className="window-drag-space" data-tauri-drag-region />
+      <div className="window-controls">
+        <button
+          className="window-control"
+          type="button"
+          aria-label={labels.minimize}
+          title={labels.minimize}
+          onClick={() => runWindowAction(() => appWindow.minimize())}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 8.5h10" />
+          </svg>
+        </button>
+        <button
+          className="window-control"
+          type="button"
+          aria-label={labels.maximize}
+          title={labels.maximize}
+          onClick={() => runWindowAction(() => appWindow.toggleMaximize())}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="3.5" y="3.5" width="9" height="9" rx="1" />
+          </svg>
+        </button>
+        <button
+          className="window-control window-close"
+          type="button"
+          aria-label={labels.close}
+          title={labels.close}
+          onClick={() => runWindowAction(() => appWindow.close())}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="m4 4 8 8m0-8-8 8" />
+          </svg>
+        </button>
+      </div>
+    </header>
   );
 }
 
@@ -876,57 +941,60 @@ export default function App() {
       (item.id !== "runtime" && item.id !== "debug" && item.id !== "logs"),
   );
   return (
-    <main className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">V</span>
-          <span>{t.about.name}</span>
-        </div>
-        <nav>
-          {visibleNav.map((item) => (
-            <button
-              key={item.id}
-              className={page === item.id ? "nav-item active" : "nav-item"}
-              onClick={() => navigate(item.id)}
-            >
-              <span>{item.icon}</span>
-              {t.nav[item.id]}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <span className={`local-status-dot ${engineState(snapshot)}`} />
-          <span className="local-status-copy">
-            <strong>{t.localConsole}</strong>
-            <small>{t.localOnly}</small>
-          </span>
-          <b>v0.1.0</b>
-        </div>
-      </aside>
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <h1>{t.nav[page]}</h1>
-            <p>IdentityV Assistant</p>
+    <>
+      <WindowTitleBar language={language} />
+      <main className="shell">
+        <aside className="sidebar">
+          <div className="brand">
+            <span className="brand-mark">V</span>
+            <span>{t.about.name}</span>
           </div>
-          <div className="engine-status">
-            <span className={`dot ${engineState(snapshot)}`} />
-            {t.engine} {stateLabel(engineState(snapshot), language)}
+          <nav>
+            {visibleNav.map((item) => (
+              <button
+                key={item.id}
+                className={page === item.id ? "nav-item active" : "nav-item"}
+                onClick={() => navigate(item.id)}
+              >
+                <span>{item.icon}</span>
+                {t.nav[item.id]}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-footer">
+            <span className={`local-status-dot ${engineState(snapshot)}`} />
+            <span className="local-status-copy">
+              <strong>{t.localConsole}</strong>
+              <small>{t.localOnly}</small>
+            </span>
+            <b>v0.1.0</b>
           </div>
-        </header>
-        {notice && (
-          <div className="notice">
-            <span>{notice}</span>
-            <button aria-label={t.closeNotice} onClick={() => setNotice(null)}>
-              ×
-            </button>
+        </aside>
+        <section className="workspace">
+          <header className="topbar">
+            <div>
+              <h1>{t.nav[page]}</h1>
+              <p>IdentityV Assistant</p>
+            </div>
+            <div className="engine-status">
+              <span className={`dot ${engineState(snapshot)}`} />
+              {t.engine} {stateLabel(engineState(snapshot), language)}
+            </div>
+          </header>
+          {notice && (
+            <div className="notice">
+              <span>{notice}</span>
+              <button aria-label={t.closeNotice} onClick={() => setNotice(null)}>
+                ×
+              </button>
+            </div>
+          )}
+          <div className={`page-content page-${page} page-${pagePhase}`}>
+            {content}
           </div>
-        )}
-        <div className={`page-content page-${page} page-${pagePhase}`}>
-          {content}
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </>
   );
 }
 

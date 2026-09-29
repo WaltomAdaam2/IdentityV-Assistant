@@ -12,12 +12,14 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Identity V Assistant",
         "width": 1000,
         "height": 680,
         "minWidth": 1000,
         "minHeight": 680,
-        "resizable": true
+        "resizable": true,
+        "decorations": false
       }
     ],
     "security": {
