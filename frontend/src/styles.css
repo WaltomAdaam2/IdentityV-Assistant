@@ -13,7 +13,7 @@ h2 { font-size: 18px; font-weight: 650; }
 h3 { font-size: 14px; font-weight: 650; }
 p { color: #94a0b4; font-size: 13px; line-height: 1.55; }
 .shell { display: flex; min-height: 100vh; }
-.sidebar { width: 214px; flex: 0 0 214px; display: flex; flex-direction: column; padding: 18px 12px; background: #161b26; border-right: 1px solid #293143; }
+.sidebar { position: sticky; top: 0; width: 214px; height: 100vh; flex: 0 0 214px; display: flex; flex-direction: column; padding: 18px 12px; overflow-y: auto; background: #161b26; border-right: 1px solid #293143; }
 .brand { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 9px; margin-bottom: 23px; color: #eff6ff; font-size: 15px; font-weight: 700; }
 .brand-mark, .large-mark { display: inline-grid; place-items: center; color: #10202e; background: #75d9ff; border-radius: 8px; font-family: Georgia, serif; font-weight: 900; }
 .brand-mark { width: 26px; height: 26px; font-size: 17px; }
