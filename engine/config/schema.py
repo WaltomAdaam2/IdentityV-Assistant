@@ -19,10 +19,14 @@ class WindowConfig(_ConfigModel):
     process_names: tuple[NonEmptyString, ...] = ("dwrg.exe", "IdentityV.exe")
     title_contains: tuple[NonEmptyString, ...] = ("第五人格", "Identity V")
     class_names: tuple[NonEmptyString, ...] = ()
+    background_mode: StrictBool = True
+    resolution: Literal["1280x720", "1600x900", "1920x1080", "2560x1400"] = "1600x900"
+    position: Literal["free", "center", "left_top", "right_top", "left_bottom", "right_bottom"] = "free"
+    restore_after_task: StrictBool = True
 
 
 class CaptureConfig(_ConfigModel):
-    backend: Literal["auto", "wgc", "dxcam", "mss"] = "auto"
+    backend: Literal["auto", "wgc", "dxcam", "mss"] = "wgc"
     idle_fps: PositiveFps = 3
     active_fps: PositiveFps = 10
 
@@ -41,6 +45,7 @@ class VisionConfig(_ConfigModel):
 
 class EngineConfig(_ConfigModel):
     dry_run: StrictBool = True
+    memory_protection: StrictBool = False
     heartbeat_interval_seconds: HeartbeatInterval = 2.0
     mock_step_delay_seconds: MockStepDelay = 1.0
     window: WindowConfig = Field(default_factory=WindowConfig)

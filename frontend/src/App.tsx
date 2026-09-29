@@ -66,6 +66,7 @@ const translations = {
     },
     levels: { debug: "调试", info: "信息", warning: "警告", error: "错误" },
     taskNames: {
+      home_book: ["识别归宿并点击书本", "用十个固定像素判断归宿界面并点击右侧书本"],
       mock_weekly: ["模拟周常流程", "不操作真实窗口的可验证任务流程"],
       weekly: ["周常任务", "执行已实现的周常任务状态流"],
     },
@@ -127,6 +128,9 @@ const translations = {
       clientRect: "客户区",
       dpi: "DPI 缩放",
       windowState: "窗口状态",
+      responding: "响应状态",
+      responsive: "正常响应",
+      unresponsive: "未响应",
       foreground: "前台",
       background: "后台",
       minimized: "已最小化",
@@ -200,8 +204,19 @@ const translations = {
       titleKeywords: "窗口标题关键词",
       processNames: "进程名",
       classNames: "窗口类名",
+      backgroundMode: "后台伪全屏模式",
+      backgroundModeHint: "移除游戏窗口边框，并允许在副屏后台捕捉与点击",
+      resolution: "运行分辨率",
+      position: "窗口位置",
+      positionFree: "不限制（保持当前位置）",
+      positionCenter: "居中",
+      positionLeftTop: "左上",
+      positionRightTop: "右上",
+      positionLeftBottom: "左下",
+      positionRightBottom: "右下",
+      restoreWindow: "任务结束后恢复游戏窗口",
       developerMode: "开发者模式",
-      developerModeHint: "显示捕捉诊断、运行日志和技术设置",
+      developerModeHint: "显示服务详情与手动命令",
       developerSection: "开发者设置",
       developerSectionHint: "以下选项用于诊断和高级调整。",
       engineCapture: "服务与捕捉",
@@ -214,11 +229,13 @@ const translations = {
       idleFps: "空闲帧率",
       dryRun: "模拟模式",
       dryRunHint: "跳过真实输入操作",
+      memoryProtection: "内存占用保护",
+      memoryProtectionHint: "系统内存超过 90% 时清理未使用缓存",
       recognition: "识别与诊断",
       threshold: "模板匹配阈值",
       verbose: "记录详细调试日志",
       screenshots: "保存调试截图",
-      save: "保存设置",
+      autosave: "更改会自动保存",
     },
     about: {
       name: "第五人格助手",
@@ -281,6 +298,10 @@ const translations = {
       error: "Error",
     },
     taskNames: {
+      home_book: [
+        "Detect home and click the book",
+        "Checks ten fixed pixels on the home screen, then clicks the book on the right",
+      ],
       mock_weekly: [
         "Mock weekly flow",
         "A verifiable task flow that does not operate the game window",
@@ -345,6 +366,9 @@ const translations = {
       clientRect: "Client area",
       dpi: "DPI scale",
       windowState: "Window state",
+      responding: "Response status",
+      responsive: "Responsive",
+      unresponsive: "Not responding",
       foreground: "Foreground",
       background: "Background",
       minimized: "Minimized",
@@ -421,8 +445,19 @@ const translations = {
       titleKeywords: "Window title keywords",
       processNames: "Process names",
       classNames: "Window classes",
+      backgroundMode: "Background borderless mode",
+      backgroundModeHint: "Removes the game border for background capture and input on any monitor",
+      resolution: "Runtime resolution",
+      position: "Window position",
+      positionFree: "Unrestricted (keep current position)",
+      positionCenter: "Center",
+      positionLeftTop: "Top left",
+      positionRightTop: "Top right",
+      positionLeftBottom: "Bottom left",
+      positionRightBottom: "Bottom right",
+      restoreWindow: "Restore the game window after a task",
       developerMode: "Developer mode",
-      developerModeHint: "Show capture diagnostics, service logs, and technical settings",
+      developerModeHint: "Show service details and manual commands",
       developerSection: "Developer settings",
       developerSectionHint: "These options are intended for diagnostics and advanced tuning.",
       engineCapture: "Service and capture",
@@ -435,11 +470,13 @@ const translations = {
       idleFps: "Idle frame rate",
       dryRun: "Simulation mode",
       dryRunHint: "Skip real input actions",
+      memoryProtection: "Memory protection",
+      memoryProtectionHint: "Release unused caches when system memory usage exceeds 90%",
       recognition: "Recognition and diagnostics",
       threshold: "Template match threshold",
       verbose: "Record verbose debug logs",
       screenshots: "Save debug screenshots",
-      save: "Save settings",
+      autosave: "Changes are saved automatically",
     },
     about: {
       name: "Identity V Assistant",
@@ -478,10 +515,17 @@ const nav: Array<{ id: Page; icon: string }> = [
 ];
 const initialTasks: TaskItem[] = [
   {
+    id: "home_book",
+    name: "home_book",
+    description: "",
+    enabled: true,
+    status: "idle",
+  },
+  {
     id: "mock_weekly",
     name: "mock_weekly",
     description: "",
-    enabled: true,
+    enabled: false,
     status: "idle",
   },
   {
@@ -501,6 +545,7 @@ const defaults: Settings = {
   },
   engine: {
     dry_run: true,
+    memory_protection: false,
     heartbeat_interval_seconds: 2,
     mock_step_delay_seconds: 1,
   },
@@ -508,8 +553,12 @@ const defaults: Settings = {
     process_names: ["dwrg.exe", "IdentityV.exe"],
     title_contains: ["第五人格", "Identity V"],
     class_names: [],
+    background_mode: true,
+    resolution: "1600x900",
+    position: "free",
+    restore_after_task: true,
   },
-  capture: { backend: "auto", idle_fps: 3, active_fps: 10 },
+  capture: { backend: "wgc", idle_fps: 3, active_fps: 10 },
   vision: { template_threshold: 0.85, state_confirmation_count: 2 },
   debug: { save_debug_screenshots: false, verbose_logs: false },
 };
@@ -605,9 +654,12 @@ export default function App() {
   });
   const [tasks, setTasks] = useState(initialTasks);
   const [settings, setSettings] = useState<Settings>(defaults);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const language = settings.app.language;
   const languageRef = useRef<Language>(language);
   languageRef.current = language;
+  const verboseLogsRef = useRef(settings.debug.verbose_logs);
+  verboseLogsRef.current = settings.debug.verbose_logs;
   const t = translations[language];
   const [logs, setLogs] = useState<LogEntry[]>([
     {
@@ -676,7 +728,8 @@ export default function App() {
       const current = translations[languageRef.current];
       try {
         await action();
-        appendLog("info", current.actionSent(label), "ui");
+        if (verboseLogsRef.current)
+          appendLog("info", current.actionSent(label), "ui");
         setNotice(current.actionNotice(label));
       } catch (error) {
         const message = current.actionFailed(label, asMessage(error));
@@ -701,7 +754,7 @@ export default function App() {
     void refreshSnapshot();
     void bridge
       .loadSettings()
-      .then((loaded) =>
+      .then((loaded) => {
         setSettings({
           ...defaults,
           ...loaded,
@@ -711,8 +764,9 @@ export default function App() {
           capture: { ...defaults.capture, ...loaded.capture },
           vision: { ...defaults.vision, ...loaded.vision },
           debug: { ...defaults.debug, ...loaded.debug },
-        }),
-      )
+        });
+        setSettingsLoaded(true);
+      })
       .catch(() => undefined);
     let dispose: (() => void) | undefined;
     let disposed = false;
@@ -735,7 +789,17 @@ export default function App() {
               : event.type === "task_finished"
                 ? current.finishedEvent(event.reason ?? "?")
                 : (event.type ?? current.receivedEvent));
-        appendLog(level, eventMessage, event.source ?? event.type ?? "engine");
+        const important =
+          event.data?.important === true ||
+          event.type === "ready" ||
+          event.type === "task_finished";
+        if (
+          verboseLogsRef.current ||
+          level === "warning" ||
+          level === "error" ||
+          important
+        )
+          appendLog(level, eventMessage, event.source ?? event.type ?? "engine");
         if (event.type === "heartbeat") {
           setSnapshot((current) => ({
             ...current,
@@ -755,6 +819,11 @@ export default function App() {
           setWindowInfo(event);
           if (event.found) setDiagnosticError(null);
         }
+        if (
+          (event.type === "heartbeat" || event.type === "window_health") &&
+          typeof event.found === "boolean"
+        )
+          setWindowInfo(event);
         if (event.type === "debug_frame")
           updateFrame({
             path: event.path,
@@ -834,6 +903,20 @@ export default function App() {
     document.documentElement.dataset.theme = settings.app.theme;
   }, [settings.app.theme]);
   useEffect(() => {
+    if (!settingsLoaded) return;
+    const timer = window.setTimeout(() => {
+      void bridge.saveSettings(settings).catch((error) => {
+        const message = translations[languageRef.current].actionFailed(
+          translations[languageRef.current].nav.settings,
+          asMessage(error),
+        );
+        appendLog("error", message, "settings");
+        setNotice(message);
+      });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [appendLog, settings, settingsLoaded]);
+  useEffect(() => {
     document.title = t.about.name;
   }, [t.about.name]);
   useEffect(
@@ -862,7 +945,7 @@ export default function App() {
   useEffect(() => {
     if (
       !settings.app.developer_mode &&
-      (page === "runtime" || page === "debug" || page === "logs")
+      page === "runtime"
     ) {
       setPage("settings");
       setPagePhase("enter");
@@ -940,7 +1023,6 @@ export default function App() {
         language={language}
         settings={settings}
         setSettings={setSettings}
-        onSave={() => run(t.settings.save, () => bridge.saveSettings(settings))}
       />
     ),
     about: <About language={language} />,
@@ -948,7 +1030,7 @@ export default function App() {
   const visibleNav = nav.filter(
     (item) =>
       settings.app.developer_mode ||
-      (item.id !== "runtime" && item.id !== "debug" && item.id !== "logs"),
+      item.id !== "runtime",
   );
   return (
     <>
@@ -1400,6 +1482,14 @@ function Debug({
                 ? dash
                 : `${windowInfo.is_foreground ? t.foreground : t.background} · ${windowInfo.is_minimized ? t.minimized : t.restored}`}
             </dd>
+            <dt>{t.responding}</dt>
+            <dd>
+              {windowInfo.is_responding == null
+                ? dash
+                : windowInfo.is_responding
+                  ? t.responsive
+                  : t.unresponsive}
+            </dd>
             <dt>{t.matchReasons}</dt>
             <dd>
               {matchReasons?.length
@@ -1625,12 +1715,10 @@ function SettingsPage({
   language,
   settings,
   setSettings,
-  onSave,
 }: {
   language: Language;
   settings: Settings;
   setSettings: (value: Settings) => void;
-  onSave: () => void;
 }) {
   const t = translations[language].settings;
   const updateApp = (patch: Partial<Settings["app"]>) =>
@@ -1709,12 +1797,6 @@ function SettingsPage({
           </span>
         </label>
       </section>
-      {settings.app.developer_mode && (
-        <>
-      <section className="developer-heading">
-        <h2>{t.developerSection}</h2>
-        <p>{t.developerSectionHint}</p>
-      </section>
       <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
@@ -1746,6 +1828,65 @@ function SettingsPage({
               updateWindow({ class_names: keywords(event.target.value) })
             }
           />
+        </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={settings.game_window.background_mode}
+            onChange={(event) =>
+              updateWindow({ background_mode: event.target.checked })
+            }
+          />
+          <span>
+            {t.backgroundMode}
+            <small>{t.backgroundModeHint}</small>
+          </span>
+        </label>
+        <label>
+          {t.resolution}
+          <select
+            value={settings.game_window.resolution}
+            onChange={(event) =>
+              updateWindow({
+                resolution: event.target
+                  .value as Settings["game_window"]["resolution"],
+              })
+            }
+          >
+            <option value="1280x720">1280 × 720</option>
+            <option value="1600x900">1600 × 900</option>
+            <option value="1920x1080">1920 × 1080</option>
+            <option value="2560x1400">2560 × 1400</option>
+          </select>
+        </label>
+        <label>
+          {t.position}
+          <select
+            value={settings.game_window.position}
+            onChange={(event) =>
+              updateWindow({
+                position: event.target
+                  .value as Settings["game_window"]["position"],
+              })
+            }
+          >
+            <option value="free">{t.positionFree}</option>
+            <option value="center">{t.positionCenter}</option>
+            <option value="left_top">{t.positionLeftTop}</option>
+            <option value="right_top">{t.positionRightTop}</option>
+            <option value="left_bottom">{t.positionLeftBottom}</option>
+            <option value="right_bottom">{t.positionRightBottom}</option>
+          </select>
+        </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={settings.game_window.restore_after_task}
+            onChange={(event) =>
+              updateWindow({ restore_after_task: event.target.checked })
+            }
+          />
+          {t.restoreWindow}
         </label>
       </section>
       <section className="panel developer-panel">
@@ -1799,6 +1940,19 @@ function SettingsPage({
           />
           {t.dryRun} <small>{t.dryRunHint}</small>
         </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={settings.engine.memory_protection}
+            onChange={(event) =>
+              updateEngine({ memory_protection: event.target.checked })
+            }
+          />
+          <span>
+            {t.memoryProtection}
+            <small>{t.memoryProtectionHint}</small>
+          </span>
+        </label>
       </section>
       <section className="panel developer-panel">
         <h2>{t.recognition}</h2>
@@ -1836,12 +1990,8 @@ function SettingsPage({
           {t.screenshots}
         </label>
       </section>
-        </>
-      )}
       <div className="save-bar">
-        <button className="primary" onClick={onSave}>
-          {t.save}
-        </button>
+        <span>{t.autosave}</span>
       </div>
     </section>
   );

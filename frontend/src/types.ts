@@ -35,6 +35,8 @@ export interface EngineEvent {
   class_name?: string | null;
   is_minimized?: boolean | null;
   is_foreground?: boolean | null;
+  is_responding?: boolean | null;
+  window_status?: string;
   match_reasons?: string[] | null;
   path?: string;
   width?: number;
@@ -76,6 +78,8 @@ export interface WindowInfo {
   class_name?: string | null;
   is_minimized?: boolean | null;
   is_foreground?: boolean | null;
+  is_responding?: boolean | null;
+  window_status?: string;
   match_reasons?: string[] | null;
   request_id?: string | null;
   capture_last_error?: string | null;
@@ -127,6 +131,7 @@ export interface Settings {
   };
   engine: {
     dry_run: boolean;
+    memory_protection: boolean;
     heartbeat_interval_seconds: number;
     mock_step_delay_seconds: number;
   };
@@ -134,6 +139,10 @@ export interface Settings {
     process_names: string[];
     title_contains: string[];
     class_names: string[];
+    background_mode: boolean;
+    resolution: "1280x720" | "1600x900" | "1920x1080" | "2560x1400";
+    position: "free" | "center" | "left_top" | "right_top" | "left_bottom" | "right_bottom";
+    restore_after_task: boolean;
   };
   capture: { backend: string; idle_fps: number; active_fps: number };
   vision: { template_threshold: number; state_confirmation_count: number };

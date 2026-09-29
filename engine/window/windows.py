@@ -24,6 +24,7 @@ class WindowsWindowManager(WindowManager):
     def __init__(self, config: WindowConfig) -> None:
         self.config = config
         self._window: WindowInfo | None = None
+        self._original_window: tuple[int, int, tuple[int, int, int, int]] | None = None
         self._user32: Any | None = None
         self._kernel32: Any | None = None
         if sys.platform == "win32":
@@ -58,6 +59,16 @@ class WindowsWindowManager(WindowManager):
         user32.IsWindow.restype = wintypes.BOOL
         user32.SetForegroundWindow.argtypes = [wintypes.HWND]
         user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.SendMessageTimeoutW.argtypes = [
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+            wintypes.UINT,
+            wintypes.UINT,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        user32.SendMessageTimeoutW.restype = ctypes.c_size_t
 
         get_dpi = getattr(user32, "GetDpiForWindow", None)
         if get_dpi:
@@ -116,6 +127,7 @@ class WindowsWindowManager(WindowManager):
                         process_name=process_name,
                         is_minimized=bool(user32.IsIconic(hwnd)),
                         is_foreground=user32.GetForegroundWindow() == hwnd,
+                        is_responding=self._is_responding(hwnd),
                         match_reasons=reasons,
                     )
                 )
@@ -217,9 +229,121 @@ class WindowsWindowManager(WindowManager):
     def is_minimized(self) -> bool:
         return bool(self._window and self._user32 and self._user32.IsIconic(self._window.hwnd))
 
+    def is_responding(self) -> bool:
+        return bool(self._window and self._is_responding(self._window.hwnd))
+
+    def _is_responding(self, hwnd: int) -> bool:
+        if self._user32 is None:
+            return False
+        result = ctypes.c_size_t()
+        return bool(
+            self._user32.SendMessageTimeoutW(
+                hwnd,
+                0,
+                0,
+                0,
+                0x0001 | 0x0002,
+                250,
+                ctypes.byref(result),
+            )
+        )
+
     def bring_to_front(self) -> None:
         if self._window and self._user32:
             self._user32.SetForegroundWindow(self._window.hwnd)
 
     def get_dpi_scale(self) -> float:
         return self._dpi_scale(self._window.hwnd) if self._window else 1.0
+
+    def prepare_background_mode(self) -> bool:
+        if not self.config.background_mode:
+            return True
+        hwnd = self.current_hwnd()
+        if not hwnd:
+            return False
+        import win32api
+        import win32con
+        import win32gui
+
+        if self._original_window is None:
+            self._original_window = (
+                win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE),
+                win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE),
+                win32gui.GetWindowRect(hwnd),
+            )
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
+
+        style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
+        style &= ~(
+            win32con.WS_CAPTION
+            | win32con.WS_BORDER
+            | win32con.WS_THICKFRAME
+            | win32con.WS_SIZEBOX
+            | win32con.WS_MAXIMIZEBOX
+        )
+        win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
+        win32gui.SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            win32con.SWP_NOMOVE
+            | win32con.SWP_NOSIZE
+            | win32con.SWP_NOZORDER
+            | win32con.SWP_NOACTIVATE
+            | win32con.SWP_FRAMECHANGED,
+        )
+
+        client_width, client_height = map(int, self.config.resolution.split("x"))
+        window_rect = win32gui.GetWindowRect(hwnd)
+        client_rect = win32gui.GetClientRect(hwnd)
+        width = client_width + (window_rect[2] - window_rect[0] - client_rect[2])
+        height = client_height + (window_rect[3] - window_rect[1] - client_rect[3])
+        monitor = win32api.GetMonitorInfo(
+            win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
+        )["Monitor"]
+        left, top, right, bottom = monitor
+        positions = {
+            "center": (left + (right - left - width) // 2, top + (bottom - top - height) // 2),
+            "left_top": (left, top),
+            "right_top": (right - width, top),
+            "left_bottom": (left, bottom - height),
+            "right_bottom": (right - width, bottom - height),
+        }
+        flags = win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE
+        x, y = positions.get(self.config.position, (0, 0))
+        if self.config.position == "free":
+            flags |= win32con.SWP_NOMOVE
+        win32gui.SetWindowPos(hwnd, None, x, y, width, height, flags)
+        self.find_window()
+        return True
+
+    def restore_window_mode(self) -> bool:
+        if self._original_window is None:
+            return True
+        hwnd = self.current_hwnd()
+        if not hwnd:
+            self._original_window = None
+            return False
+        import win32con
+        import win32gui
+
+        style, ex_style, rect = self._original_window
+        win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
+        win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex_style)
+        win32gui.SetWindowPos(
+            hwnd,
+            win32con.HWND_NOTOPMOST,
+            rect[0],
+            rect[1],
+            rect[2] - rect[0],
+            rect[3] - rect[1],
+            win32con.SWP_NOACTIVATE | win32con.SWP_FRAMECHANGED,
+        )
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
+        self._original_window = None
+        self.find_window()
+        return True

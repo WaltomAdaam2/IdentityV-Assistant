@@ -40,6 +40,7 @@ struct EngineState {
     engine_version: Option<String>,
     task_status: String,
     last_heartbeat: Option<chrono::DateTime<Utc>>,
+    heartbeat_timeout_seconds: f64,
     last_error: Option<String>,
 }
 
@@ -57,6 +58,7 @@ impl Default for EngineSupervisor {
                 engine_version: None,
                 task_status: "idle".into(),
                 last_heartbeat: None,
+                heartbeat_timeout_seconds: 10.0,
                 last_error: None,
             })),
         }
@@ -291,6 +293,12 @@ impl EngineSupervisor {
             Some("ready") => {
                 state.status = "idle".into();
                 state.last_error = None;
+                if let Some(interval) = message
+                    .get("heartbeat_interval_seconds")
+                    .and_then(Value::as_f64)
+                {
+                    state.heartbeat_timeout_seconds = (interval * 3.0).max(5.0);
+                }
                 state.engine_version = message
                     .get("engine_version")
                     .and_then(Value::as_str)
@@ -367,8 +375,16 @@ impl EngineSupervisor {
     pub async fn snapshot(&self) -> EngineSnapshot {
         let state = self.inner.lock().await;
         let last_heartbeat = state.last_heartbeat;
+        let heartbeat_age_seconds = last_heartbeat
+            .map(|value| (Utc::now() - value).num_milliseconds().max(0) as f64 / 1000.0);
+        let is_unresponsive = state.process.is_some()
+            && heartbeat_age_seconds.is_some_and(|age| age > state.heartbeat_timeout_seconds);
         EngineSnapshot {
-            status: state.status.clone(),
+            status: if is_unresponsive {
+                "error".into()
+            } else {
+                state.status.clone()
+            },
             pid: state
                 .process
                 .as_ref()
@@ -376,9 +392,12 @@ impl EngineSupervisor {
             engine_version: state.engine_version.clone(),
             task_status: state.task_status.clone(),
             last_heartbeat: last_heartbeat.map(|value| value.to_rfc3339()),
-            heartbeat_age_seconds: last_heartbeat
-                .map(|value| (Utc::now() - value).num_milliseconds().max(0) as f64 / 1000.0),
-            last_error: state.last_error.clone(),
+            heartbeat_age_seconds,
+            last_error: if is_unresponsive {
+                Some("Automation service is not responding".into())
+            } else {
+                state.last_error.clone()
+            },
         }
     }
 

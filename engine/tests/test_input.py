@@ -1,7 +1,8 @@
 from core.models import Point
 from input.base import InputBackend
 from input.controller import InputController
-from input.windows_message import _point_lparam
+from input.windows_message import WindowsMessageInput, _point_lparam
+from input.windows_sendinput import _virtual_key
 
 
 class RecordingBackend(InputBackend):
@@ -38,3 +39,12 @@ def test_release_all_releases_held_input() -> None:
 
 def test_window_message_point_uses_client_coordinates() -> None:
     assert _point_lparam(Point(640, 360)) == (360 << 16) | 640
+
+
+def test_window_message_supports_both_mouse_buttons() -> None:
+    assert WindowsMessageInput._mouse_message("left", True)[0] == 0x0201
+    assert WindowsMessageInput._mouse_message("right", True)[0] == 0x0204
+
+
+def test_task_shortcuts_have_virtual_keys() -> None:
+    assert [_virtual_key(key) for key in ("Q", "F", "ESC")] == [0x51, 0x46, 0x1B]

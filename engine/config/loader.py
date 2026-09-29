@@ -20,15 +20,20 @@ def parse_config(data: dict[str, Any]) -> EngineConfig:
     return EngineConfig.model_validate(
         {
             "dry_run": engine_data.get("dry_run", True),
+            "memory_protection": engine_data.get("memory_protection", False),
             "heartbeat_interval_seconds": engine_data.get("heartbeat_interval_seconds", 2.0),
             "mock_step_delay_seconds": engine_data.get("mock_step_delay_seconds", 1.0),
             "window": {
                 "process_names": window_data.get("process_names", ["dwrg.exe", "IdentityV.exe"]),
                 "title_contains": window_data.get("title_contains", ["第五人格", "Identity V"]),
                 "class_names": window_data.get("class_names", []),
+                "background_mode": window_data.get("background_mode", True),
+                "resolution": window_data.get("resolution", "1600x900"),
+                "position": window_data.get("position", "free"),
+                "restore_after_task": window_data.get("restore_after_task", True),
             },
             "capture": {
-                "backend": capture_data.get("backend", "auto"),
+                "backend": capture_data.get("backend", "wgc"),
                 "idle_fps": capture_data.get("idle_fps", 3),
                 "active_fps": capture_data.get("active_fps", 10),
             },

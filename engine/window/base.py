@@ -15,6 +15,7 @@ class WindowInfo:
     process_name: str = ""
     is_minimized: bool = False
     is_foreground: bool = False
+    is_responding: bool = True
     match_reasons: tuple[str, ...] = ()
 
 
@@ -32,7 +33,16 @@ class WindowManager(ABC):
     def is_minimized(self) -> bool: ...
 
     @abstractmethod
+    def is_responding(self) -> bool: ...
+
+    @abstractmethod
     def bring_to_front(self) -> None: ...
 
     @abstractmethod
     def get_dpi_scale(self) -> float: ...
+
+    @abstractmethod
+    def prepare_background_mode(self) -> bool: ...
+
+    @abstractmethod
+    def restore_window_mode(self) -> bool: ...

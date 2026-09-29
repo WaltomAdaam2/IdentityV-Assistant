@@ -20,8 +20,10 @@ from ipc.reader import NdjsonReader
 from ipc.writer import NdjsonWriter
 from runtime.cancellation import CancellationToken
 from runtime.metrics import RuntimeMetrics
+from runtime.memory_guard import MemoryGuard
 from states.history import StateHistory
 from tasks.base import AutomationTask, TaskControl
+from tasks.home_book_task import HomeBookTask
 from tasks.mock_task import MockTask
 from tasks.weekly_task import WeeklyTask
 from window.base import WindowInfo
@@ -39,6 +41,8 @@ class AutomationEngine:
         self._task_control: TaskControl | None = None
         self._task_runner: asyncio.Task[None] | None = None
         self._developer_input_enabled = False
+        self._window_health: str | None = None
+        self._memory_pressure = False
         window = WindowsWindowManager(config.window)
         self.context = AutomationContext(
             config,
@@ -49,6 +53,7 @@ class AutomationEngine:
             CancellationToken(),
             StateHistory(config.vision.state_confirmation_count),
             self.emit,
+            MemoryGuard(config.memory_protection),
         )
 
     async def emit(self, event_type: str, **payload: object) -> None:
@@ -56,7 +61,11 @@ class AutomationEngine:
 
     async def run(self) -> None:
         self.status = EngineStatus.IDLE
-        await self.emit("ready", engine_version=ENGINE_VERSION)
+        await self.emit(
+            "ready",
+            engine_version=ENGINE_VERSION,
+            heartbeat_interval_seconds=self.config.heartbeat_interval_seconds,
+        )
         heartbeat = asyncio.create_task(self._heartbeat_loop())
         try:
             async for command in self.reader.messages():
@@ -74,7 +83,30 @@ class AutomationEngine:
 
     async def _heartbeat_loop(self) -> None:
         while not self._shutdown.is_set():
-            await self.emit("heartbeat", engine_status=self.status.value, task_status=self.task_status)
+            window = self.context.window.find_window()
+            health = self._window_health_payload(window)
+            await self.emit(
+                "heartbeat",
+                engine_status=self.status.value,
+                task_status=self.task_status,
+                **health,
+            )
+            if health["window_status"] != self._window_health:
+                self._window_health = str(health["window_status"])
+                messages = {
+                    "ready": "Game window is ready",
+                    "minimized": "Game window is minimized",
+                    "unresponsive": "Game window is not responding",
+                    "closed": "Game window is not open",
+                }
+                await self.emit(
+                    "window_health",
+                    level="info" if self._window_health == "ready" else "warning",
+                    source="window",
+                    message=messages[self._window_health],
+                    data={"important": True},
+                    **health,
+                )
             await self.emit("metrics", **self.context.metrics.snapshot())
             try:
                 await asyncio.wait_for(self._shutdown.wait(), timeout=self.config.heartbeat_interval_seconds)
@@ -85,7 +117,13 @@ class AutomationEngine:
         command_type = command["type"]
         request_id = command.get("request_id") if isinstance(command.get("request_id"), str) else None
         if command_type == "ping":
-            await self.emit("heartbeat", engine_status=self.status.value, task_status=self.task_status)
+            window = self.context.window.find_window()
+            await self.emit(
+                "heartbeat",
+                engine_status=self.status.value,
+                task_status=self.task_status,
+                **self._window_health_payload(window),
+            )
         elif command_type == "start_task":
             await self._start_task(str(command.get("task", "mock_weekly")))
         elif command_type == "pause_task" and self._task_control:
@@ -144,6 +182,7 @@ class AutomationEngine:
             return
         started = perf_counter()
         try:
+            await self._protect_memory()
             frame = self.context.capture.capture(window.client_rect, window.hwnd)
             self.context.metrics.screenshots += 1
             captured_at = datetime.now(timezone.utc)
@@ -184,11 +223,48 @@ class AutomationEngine:
             "dpi_scale": window.dpi_scale,
             "is_minimized": window.is_minimized,
             "is_foreground": window.is_foreground,
+            "is_responding": window.is_responding,
             "match_reasons": window.match_reasons,
             "capture_backend": self.context.capture.backend_name,
             "capture_backend_configured": self.config.capture.backend,
             "capture_last_error": self.context.capture.last_error,
             "request_id": request_id,
+        }
+
+    def _window_health_payload(self, window: WindowInfo | None) -> dict[str, object]:
+        if window is None:
+            return {
+                "window_status": "closed",
+                "found": False,
+                "hwnd": None,
+                "process_id": None,
+                "is_minimized": None,
+                "is_responding": None,
+            }
+        status = (
+            "unresponsive"
+            if not window.is_responding
+            else "minimized"
+            if window.is_minimized
+            else "ready"
+        )
+        return {
+            "window_status": status,
+            "found": True,
+            "hwnd": window.hwnd,
+            "title": window.title,
+            "process_id": window.process_id,
+            "process_name": window.process_name,
+            "class_name": window.class_name,
+            "client_rect": self._rect_payload(window.client_rect),
+            "dpi_scale": window.dpi_scale,
+            "is_minimized": window.is_minimized,
+            "is_foreground": window.is_foreground,
+            "is_responding": window.is_responding,
+            "match_reasons": window.match_reasons,
+            "capture_backend": self.context.capture.backend_name,
+            "capture_backend_configured": self.config.capture.backend,
+            "capture_last_error": self.context.capture.last_error,
         }
 
     async def _test_template(self, command: dict[str, Any], request_id: str | None = None) -> None:
@@ -212,6 +288,7 @@ class AutomationEngine:
         try:
             import cv2
             from vision.template_matcher import TemplateMatcher
+            await self._protect_memory()
             frame = self.context.capture.capture(window.client_rect, window.hwnd)
             self.context.metrics.screenshots += 1
             template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
@@ -221,6 +298,21 @@ class AutomationEngine:
             return
         await self.emit("window_diagnostics", **self._window_payload(window, request_id))
         await self.emit("template_match", template=template_value, found=match.found, confidence=match.confidence, bbox=match.bbox, threshold=self.config.vision.template_threshold, request_id=request_id)
+
+    async def _protect_memory(self) -> None:
+        percent = self.context.memory_guard.protect()
+        if percent is None:
+            return
+        under_pressure = percent > self.context.memory_guard.threshold_percent
+        if under_pressure and not self._memory_pressure:
+            await self.emit(
+                "log",
+                level="warning",
+                source="memory",
+                message=f"System memory usage reached {percent:.1f}%; unused caches were released",
+                data={"important": True, "memory_percent": percent},
+            )
+        self._memory_pressure = under_pressure
 
     async def _input_test(self, command: dict[str, Any], request_id: str | None = None) -> None:
         action = command.get("action")
@@ -267,7 +359,11 @@ class AutomationEngine:
         if self._task_runner and not self._task_runner.done():
             await self.emit("error", code="TASK_ALREADY_RUNNING", message="A task is already running", recoverable=True, details={})
             return
-        factories: dict[str, type[AutomationTask]] = {"mock_weekly": MockTask, "weekly": WeeklyTask}
+        factories: dict[str, type[AutomationTask]] = {
+            "home_book": HomeBookTask,
+            "mock_weekly": MockTask,
+            "weekly": WeeklyTask,
+        }
         if task_name not in factories:
             await self.emit("error", code="TASK_UNKNOWN", message=f"Unknown task: {task_name}", recoverable=True, details={})
             return
@@ -282,7 +378,11 @@ class AutomationEngine:
             self.status, self.task_status = EngineStatus.ERROR, "error"
             await self.emit("error", code=ErrorCode.ENGINE_CRASHED.value, message=str(error), recoverable=False, details={})
             reason = TaskFinishReason.ENGINE_ERROR
-        self.context.input.release_all()
+        finally:
+            self.context.input.release_all()
+            if self.config.window.restore_after_task:
+                with suppress(Exception):
+                    self.context.window.restore_window_mode()
         if self.status != EngineStatus.ERROR:
             self.status, self.task_status = EngineStatus.IDLE, "idle"
         await self.emit("task_finished", reason=reason.value, stats=self.context.metrics.snapshot())
