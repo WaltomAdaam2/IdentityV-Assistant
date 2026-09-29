@@ -7,7 +7,7 @@ class DxcamCapture(CaptureBackend):
         import dxcam
         self._camera = dxcam.create(output_color="BGR")
 
-    def capture(self, region: Rect | None = None) -> Frame:
+    def capture(self, region: Rect | None = None, hwnd: int | None = None) -> Frame:
         area = (region.left, region.top, region.right, region.bottom) if region else None
         image = self._camera.grab(region=area)
         if image is None:

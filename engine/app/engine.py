@@ -12,9 +12,9 @@ from app.context import AutomationContext
 from capture.manager import CaptureManager
 from config.schema import EngineConfig
 from core.enums import EngineStatus, ErrorCode, TaskFinishReason
-from core.models import Rect
+from core.models import CoordinateSpace, Point, Rect
 from input.controller import InputController
-from input.windows_sendinput import WindowsSendInput
+from input.windows_message import WindowsMessageInput
 from ipc.messages import ENGINE_VERSION, event
 from ipc.reader import NdjsonReader
 from ipc.writer import NdjsonWriter
@@ -39,7 +39,17 @@ class AutomationEngine:
         self._task_control: TaskControl | None = None
         self._task_runner: asyncio.Task[None] | None = None
         self._developer_input_enabled = False
-        self.context = AutomationContext(config, WindowsWindowManager(config.window), CaptureManager(config.capture), InputController(WindowsSendInput(), config.dry_run), RuntimeMetrics(), CancellationToken(), StateHistory(config.vision.state_confirmation_count), self.emit)
+        window = WindowsWindowManager(config.window)
+        self.context = AutomationContext(
+            config,
+            window,
+            CaptureManager(config.capture),
+            InputController(WindowsMessageInput(window.current_hwnd), config.dry_run),
+            RuntimeMetrics(),
+            CancellationToken(),
+            StateHistory(config.vision.state_confirmation_count),
+            self.emit,
+        )
 
     async def emit(self, event_type: str, **payload: object) -> None:
         await self.writer.send(event(event_type, **payload))
@@ -134,7 +144,7 @@ class AutomationEngine:
             return
         started = perf_counter()
         try:
-            frame = self.context.capture.capture(window.client_rect)
+            frame = self.context.capture.capture(window.client_rect, window.hwnd)
             self.context.metrics.screenshots += 1
             captured_at = datetime.now(timezone.utc)
             path = self._save_debug_frame(frame.image, captured_at)
@@ -202,7 +212,7 @@ class AutomationEngine:
         try:
             import cv2
             from vision.template_matcher import TemplateMatcher
-            frame = self.context.capture.capture(window.client_rect)
+            frame = self.context.capture.capture(window.client_rect, window.hwnd)
             self.context.metrics.screenshots += 1
             template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
             match = TemplateMatcher().match(frame.image, template, self.config.vision.template_threshold)
@@ -226,10 +236,14 @@ class AutomationEngine:
             return
         try:
             if action.get("type") == "click":
-                from core.models import Point
-                point = Point(int(action["x"]), int(action["y"]))
+                window = self.context.window.find_window()
+                if window is None:
+                    raise RuntimeError("Configured game window was not found")
+                reference = Point(int(action["x"]), int(action["y"]))
+                point = CoordinateSpace().to_client(reference, window.client_rect)
+                screen = Point(window.client_rect.left + point.x, window.client_rect.top + point.y)
                 self.context.input.click(point)
-                await self.emit("planned_action", action="input_test_click", input="click", target={"x": point.x, "y": point.y}, dry_run=self.context.input.dry_run, request_id=request_id)
+                await self.emit("planned_action", action="input_test_click", input="click", target={"x": point.x, "y": point.y, "screen_x": screen.x, "screen_y": screen.y, "reference_x": reference.x, "reference_y": reference.y, "hwnd": window.hwnd}, dry_run=self.context.input.dry_run, request_id=request_id)
             elif action.get("type") == "press":
                 key = str(action["key"])
                 self.context.input.press(key)

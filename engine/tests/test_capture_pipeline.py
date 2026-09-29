@@ -7,7 +7,7 @@ import numpy as np
 from app.engine import AutomationEngine
 from capture.base import Frame
 from config.schema import EngineConfig
-from core.models import Rect
+from core.models import Point, Rect
 from window.base import WindowInfo
 
 
@@ -23,8 +23,9 @@ class StaticCapture:
     backend_name = "mss"
     last_error: str | None = None
 
-    def capture(self, region: Rect | None = None) -> Frame:
+    def capture(self, region: Rect | None = None, hwnd: int | None = None) -> Frame:
         assert region == Rect(10, 20, 30, 40)
+        assert hwnd == 123
         return Frame.from_image(np.zeros((40, 30, 3), dtype=np.uint8), "mss")
 
 
@@ -32,8 +33,18 @@ class FailingCapture:
     backend_name = "unavailable"
     last_error = "dxcam: failed; mss: failed"
 
-    def capture(self, region: Rect | None = None) -> Frame:
+    def capture(self, region: Rect | None = None, hwnd: int | None = None) -> Frame:
         raise RuntimeError("all capture backends failed")
+
+
+class RecordingInput:
+    dry_run = False
+
+    def __init__(self) -> None:
+        self.clicked: Point | None = None
+
+    def click(self, point: Point) -> None:
+        self.clicked = point
 
 
 def target_window(*, minimized: bool = False) -> WindowInfo:
@@ -118,3 +129,25 @@ def test_template_test_never_falls_back_to_full_desktop() -> None:
     assert events[-1][1]["code"] == "WINDOW_NOT_FOUND"
     assert events[-1][1]["request_id"] == "template-request"
     assert engine.context.metrics.screenshots == 0
+
+
+def test_input_test_maps_reference_point_to_window_client() -> None:
+    engine = AutomationEngine(EngineConfig())
+    engine.context.window = StaticWindow(target_window())  # type: ignore[assignment]
+    input_backend = RecordingInput()
+    engine.context.input = input_backend  # type: ignore[assignment]
+    engine._developer_input_enabled = True
+    events: list[tuple[str, dict[str, object]]] = []
+
+    async def emit(event_type: str, **payload: object) -> None:
+        events.append((event_type, payload))
+
+    engine.emit = emit  # type: ignore[method-assign]
+
+    asyncio.run(engine._input_test({"action": {"type": "click", "x": 960, "y": 540}}))
+
+    assert input_backend.clicked is not None
+    assert input_backend.clicked.x == 15
+    assert input_backend.clicked.y == 20
+    assert events[-1][1]["target"]["screen_x"] == 25  # type: ignore[index]
+    assert events[-1][1]["target"]["screen_y"] == 40  # type: ignore[index]

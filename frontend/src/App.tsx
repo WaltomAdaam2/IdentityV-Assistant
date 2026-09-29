@@ -210,6 +210,7 @@ const translations = {
       heartbeat: "连接检测间隔（秒）",
       captureBackend: "捕获后端",
       auto: "自动选择",
+      windowCapture: "窗口捕捉（推荐）",
       idleFps: "空闲帧率",
       dryRun: "模拟模式",
       dryRunHint: "跳过真实输入操作",
@@ -430,6 +431,7 @@ const translations = {
       heartbeat: "Connection check interval (seconds)",
       captureBackend: "Capture backend",
       auto: "Automatic",
+      windowCapture: "Window capture (recommended)",
       idleFps: "Idle frame rate",
       dryRun: "Simulation mode",
       dryRunHint: "Skip real input actions",
@@ -1770,6 +1772,7 @@ function SettingsPage({
             onChange={(event) => updateCapture({ backend: event.target.value })}
           >
             <option value="auto">{t.auto}</option>
+            <option value="wgc">{t.windowCapture}</option>
             <option value="dxcam">DXcam</option>
             <option value="mss">MSS</option>
           </select>

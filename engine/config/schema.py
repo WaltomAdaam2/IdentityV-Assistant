@@ -22,7 +22,7 @@ class WindowConfig(_ConfigModel):
 
 
 class CaptureConfig(_ConfigModel):
-    backend: Literal["auto", "dxcam", "mss"] = "auto"
+    backend: Literal["auto", "wgc", "dxcam", "mss"] = "auto"
     idle_fps: PositiveFps = 3
     active_fps: PositiveFps = 10
 

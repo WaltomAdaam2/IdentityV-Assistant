@@ -1,6 +1,7 @@
 from core.models import Point
 from input.base import InputBackend
 from input.controller import InputController
+from input.windows_message import _point_lparam
 
 
 class RecordingBackend(InputBackend):
@@ -33,3 +34,7 @@ def test_release_all_releases_held_input() -> None:
     controller.mouse_down()
     controller.release_all()
     assert backend.calls == ["key_down:A", "down", "key_up:A", "up"]
+
+
+def test_window_message_point_uses_client_coordinates() -> None:
+    assert _point_lparam(Point(640, 360)) == (360 << 16) | 640

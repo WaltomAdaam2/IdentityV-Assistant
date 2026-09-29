@@ -8,6 +8,7 @@ from input.base import InputBackend
 
 _MOUSEEVENTF_MOVE = 0x0001
 _MOUSEEVENTF_ABSOLUTE = 0x8000
+_MOUSEEVENTF_VIRTUALDESK = 0x4000
 _MOUSEEVENTF_LEFTDOWN = 0x0002
 _MOUSEEVENTF_LEFTUP = 0x0004
 _MOUSEEVENTF_RIGHTDOWN = 0x0008
@@ -26,8 +27,17 @@ class WindowsSendInput(InputBackend):
 
     def move_mouse(self, point: Point) -> None:
         self._available()
-        width, height = ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1)
-        ctypes.windll.user32.mouse_event(_MOUSEEVENTF_MOVE | _MOUSEEVENTF_ABSOLUTE, round(point.x * 65535 / max(width - 1, 1)), round(point.y * 65535 / max(height - 1, 1)), 0, 0)
+        left = ctypes.windll.user32.GetSystemMetrics(76)
+        top = ctypes.windll.user32.GetSystemMetrics(77)
+        width = ctypes.windll.user32.GetSystemMetrics(78)
+        height = ctypes.windll.user32.GetSystemMetrics(79)
+        ctypes.windll.user32.mouse_event(
+            _MOUSEEVENTF_MOVE | _MOUSEEVENTF_ABSOLUTE | _MOUSEEVENTF_VIRTUALDESK,
+            round((point.x - left) * 65535 / max(width - 1, 1)),
+            round((point.y - top) * 65535 / max(height - 1, 1)),
+            0,
+            0,
+        )
 
     def mouse_down(self, button: str = "left") -> None:
         self._mouse(button, True)

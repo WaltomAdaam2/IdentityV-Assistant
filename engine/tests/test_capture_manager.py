@@ -8,17 +8,17 @@ from core.models import Rect
 
 
 class FailingCapture:
-    def capture(self, region: Rect | None = None) -> Frame:
+    def capture(self, region: Rect | None = None, hwnd: int | None = None) -> Frame:
         raise RuntimeError("device unavailable")
 
 
 class FailingValueCapture:
-    def capture(self, region: Rect | None = None) -> Frame:
+    def capture(self, region: Rect | None = None, hwnd: int | None = None) -> Frame:
         raise ValueError("region is outside the selected output")
 
 
 class WorkingCapture:
-    def capture(self, region: Rect | None = None) -> Frame:
+    def capture(self, region: Rect | None = None, hwnd: int | None = None) -> Frame:
         assert region == Rect(10, 20, 30, 40)
         return Frame.from_image(np.zeros((40, 30, 3), dtype=np.uint8), "mss")
 

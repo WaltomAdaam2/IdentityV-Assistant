@@ -209,6 +209,11 @@ class WindowsWindowManager(WindowManager):
     def is_alive(self) -> bool:
         return bool(self._window and self._user32 and self._user32.IsWindow(self._window.hwnd))
 
+    def current_hwnd(self) -> int | None:
+        if not self.is_alive():
+            self.find_window()
+        return self._window.hwnd if self._window else None
+
     def is_minimized(self) -> bool:
         return bool(self._window and self._user32 and self._user32.IsIconic(self._window.hwnd))
 
