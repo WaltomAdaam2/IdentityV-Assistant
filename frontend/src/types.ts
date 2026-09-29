@@ -1,4 +1,4 @@
-export type EngineState = "stopped" | "starting" | "running" | "stopping" | "error";
+export type EngineState = "stopped" | "starting" | "idle" | "running" | "stopping" | "error";
 
 export interface EngineSnapshot {
   status?: EngineState | string;
@@ -7,6 +7,7 @@ export interface EngineSnapshot {
   taskStatus?: string;
   lastHeartbeat?: string | null;
   heartbeatAgeSeconds?: number | null;
+  lastError?: string | null;
   [key: string]: unknown;
 }
 

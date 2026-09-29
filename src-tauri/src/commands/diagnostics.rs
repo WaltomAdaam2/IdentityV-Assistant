@@ -1,16 +1,18 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
-use tauri::State;
+use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::engine::EngineSupervisor;
 
 async fn request(
+    app: AppHandle,
     supervisor: State<'_, EngineSupervisor>,
     command_type: &str,
     extra: Value,
 ) -> Result<Value, String> {
+    supervisor.start(app).await?;
     let request_id = Uuid::new_v4().to_string();
     let mut command = json!({"type": command_type, "request_id": request_id});
     if let (Some(command), Some(extra)) = (command.as_object_mut(), extra.as_object()) {
@@ -21,29 +23,43 @@ async fn request(
 }
 
 #[tauri::command]
-pub async fn detect_window(supervisor: State<'_, EngineSupervisor>) -> Result<Value, String> {
-    request(supervisor, "detect_window", json!({})).await
+pub async fn detect_window(
+    app: AppHandle,
+    supervisor: State<'_, EngineSupervisor>,
+) -> Result<Value, String> {
+    request(app, supervisor, "detect_window", json!({})).await
 }
 
 #[tauri::command]
-pub async fn capture_frame(supervisor: State<'_, EngineSupervisor>) -> Result<Value, String> {
-    request(supervisor, "capture_frame", json!({})).await
+pub async fn capture_frame(
+    app: AppHandle,
+    supervisor: State<'_, EngineSupervisor>,
+) -> Result<Value, String> {
+    request(app, supervisor, "capture_frame", json!({})).await
 }
 
 #[tauri::command]
 pub async fn test_template(
     template: String,
+    app: AppHandle,
     supervisor: State<'_, EngineSupervisor>,
 ) -> Result<Value, String> {
-    request(supervisor, "test_template", json!({"template": template})).await
+    request(
+        app,
+        supervisor,
+        "test_template",
+        json!({"template": template}),
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn input_test(
     action: Value,
+    app: AppHandle,
     supervisor: State<'_, EngineSupervisor>,
 ) -> Result<Value, String> {
-    request(supervisor, "input_test", json!({"action": action})).await
+    request(app, supervisor, "input_test", json!({"action": action})).await
 }
 
 #[tauri::command]

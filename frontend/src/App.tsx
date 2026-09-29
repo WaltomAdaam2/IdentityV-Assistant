@@ -53,6 +53,7 @@ const translations = {
     states: {
       stopped: "已停止",
       starting: "启动中",
+      idle: "就绪",
       running: "运行中",
       stopping: "停止中",
       error: "异常",
@@ -261,6 +262,7 @@ const translations = {
     states: {
       stopped: "Stopped",
       starting: "Starting",
+      idle: "Ready",
       running: "Running",
       stopping: "Stopping",
       error: "Error",
