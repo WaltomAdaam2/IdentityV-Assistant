@@ -14,14 +14,17 @@ Identity V Assistant is a Windows desktop framework for external visual automati
 * Ready, heartbeat, log, state, action, metrics, and structured error events
 * Pause, resume, and stop controls for a safe MockTask
 * Pydantic-validated configuration loading and persistence
-* Windows discovery, client rectangle, and DPI diagnostics
+* Live Windows discovery, client rectangle, response-state, and DPI diagnostics
 * Window-level capture for game windows covered by other windows or placed on another monitor
+* Configurable borderless background mode, 1600 × 900 default resolution, positioning, and restoration
 * DXcam and MSS compatibility fallbacks
 * OpenCV template matching with configurable confidence
 * Lazy OCR interface with an optional RapidOCR backend
 * State evidence, confirmation history, unknown-state, and recovery foundations
-* Global dry run, background client-area input, and held-input cleanup
-* Debug, log filtering, settings, and developer input-test pages
+* Global dry run, background left/right click and Q / F / Esc input, and held-input cleanup
+* Ten fixed-pixel home-screen recognition with an eight-match book click
+* Optional memory protection that collects unused objects above 90% system memory use
+* Capture diagnostics, concise logs, and window settings available to regular users
 * Python and Rust core test foundations
 
 ## Architecture
@@ -41,7 +44,7 @@ Python visual automation engine
 window surface + client-area Windows input
 ```
 
-Automatic capture first reads the complete client area by game window handle. It does not depend on the game being in front or on the primary monitor. Background clicks are sent in game client coordinates, while developer input tests remain protected by simulation mode by default.
+Automatic capture uses Windows Graphics Capture by default to read the complete client area by game window handle. It does not depend on the game being in front or on the primary monitor. Background tasks send client-area input through Win32 messages. Simulation mode remains enabled by default; turn it off in Settings to send real clicks.
 
 See [Architecture](docs/architecture.md) for layer boundaries and [IPC Protocol](docs/ipc.md) for message definitions.
 

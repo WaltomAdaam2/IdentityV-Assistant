@@ -14,14 +14,17 @@ Identity V Assistant 是 Windows 桌面端的《第五人格》外部视觉自�
 - `ready`、心跳、日志、状态、动作、指标和结构化错误事件
 - 可暂停、恢复、停止的 MockTask
 - Pydantic 配置校验、加载与持久化
-- Windows 窗口发现、客户区和 DPI 诊断框架
+- Windows 窗口发现、客户区、响应状态和 DPI 实时诊断
 - Windows 窗口级捕捉，支持被其他窗口遮挡或放在副屏的游戏窗口
+- 可配置的无边框后台模式、1600 × 900 默认分辨率、窗口位置与任务后恢复
 - DXcam 与 MSS 兼容回退
 - OpenCV 模板匹配与可配置置信度
 - 可选 RapidOCR 后端的惰性 OCR 接口
 - 状态证据、历史确认、未知状态和恢复框架
-- 全局 dry run、后台窗口坐标输入和输入释放
-- Debug、日志过滤、设置和开发者输入测试界面
+- 全局 dry run、后台左右键与 Q / F / Esc 输入和输入释放
+- 十个固定像素识别归宿界面，八点匹配后点击书本
+- 可选内存保护：系统内存超过 90% 时清理未使用对象
+- 面向普通用户开放的捕捉诊断、精简日志和窗口设置
 - Python 与 Rust 核心测试基础
 
 ## 架构
@@ -41,7 +44,7 @@ Python visual automation engine
 window surface + client-area Windows input
 ```
 
-自动捕捉会优先按游戏窗口句柄读取完整客户区，不依赖窗口是否处于最前方，也不依赖主屏位置。后台点击使用游戏客户区坐标发送给目标窗口；开发者输入测试默认仍受模拟模式保护。
+自动捕捉默认通过 Windows Graphics Capture 按游戏窗口句柄读取完整客户区，不依赖窗口是否处于最前方，也不依赖主屏位置。后台任务会使用 Win32 消息向目标窗口发送客户区坐标输入。默认仍开启模拟模式；需要实际点击时，请在设置中关闭模拟模式。
 
 职责边界见 [docs/architecture.md](docs/architecture.md)，协议见 [docs/ipc.md](docs/ipc.md)。
 
