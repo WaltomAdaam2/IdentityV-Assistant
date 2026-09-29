@@ -13,10 +13,11 @@ Identity V Assistant 是 Windows 桌面端的《第五人格》外部视觉自�
 - Python 常驻引擎与 NDJSON IPC
 - `ready`、心跳、日志、状态、动作、指标和结构化错误事件
 - 可暂停、恢复、停止的 MockTask
-- 配置加载与持久化
+- Pydantic 配置校验、加载与持久化
 - Windows 窗口发现、客户区和 DPI 诊断框架
 - DXcam 捕获与 MSS 回退抽象
 - OpenCV 模板匹配与可配置置信度
+- 可选 RapidOCR 后端的惰性 OCR 接口
 - 状态证据、历史确认、未知状态和恢复框架
 - 全局 dry run、SendInput 抽象和输入释放
 - Debug、日志过滤、设置和开发者输入测试界面

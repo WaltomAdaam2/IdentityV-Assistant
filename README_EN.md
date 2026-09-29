@@ -13,10 +13,11 @@ Identity V Assistant is a Windows desktop framework for external visual automati
 * Long-running Python engine with NDJSON IPC
 * Ready, heartbeat, log, state, action, metrics, and structured error events
 * Pause, resume, and stop controls for a safe MockTask
-* Persisted configuration
+* Pydantic-validated configuration loading and persistence
 * Windows discovery, client rectangle, and DPI diagnostics
 * DXcam capture with MSS fallback
 * OpenCV template matching with configurable confidence
+* Lazy OCR interface with an optional RapidOCR backend
 * State evidence, confirmation history, unknown-state, and recovery foundations
 * Global dry run, SendInput abstraction, and held-input cleanup
 * Debug, log filtering, settings, and developer input-test pages
