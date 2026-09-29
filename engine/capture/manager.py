@@ -8,6 +8,12 @@ class CaptureManager:
         self.config = config
         self.backend: CaptureBackend | None = None
         self.backend_name = "unavailable"
+        self.last_error: str | None = None
+
+    @staticmethod
+    def _create_backend(name: str) -> CaptureBackend:
+        module = __import__(f"capture.{name}_capture", fromlist=["*"])
+        return module.__dict__["DxcamCapture" if name == "dxcam" else "MssCapture"]()
 
     def _ensure_backend(self) -> CaptureBackend:
         if self.backend:
@@ -16,18 +22,31 @@ class CaptureManager:
         errors: list[str] = []
         for name in choices:
             try:
-                self.backend = __import__(f"capture.{name}_capture", fromlist=["*"]).__dict__["DxcamCapture" if name == "dxcam" else "MssCapture"]()
+                self.backend = self._create_backend(name)
                 self.backend_name = name
+                self.last_error = None
                 return self.backend
             except (ImportError, RuntimeError, OSError) as error:
                 errors.append(f"{name}: {error}")
-        raise RuntimeError("no capture backend available: " + "; ".join(errors))
+        self.last_error = "; ".join(errors)
+        raise RuntimeError("no capture backend available: " + self.last_error)
 
     def capture(self, region: Rect | None = None) -> Frame:
+        if region is not None and (region.width <= 0 or region.height <= 0):
+            raise ValueError("capture region must have positive width and height")
         try:
             return self._ensure_backend().capture(region)
-        except RuntimeError:
+        except (RuntimeError, OSError) as primary_error:
             if self.config.backend == "auto" and self.backend_name == "dxcam":
-                self.backend, self.backend_name = None, "unavailable"
-                return self._ensure_backend().capture(region)
+                try:
+                    self.backend = self._create_backend("mss")
+                    self.backend_name = "mss"
+                    frame = self.backend.capture(region)
+                    self.last_error = f"dxcam: {primary_error}"
+                    return frame
+                except (ImportError, RuntimeError, OSError) as fallback_error:
+                    self.backend, self.backend_name = None, "unavailable"
+                    self.last_error = f"dxcam: {primary_error}; mss: {fallback_error}"
+                    raise RuntimeError("all capture backends failed: " + self.last_error) from fallback_error
+            self.last_error = f"{self.backend_name}: {primary_error}"
             raise

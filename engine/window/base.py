@@ -12,6 +12,10 @@ class WindowInfo:
     process_id: int
     client_rect: Rect
     dpi_scale: float
+    process_name: str = ""
+    is_minimized: bool = False
+    is_foreground: bool = False
+    match_reasons: tuple[str, ...] = ()
 
 
 class WindowManager(ABC):

@@ -21,6 +21,7 @@ class WindowsWindowManager(WindowManager):
         if sys.platform != "win32":
             return None
         user32 = ctypes.windll.user32
+        self._enable_dpi_awareness(user32)
         matches: list[WindowInfo] = []
 
         @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -33,21 +34,56 @@ class WindowsWindowManager(WindowManager):
             class_buffer = ctypes.create_unicode_buffer(256)
             user32.GetClassNameW(hwnd, class_buffer, len(class_buffer))
             title, class_name = title_buffer.value, class_buffer.value
-            title_match = any(needle.casefold() in title.casefold() for needle in self.config.title_contains)
-            class_match = bool(self.config.class_names) and class_name in self.config.class_names
             pid = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            process_match = self._process_name(pid.value).casefold() in {name.casefold() for name in self.config.process_names}
-            if not (title_match or class_match or process_match):
+            process_name = self._process_name(pid.value)
+            reasons = self._match_reasons(title, class_name, process_name)
+            if not reasons:
                 return True
             rect = self._client_rect(hwnd)
-            if rect is not None:
-                matches.append(WindowInfo(hwnd, title, class_name, pid.value, rect, self._dpi_scale(hwnd)))
+            if rect is not None and rect.width > 0 and rect.height > 0:
+                matches.append(WindowInfo(
+                    hwnd=hwnd,
+                    title=title,
+                    class_name=class_name,
+                    process_id=pid.value,
+                    client_rect=rect,
+                    dpi_scale=self._dpi_scale(hwnd),
+                    process_name=process_name,
+                    is_minimized=bool(user32.IsIconic(hwnd)),
+                    is_foreground=user32.GetForegroundWindow() == hwnd,
+                    match_reasons=reasons,
+                ))
             return True
 
         user32.EnumWindows(callback, 0)
+        matches.sort(key=self._window_rank)
         self._window = matches[0] if matches else None
         return self._window
+
+    def _match_reasons(self, title: str, class_name: str, process_name: str) -> tuple[str, ...]:
+        reasons: list[str] = []
+        if any(needle.casefold() in title.casefold() for needle in self.config.title_contains):
+            reasons.append("title")
+        if self.config.class_names and class_name.casefold() in {name.casefold() for name in self.config.class_names}:
+            reasons.append("class")
+        if process_name.casefold() in {name.casefold() for name in self.config.process_names}:
+            reasons.append("process")
+        return tuple(reasons)
+
+    @staticmethod
+    def _window_rank(window: WindowInfo) -> tuple[bool, bool, int, int]:
+        area = window.client_rect.width * window.client_rect.height
+        return window.is_minimized, not window.is_foreground, -area, window.hwnd
+
+    @staticmethod
+    def _enable_dpi_awareness(user32: object) -> None:
+        set_context = getattr(user32, "SetProcessDpiAwarenessContext", None)
+        if set_context:
+            try:
+                set_context(ctypes.c_void_p(-4))
+            except OSError:
+                pass
 
     @staticmethod
     def _process_name(pid: int) -> str:

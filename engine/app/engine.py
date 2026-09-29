@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from app.context import AutomationContext
 from capture.manager import CaptureManager
 from config.schema import EngineConfig
 from core.enums import EngineStatus, ErrorCode, TaskFinishReason
+from core.models import Rect
 from input.controller import InputController
 from input.windows_sendinput import WindowsSendInput
 from ipc.messages import ENGINE_VERSION, event
@@ -20,6 +23,7 @@ from states.history import StateHistory
 from tasks.base import AutomationTask, TaskControl
 from tasks.mock_task import MockTask
 from tasks.weekly_task import WeeklyTask
+from window.base import WindowInfo
 from window.windows import WindowsWindowManager
 
 
@@ -95,22 +99,78 @@ class AutomationEngine:
     async def _detect_window(self) -> None:
         window = self.context.window.find_window()
         if window is None:
-            await self.emit("window_diagnostics", found=False, hwnd=None, title=None, process_id=None, client_rect=None, dpi_scale=None, capture_backend=self.context.capture.backend_name)
-            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Configured game window was not found", recoverable=True, details={})
+            await self.emit(
+                "window_diagnostics",
+                found=False,
+                hwnd=None,
+                title=None,
+                process_id=None,
+                process_name=None,
+                class_name=None,
+                client_rect=None,
+                dpi_scale=None,
+                is_minimized=None,
+                is_foreground=None,
+                match_reasons=[],
+                capture_backend=self.context.capture.backend_name,
+                capture_backend_configured=self.config.capture.backend,
+            )
+            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Configured game window was not found", recoverable=True, details={"process_names": self.config.window.process_names, "title_contains": self.config.window.title_contains, "class_names": self.config.window.class_names})
             return
-        rect = window.client_rect
-        await self.emit("window_diagnostics", found=True, hwnd=window.hwnd, title=window.title, process_id=window.process_id, class_name=window.class_name, client_rect={"left": rect.left, "top": rect.top, "width": rect.width, "height": rect.height}, dpi_scale=window.dpi_scale, capture_backend=self.context.capture.backend_name)
+        await self.emit("window_diagnostics", **self._window_payload(window))
 
     async def _capture_frame(self) -> None:
         window = self.context.window.find_window()
+        if window is None:
+            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Cannot capture before the configured game window is found", recoverable=True, details={"operation": "capture_frame"})
+            return
+        if window.is_minimized:
+            await self.emit("window_diagnostics", **self._window_payload(window))
+            await self.emit("error", code=ErrorCode.WINDOW_INVALID.value, message="Cannot capture a minimized game window", recoverable=True, details={"hwnd": window.hwnd, "operation": "capture_frame"})
+            return
+        started = perf_counter()
         try:
-            frame = self.context.capture.capture(window.client_rect if window else None)
+            frame = self.context.capture.capture(window.client_rect)
             self.context.metrics.screenshots += 1
             path = self._save_debug_frame(frame.image)
         except Exception as error:
-            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={})
+            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={"hwnd": window.hwnd, "region": self._rect_payload(window.client_rect), "capture_backend_configured": self.config.capture.backend, "capture_backend_active": self.context.capture.backend_name})
             return
-        await self.emit("debug_frame", path=str(path), width=frame.width, height=frame.height, state=self.context.state_history.current.value, source=frame.source)
+        await self.emit("window_diagnostics", **self._window_payload(window))
+        await self.emit(
+            "debug_frame",
+            path=str(path),
+            width=frame.width,
+            height=frame.height,
+            state=self.context.state_history.current.value,
+            source=frame.source,
+            captured_at=datetime.now(timezone.utc).isoformat(),
+            capture_ms=round((perf_counter() - started) * 1000, 2),
+            file_size=path.stat().st_size,
+            region=self._rect_payload(window.client_rect),
+            hwnd=window.hwnd,
+        )
+
+    @staticmethod
+    def _rect_payload(rect: Rect) -> dict[str, int]:
+        return {"left": rect.left, "top": rect.top, "width": rect.width, "height": rect.height}
+
+    def _window_payload(self, window: WindowInfo) -> dict[str, object]:
+        return {
+            "found": True,
+            "hwnd": window.hwnd,
+            "title": window.title,
+            "process_id": window.process_id,
+            "process_name": window.process_name,
+            "class_name": window.class_name,
+            "client_rect": self._rect_payload(window.client_rect),
+            "dpi_scale": window.dpi_scale,
+            "is_minimized": window.is_minimized,
+            "is_foreground": window.is_foreground,
+            "match_reasons": window.match_reasons,
+            "capture_backend": self.context.capture.backend_name,
+            "capture_backend_configured": self.config.capture.backend,
+        }
 
     async def _test_template(self, command: dict[str, Any]) -> None:
         template_value = command.get("template")
