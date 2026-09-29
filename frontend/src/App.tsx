@@ -107,7 +107,16 @@ export default function App() {
 
   useEffect(() => {
     void refreshSnapshot();
-    void bridge.loadSettings().then((loaded) => setSettings({ ...defaults, ...loaded })).catch(() => undefined);
+    void bridge.loadSettings().then((loaded) => setSettings({
+      ...defaults,
+      ...loaded,
+      app: { ...defaults.app, ...loaded.app },
+      engine: { ...defaults.engine, ...loaded.engine },
+      game_window: { ...defaults.game_window, ...loaded.game_window },
+      capture: { ...defaults.capture, ...loaded.capture },
+      vision: { ...defaults.vision, ...loaded.vision },
+      debug: { ...defaults.debug, ...loaded.debug },
+    })).catch(() => undefined);
     let dispose: (() => void) | undefined;
     void bridge.onEngineEvent((event: EngineEvent) => {
       const level: LogLevel = event.type === "error" ? "error" : event.level && ["debug", "info", "warning", "error"].includes(event.level) ? event.level : "info";
@@ -133,6 +142,10 @@ export default function App() {
     const timer = window.setInterval(() => void refreshSnapshot(), 5_000);
     return () => { window.clearInterval(timer); dispose?.(); };
   }, [appendLog, refreshSnapshot]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.app.theme;
+  }, [settings.app.theme]);
 
   const actions = {
     start: () => run("启动引擎", async () => { await bridge.startEngine(); await refreshSnapshot(); }),

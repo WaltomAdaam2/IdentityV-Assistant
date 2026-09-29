@@ -164,7 +164,7 @@ class AutomationEngine:
 
     def _save_debug_frame(self, image: Any) -> Path:
         import cv2
-        path = Path.cwd() / "debug" / "latest.png"
+        path = Path(__file__).resolve().parents[2] / "debug" / "latest.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(path), image):
             raise RuntimeError("could not save debug frame")
