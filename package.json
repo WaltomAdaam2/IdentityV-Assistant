@@ -9,7 +9,7 @@
     "build": "pnpm --dir frontend build",
     "lint": "pnpm --dir frontend lint",
     "typecheck": "pnpm --dir frontend typecheck",
-    "tauri": "tauri"
+    "tauri": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/tauri.ps1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.5"
