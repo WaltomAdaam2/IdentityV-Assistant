@@ -1,6 +1,7 @@
 import pytest
 
 from config.loader import parse_config
+from config.schema import EngineConfig
 
 
 def test_config_accepts_default_shape() -> None:
@@ -17,3 +18,10 @@ def test_config_rejects_bad_threshold() -> None:
 def test_config_rejects_non_positive_capture_rate() -> None:
     with pytest.raises(ValueError, match="capture.idle_fps"):
         parse_config({"capture": {"idle_fps": 0}})
+
+
+def test_config_models_are_frozen_and_validate_direct_construction() -> None:
+    config = EngineConfig(capture={"idle_fps": 5})
+    assert config.capture.idle_fps == 5
+    with pytest.raises(ValueError):
+        EngineConfig(capture={"idle_fps": True})
