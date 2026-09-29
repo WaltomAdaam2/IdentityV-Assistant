@@ -83,7 +83,7 @@ impl EngineSupervisor {
         let mut child = Command::new(&python)
             .arg(&engine_path)
             .arg("--config")
-            .arg(crate::config::active_path())
+            .arg(crate::config::active_path()?)
             .current_dir(engine_path.parent().unwrap_or_else(|| Path::new(".")))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

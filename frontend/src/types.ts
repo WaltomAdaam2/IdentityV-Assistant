@@ -55,6 +55,9 @@ export interface EngineEvent {
   reason?: string;
   code?: string;
   recoverable?: boolean;
+  request_id?: string | null;
+  capture_last_error?: string | null;
+  details?: Record<string, unknown>;
   data?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -73,6 +76,8 @@ export interface WindowInfo {
   is_minimized?: boolean | null;
   is_foreground?: boolean | null;
   match_reasons?: string[] | null;
+  request_id?: string | null;
+  capture_last_error?: string | null;
   [key: string]: unknown;
 }
 
@@ -88,6 +93,7 @@ export interface CaptureFrame {
   file_size?: number | null;
   region?: { left?: number; top?: number; width?: number; height?: number } | null;
   hwnd?: number | null;
+  request_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -106,11 +112,17 @@ export interface InputTestResult {
   [key: string]: unknown;
 }
 
+export interface DiagnosticRequest {
+  requested: boolean;
+  request_id: string;
+}
+
 export interface Settings {
   app: {
     language: "zh-CN" | "en-US";
     theme: "system" | "light" | "dark";
     launch_engine_on_start: boolean;
+    developer_mode: boolean;
   };
   engine: {
     dry_run: boolean;

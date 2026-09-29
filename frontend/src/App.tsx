@@ -33,16 +33,17 @@ const translations = {
     nav: {
       dashboard: "概览",
       tasks: "任务",
-      runtime: "运行时",
-      debug: "调试",
-      logs: "日志",
+      runtime: "服务详情",
+      debug: "捕捉诊断",
+      logs: "运行日志",
       settings: "设置",
       about: "关于",
     },
-    localConsole: "本地控制台",
-    engine: "引擎",
+    localConsole: "本地运行",
+    localOnly: "数据仅保存在此设备",
+    engine: "自动化服务",
     closeNotice: "关闭提示",
-    ready: "控制台已就绪，等待引擎连接。",
+    ready: "应用已就绪，等待自动化服务连接。",
     states: {
       stopped: "已停止",
       starting: "启动中",
@@ -62,17 +63,17 @@ const translations = {
       weekly: ["周常任务", "执行已实现的周常任务状态流"],
     },
     dashboard: {
-      eyebrow: "引擎状态",
-      noTask: "引擎尚未执行任务。",
+      eyebrow: "自动化服务状态",
+      noTask: "自动化服务尚未执行任务。",
       taskState: "任务状态：",
-      start: "启动引擎",
+      start: "启动服务",
       stop: "停止",
       restart: "重启",
-      process: "引擎进程",
+      process: "服务进程",
       notStarted: "未启动",
-      heartbeat: "心跳延迟",
+      heartbeat: "连接延迟",
       enabledTasks: "启用任务",
-      version: "引擎版本",
+      version: "服务版本",
       overview: "任务概况",
       overviewHint: "当前配置中的自动任务",
       manage: "管理任务",
@@ -81,12 +82,12 @@ const translations = {
       steps: [
         "在桌面启动第五人格。",
         "在“设置”确认窗口标题。",
-        "启动引擎后，从“任务”开始执行。",
+        "启动服务后，从“任务”开始执行。",
       ],
     },
     tasks: {
       title: "自动任务",
-      hint: "任务由引擎调度。当前版本每次执行一个已启用任务。",
+      hint: "任务由自动化服务依次执行。当前版本每次执行一个已启用任务。",
       startEnabled: "启动已启用任务",
       pause: "暂停",
       resume: "恢复",
@@ -96,12 +97,12 @@ const translations = {
       resumeTask: "恢复任务",
     },
     runtime: {
-      snapshot: "引擎快照",
+      snapshot: "服务状态数据",
       refreshHint: "每 5 秒自动刷新",
       refresh: "立即刷新",
       latestEvent: "最新任务事件",
       command: "调度命令",
-      commandHint: "直接向本地引擎发送 JSON 指令",
+      commandHint: "直接向本地自动化服务发送 JSON 指令",
       send: "发送命令",
       invalidJson: "请输入有效的 JSON 对象。",
       sendCommand: "发送运行时命令",
@@ -126,8 +127,14 @@ const translations = {
       matchReasons: "匹配依据",
       captureBackend: "捕获后端",
       configuredBackend: "配置后端",
+      captureNote: "捕捉备注",
+      requestId: "请求编号",
+      resolution: "画面尺寸",
+      filePath: "文件位置",
+      errorTitle: "操作未完成",
+      matchReasonLabels: { process: "进程名", title: "窗口标题", class: "窗口类名" },
       preview: "画面预览",
-      previewHint: "获取最近一帧，文件保存在引擎工作目录的 debug 文件夹。",
+      previewHint: "获取最近一帧，文件保存在自动化服务的 debug 文件夹。",
       capture: "捕获画面",
       captureAlt: "最近捕获的游戏画面",
       noFrame: "尚未捕获画面",
@@ -138,7 +145,7 @@ const translations = {
       windowHandle: "窗口句柄",
       template: "模板识别",
       templateHint:
-        "填写 assets/templates 下的相对文件路径，结果会通过引擎事件显示。",
+        "填写 assets/templates 下的相对文件路径，结果会通过服务消息显示。",
       templatePath: "模板路径",
       templatePlaceholder: "例如：lobby/start.png",
       testTemplate: "测试模板",
@@ -180,15 +187,20 @@ const translations = {
       light: "浅色",
       dark: "深色",
       language: "界面语言",
-      launch: "启动应用时启动引擎",
+      launch: "启动应用时启动自动化服务",
       gameWindow: "游戏窗口",
       gameWindowHint: "通过进程名、标题关键词和窗口类名定位游戏窗口。",
       titleKeywords: "窗口标题关键词",
       processNames: "进程名",
-      engineCapture: "引擎与捕获",
+      classNames: "窗口类名",
+      developerMode: "开发者模式",
+      developerModeHint: "显示捕捉诊断、运行日志和技术设置",
+      developerSection: "开发者设置",
+      developerSectionHint: "以下选项用于诊断和高级调整。",
+      engineCapture: "服务与捕捉",
       engineCaptureHint:
         "默认以安全的模拟模式运行，确认识别与输入链路后再关闭。",
-      heartbeat: "心跳间隔（秒）",
+      heartbeat: "连接检测间隔（秒）",
       captureBackend: "捕获后端",
       auto: "自动选择",
       idleFps: "空闲帧率",
@@ -203,7 +215,7 @@ const translations = {
     about: {
       name: "第五人格助手",
       description:
-        "本地运行的任务控制台，用于连接游戏窗口、调度引擎任务和查看诊断信息。",
+        "面向第五人格玩家的本地自动化助手，用于连接游戏窗口并执行任务。",
       version: "版本",
       author: "作者",
       license: "许可证",
@@ -212,28 +224,29 @@ const translations = {
     actionSent: (label: string) => `${label}请求已发送。`,
     actionNotice: (label: string) => `${label}请求已发送`,
     actionFailed: (label: string, error: string) => `${label}失败：${error}`,
-    waitingEvent: (label: string) => `${label}请求已发送，等待引擎事件。`,
+    waitingEvent: (label: string) => `${label}请求已发送，等待服务返回结果。`,
     readFrameFailed: (error: string) => `无法读取调试画面：${error}`,
     snapshotFailed: (error: string) => `无法读取运行时快照：${error}`,
     taskEvent: (state: string) => `任务状态：${state}`,
     transitionEvent: (from: string, to: string) => `状态迁移：${from} → ${to}`,
     finishedEvent: (reason: string) => `任务结束：${reason}`,
-    receivedEvent: "收到引擎事件",
+    receivedEvent: "收到服务消息",
   },
   "en-US": {
     nav: {
       dashboard: "Overview",
       tasks: "Tasks",
-      runtime: "Runtime",
-      debug: "Debug",
-      logs: "Logs",
+      runtime: "Service details",
+      debug: "Capture diagnostics",
+      logs: "Service logs",
       settings: "Settings",
       about: "About",
     },
-    localConsole: "Local console",
-    engine: "Engine",
+    localConsole: "Local service",
+    localOnly: "Data stays on this device",
+    engine: "Automation service",
     closeNotice: "Dismiss notification",
-    ready: "Console is ready and waiting for the engine.",
+    ready: "The app is ready and waiting for the automation service.",
     states: {
       stopped: "Stopped",
       starting: "Starting",
@@ -261,17 +274,17 @@ const translations = {
       weekly: ["Weekly tasks", "Runs the implemented weekly task state flow"],
     },
     dashboard: {
-      eyebrow: "ENGINE STATUS",
-      noTask: "The engine is not running a task.",
+      eyebrow: "AUTOMATION SERVICE",
+      noTask: "The automation service is not running a task.",
       taskState: "Task status: ",
-      start: "Start engine",
+      start: "Start service",
       stop: "Stop",
       restart: "Restart",
-      process: "Engine process",
+      process: "Service process",
       notStarted: "Not started",
-      heartbeat: "Heartbeat age",
+      heartbeat: "Connection delay",
       enabledTasks: "Enabled tasks",
-      version: "Engine version",
+      version: "Service version",
       overview: "Task overview",
       overviewHint: "Automated tasks in the current configuration",
       manage: "Manage tasks",
@@ -280,12 +293,12 @@ const translations = {
       steps: [
         "Launch Identity V on the desktop.",
         "Confirm the window title in Settings.",
-        "Start the engine, then run a task from Tasks.",
+        "Start the service, then run a task from Tasks.",
       ],
     },
     tasks: {
       title: "Automated tasks",
-      hint: "Tasks are scheduled by the engine. This version runs one enabled task at a time.",
+      hint: "The automation service runs enabled tasks one at a time.",
       startEnabled: "Start enabled task",
       pause: "Pause",
       resume: "Resume",
@@ -295,12 +308,12 @@ const translations = {
       resumeTask: "Resume task",
     },
     runtime: {
-      snapshot: "Engine snapshot",
+      snapshot: "Service status data",
       refreshHint: "Refreshes every 5 seconds",
       refresh: "Refresh now",
       latestEvent: "Latest task event",
       command: "Scheduler command",
-      commandHint: "Send a JSON instruction directly to the local engine",
+      commandHint: "Send a JSON instruction directly to the local automation service",
       send: "Send command",
       invalidJson: "Enter a valid JSON object.",
       sendCommand: "Send runtime command",
@@ -325,9 +338,15 @@ const translations = {
       matchReasons: "Match reasons",
       captureBackend: "Capture backend",
       configuredBackend: "Configured backend",
+      captureNote: "Capture note",
+      requestId: "Request ID",
+      resolution: "Frame size",
+      filePath: "File location",
+      errorTitle: "Operation did not complete",
+      matchReasonLabels: { process: "Process name", title: "Window title", class: "Window class" },
       preview: "Frame preview",
       previewHint:
-        "Get the latest frame. Files are saved to the engine work directory's debug folder.",
+        "Get the latest frame. Files are saved to the automation service's debug folder.",
       capture: "Capture frame",
       captureAlt: "Most recently captured game frame",
       noFrame: "No frame captured",
@@ -338,7 +357,7 @@ const translations = {
       windowHandle: "Window handle",
       template: "Template matching",
       templateHint:
-        "Enter a relative path under assets/templates. The result arrives through an engine event.",
+        "Enter a relative path under assets/templates. The result arrives through a service message.",
       templatePath: "Template path",
       templatePlaceholder: "For example: lobby/start.png",
       testTemplate: "Test template",
@@ -381,16 +400,21 @@ const translations = {
       light: "Light",
       dark: "Dark",
       language: "Interface language",
-      launch: "Start the engine when the app opens",
+      launch: "Start the automation service when the app opens",
       gameWindow: "Game window",
       gameWindowHint:
         "Find the game window by process name, title keywords, and window class.",
       titleKeywords: "Window title keywords",
       processNames: "Process names",
-      engineCapture: "Engine and capture",
+      classNames: "Window classes",
+      developerMode: "Developer mode",
+      developerModeHint: "Show capture diagnostics, service logs, and technical settings",
+      developerSection: "Developer settings",
+      developerSectionHint: "These options are intended for diagnostics and advanced tuning.",
+      engineCapture: "Service and capture",
       engineCaptureHint:
         "Simulation mode is enabled by default. Turn it off after confirming the recognition and input chain.",
-      heartbeat: "Heartbeat interval (seconds)",
+      heartbeat: "Connection check interval (seconds)",
       captureBackend: "Capture backend",
       auto: "Automatic",
       idleFps: "Idle frame rate",
@@ -405,7 +429,7 @@ const translations = {
     about: {
       name: "Identity V Assistant",
       description:
-        "A local task console for connecting to the game window, scheduling engine tasks, and reviewing diagnostics.",
+        "A local automation assistant for Identity V players that connects to the game window and runs tasks.",
       version: "Version",
       author: "Author",
       license: "License",
@@ -415,7 +439,7 @@ const translations = {
     actionNotice: (label: string) => `${label} request sent`,
     actionFailed: (label: string, error: string) => `${label} failed: ${error}`,
     waitingEvent: (label: string) =>
-      `${label} request sent; waiting for an engine event.`,
+      `${label} request sent; waiting for the service response.`,
     readFrameFailed: (error: string) =>
       `Could not read the debug frame: ${error}`,
     snapshotFailed: (error: string) =>
@@ -424,7 +448,7 @@ const translations = {
     transitionEvent: (from: string, to: string) =>
       `State transition: ${from} → ${to}`,
     finishedEvent: (reason: string) => `Task finished: ${reason}`,
-    receivedEvent: "Engine event received",
+    receivedEvent: "Service message received",
   },
 } as const;
 
@@ -454,7 +478,12 @@ const initialTasks: TaskItem[] = [
   },
 ];
 const defaults: Settings = {
-  app: { language: "zh-CN", theme: "light", launch_engine_on_start: false },
+  app: {
+    language: "zh-CN",
+    theme: "light",
+    launch_engine_on_start: false,
+    developer_mode: false,
+  },
   engine: {
     dry_run: true,
     heartbeat_interval_seconds: 2,
@@ -522,6 +551,10 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
   const [frame, setFrame] = useState<CaptureFrame | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState<EngineEvent | null>(
+    null,
+  );
+  const frameLoadSequence = useRef(0);
   const [templateMatch, setTemplateMatch] = useState<TemplateTestResult | null>(
     null,
   );
@@ -547,11 +580,15 @@ export default function App() {
   );
   const updateFrame = useCallback(
     (nextFrame: CaptureFrame) => {
+      const sequence = ++frameLoadSequence.current;
       setFrame(nextFrame);
       if (nextFrame.path)
         void bridge
           .readDebugFrame(nextFrame.path)
-          .then((imageUrl) => setFrame({ ...nextFrame, imageUrl }))
+          .then((imageUrl) => {
+            if (sequence === frameLoadSequence.current)
+              setFrame({ ...nextFrame, imageUrl });
+          })
           .catch((error) =>
             appendLog(
               "warning",
@@ -643,7 +680,10 @@ export default function App() {
               ),
             );
         }
-        if (event.type === "window_diagnostics") setWindowInfo(event);
+        if (event.type === "window_diagnostics") {
+          setWindowInfo(event);
+          if (event.found) setDiagnosticError(null);
+        }
         if (event.type === "debug_frame")
           updateFrame({
             path: event.path,
@@ -656,7 +696,21 @@ export default function App() {
             file_size: event.file_size,
             region: event.region,
             hwnd: event.hwnd,
+            request_id: event.request_id,
           });
+        if (event.type === "debug_frame") setDiagnosticError(null);
+        if (
+          event.type === "error" &&
+          [
+            "WINDOW_NOT_FOUND",
+            "WINDOW_INVALID",
+            "CAPTURE_FAILED",
+            "TEMPLATE_NOT_FOUND",
+          ].includes(event.code ?? "")
+        ) {
+          setDiagnosticError(event);
+          setNotice(event.message ?? event.code ?? current.receivedEvent);
+        }
         if (event.type === "template_match")
           setTemplateMatch({
             template: event.template,
@@ -719,15 +773,27 @@ export default function App() {
   const navigate = useCallback(
     (nextPage: Page) => {
       if (nextPage === page || pagePhase === "leave") return;
+      window.scrollTo({ top: 0, behavior: "smooth" });
       setPagePhase("leave");
       pageTransitionTimer.current = window.setTimeout(() => {
         setPage(nextPage);
         setPagePhase("enter");
         pageTransitionTimer.current = null;
+        window.requestAnimationFrame(() => window.scrollTo(0, 0));
       }, 160);
     },
     [page, pagePhase],
   );
+  useEffect(() => {
+    if (
+      !settings.app.developer_mode &&
+      (page === "runtime" || page === "debug" || page === "logs")
+    ) {
+      setPage("settings");
+      setPagePhase("enter");
+      window.scrollTo(0, 0);
+    }
+  }, [page, settings.app.developer_mode]);
   const actions = {
     start: () =>
       run(t.dashboard.start, async () => {
@@ -783,6 +849,7 @@ export default function App() {
         language={language}
         windowInfo={windowInfo}
         frame={frame}
+        diagnosticError={diagnosticError}
         templateMatch={templateMatch}
         lastPlannedAction={lastPlannedAction}
         developerInputEnabled={developerInputEnabled}
@@ -803,6 +870,11 @@ export default function App() {
     ),
     about: <About language={language} />,
   }[page];
+  const visibleNav = nav.filter(
+    (item) =>
+      settings.app.developer_mode ||
+      (item.id !== "runtime" && item.id !== "debug" && item.id !== "logs"),
+  );
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -811,7 +883,7 @@ export default function App() {
           <span>{t.about.name}</span>
         </div>
         <nav>
-          {nav.map((item) => (
+          {visibleNav.map((item) => (
             <button
               key={item.id}
               className={page === item.id ? "nav-item active" : "nav-item"}
@@ -823,9 +895,12 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          {t.localConsole}
-          <br />
-          <span>v0.1.0</span>
+          <span className={`local-status-dot ${engineState(snapshot)}`} />
+          <span className="local-status-copy">
+            <strong>{t.localConsole}</strong>
+            <small>{t.localOnly}</small>
+          </span>
+          <b>v0.1.0</b>
         </div>
       </aside>
       <section className="workspace">
@@ -1137,6 +1212,7 @@ function Debug({
   language,
   windowInfo,
   frame,
+  diagnosticError,
   templateMatch,
   lastPlannedAction,
   developerInputEnabled,
@@ -1146,6 +1222,7 @@ function Debug({
   language: Language;
   windowInfo: WindowInfo | null;
   frame: CaptureFrame | null;
+  diagnosticError: EngineEvent | null;
   templateMatch: TemplateTestResult | null;
   lastPlannedAction: EngineEvent | null;
   developerInputEnabled: boolean;
@@ -1179,8 +1256,25 @@ function Debug({
       await bridge.inputTest(action);
     });
   const dash = "—";
+  const matchReasons = windowInfo?.match_reasons?.map(
+    (reason) =>
+      t.matchReasonLabels[
+        reason as keyof typeof t.matchReasonLabels
+      ] ?? reason,
+  );
   return (
     <div className="debug-grid">
+      {diagnosticError && (
+        <section className="diagnostic-error" role="alert">
+          <strong>{t.errorTitle}</strong>
+          <span>{diagnosticError.message ?? diagnosticError.code}</span>
+          {diagnosticError.request_id && (
+            <small>
+              {t.requestId}: {diagnosticError.request_id}
+            </small>
+          )}
+        </section>
+      )}
       <section className="panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
@@ -1227,16 +1321,18 @@ function Debug({
             </dd>
             <dt>{t.matchReasons}</dt>
             <dd>
-              {windowInfo.match_reasons?.length
-                ? windowInfo.match_reasons.join(
-                    language === "zh-CN" ? "、" : ", ",
-                  )
+              {matchReasons?.length
+                ? matchReasons.join(language === "zh-CN" ? "、" : ", ")
                 : dash}
             </dd>
             <dt>{t.captureBackend}</dt>
             <dd>{windowInfo.capture_backend ?? dash}</dd>
             <dt>{t.configuredBackend}</dt>
             <dd>{windowInfo.capture_backend_configured ?? dash}</dd>
+            <dt>{t.captureNote}</dt>
+            <dd>{windowInfo.capture_last_error ?? dash}</dd>
+            <dt>{t.requestId}</dt>
+            <dd>{windowInfo.request_id ?? dash}</dd>
           </dl>
         )}
       </section>
@@ -1266,6 +1362,14 @@ function Debug({
         </div>
         {frame && (
           <dl className="key-values capture-details">
+            <dt>{t.resolution}</dt>
+            <dd>
+              {frame.width ?? "?"} × {frame.height ?? "?"}
+            </dd>
+            <dt>{t.captureBackend}</dt>
+            <dd>{frame.source ?? dash}</dd>
+            <dt>{t.filePath}</dt>
+            <dd>{frame.path ?? dash}</dd>
             <dt>{t.capturedAt}</dt>
             <dd>{frame.captured_at ?? dash}</dd>
             <dt>{t.duration}</dt>
@@ -1290,6 +1394,8 @@ function Debug({
             <dd>
               {frame.hwnd == null ? dash : `0x${frame.hwnd.toString(16)}`}
             </dd>
+            <dt>{t.requestId}</dt>
+            <dd>{frame.request_id ?? dash}</dd>
           </dl>
         )}
       </section>
@@ -1508,8 +1614,27 @@ function SettingsPage({
           />
           {t.launch}
         </label>
+        <label className="check-label developer-toggle">
+          <input
+            type="checkbox"
+            checked={settings.app.developer_mode}
+            onChange={(event) =>
+              updateApp({ developer_mode: event.target.checked })
+            }
+          />
+          <span>
+            {t.developerMode}
+            <small>{t.developerModeHint}</small>
+          </span>
+        </label>
       </section>
-      <section className="panel">
+      {settings.app.developer_mode && (
+        <>
+      <section className="developer-heading">
+        <h2>{t.developerSection}</h2>
+        <p>{t.developerSectionHint}</p>
+      </section>
+      <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
         <label>
@@ -1532,8 +1657,17 @@ function SettingsPage({
             placeholder="dwrg.exe，IdentityV.exe"
           />
         </label>
+        <label>
+          {t.classNames}
+          <input
+            value={settings.game_window.class_names.join("，")}
+            onChange={(event) =>
+              updateWindow({ class_names: keywords(event.target.value) })
+            }
+          />
+        </label>
       </section>
-      <section className="panel">
+      <section className="panel developer-panel">
         <h2>{t.engineCapture}</h2>
         <p>{t.engineCaptureHint}</p>
         <label>
@@ -1584,7 +1718,7 @@ function SettingsPage({
           {t.dryRun} <small>{t.dryRunHint}</small>
         </label>
       </section>
-      <section className="panel">
+      <section className="panel developer-panel">
         <h2>{t.recognition}</h2>
         <label>
           {t.threshold}
@@ -1620,6 +1754,8 @@ function SettingsPage({
           {t.screenshots}
         </label>
       </section>
+        </>
+      )}
       <div className="save-bar">
         <button className="primary" onClick={onSave}>
           {t.save}
