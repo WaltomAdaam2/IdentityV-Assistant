@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 windows = ["dxcam>=0.0.5"]
+ocr = ["rapidocr-onnxruntime>=1.4"]
 dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]
