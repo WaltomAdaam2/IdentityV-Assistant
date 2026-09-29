@@ -7,7 +7,7 @@ class CaptureManager:
     def __init__(self, config: CaptureConfig) -> None:
         self.config = config
         self.backend: CaptureBackend | None = None
-        self.backend_name = "unavailable"
+        self.backend_name = "not_initialized"
         self.last_error: str | None = None
 
     @staticmethod
@@ -26,7 +26,7 @@ class CaptureManager:
                 self.backend_name = name
                 self.last_error = None
                 return self.backend
-            except (ImportError, RuntimeError, OSError) as error:
+            except Exception as error:
                 errors.append(f"{name}: {error}")
         self.last_error = "; ".join(errors)
         raise RuntimeError("no capture backend available: " + self.last_error)
@@ -36,7 +36,7 @@ class CaptureManager:
             raise ValueError("capture region must have positive width and height")
         try:
             return self._ensure_backend().capture(region)
-        except (RuntimeError, OSError) as primary_error:
+        except Exception as primary_error:
             if self.config.backend == "auto" and self.backend_name == "dxcam":
                 try:
                     self.backend = self._create_backend("mss")
@@ -44,7 +44,7 @@ class CaptureManager:
                     frame = self.backend.capture(region)
                     self.last_error = f"dxcam: {primary_error}"
                     return frame
-                except (ImportError, RuntimeError, OSError) as fallback_error:
+                except Exception as fallback_error:
                     self.backend, self.backend_name = None, "unavailable"
                     self.last_error = f"dxcam: {primary_error}; mss: {fallback_error}"
                     raise RuntimeError("all capture backends failed: " + self.last_error) from fallback_error

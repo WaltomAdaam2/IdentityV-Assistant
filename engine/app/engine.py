@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any
+from uuid import uuid4
 
 from app.context import AutomationContext
 from capture.manager import CaptureManager
@@ -72,6 +73,7 @@ class AutomationEngine:
 
     async def _handle_command(self, command: dict) -> None:
         command_type = command["type"]
+        request_id = command.get("request_id") if isinstance(command.get("request_id"), str) else None
         if command_type == "ping":
             await self.emit("heartbeat", engine_status=self.status.value, task_status=self.task_status)
         elif command_type == "start_task":
@@ -86,17 +88,17 @@ class AutomationEngine:
         elif command_type == "stop_task":
             await self._stop_task(TaskFinishReason.USER_STOPPED)
         elif command_type == "detect_window":
-            await self._detect_window()
+            await self._detect_window(request_id)
         elif command_type == "capture_frame":
-            await self._capture_frame()
+            await self._capture_frame(request_id)
         elif command_type == "test_template":
-            await self._test_template(command)
+            await self._test_template(command, request_id)
         elif command_type == "input_test":
-            await self._input_test(command)
+            await self._input_test(command, request_id)
         elif command_type == "shutdown":
             self._shutdown.set()
 
-    async def _detect_window(self) -> None:
+    async def _detect_window(self, request_id: str | None = None) -> None:
         window = self.context.window.find_window()
         if window is None:
             await self.emit(
@@ -114,29 +116,33 @@ class AutomationEngine:
                 match_reasons=[],
                 capture_backend=self.context.capture.backend_name,
                 capture_backend_configured=self.config.capture.backend,
+                capture_last_error=self.context.capture.last_error,
+                request_id=request_id,
             )
-            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Configured game window was not found", recoverable=True, details={"process_names": self.config.window.process_names, "title_contains": self.config.window.title_contains, "class_names": self.config.window.class_names})
+            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Configured game window was not found", recoverable=True, details={"process_names": self.config.window.process_names, "title_contains": self.config.window.title_contains, "class_names": self.config.window.class_names}, request_id=request_id)
             return
-        await self.emit("window_diagnostics", **self._window_payload(window))
+        await self.emit("window_diagnostics", **self._window_payload(window, request_id))
 
-    async def _capture_frame(self) -> None:
+    async def _capture_frame(self, request_id: str | None = None) -> None:
         window = self.context.window.find_window()
         if window is None:
-            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Cannot capture before the configured game window is found", recoverable=True, details={"operation": "capture_frame"})
+            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Cannot capture before the configured game window is found", recoverable=True, details={"operation": "capture_frame"}, request_id=request_id)
             return
         if window.is_minimized:
-            await self.emit("window_diagnostics", **self._window_payload(window))
-            await self.emit("error", code=ErrorCode.WINDOW_INVALID.value, message="Cannot capture a minimized game window", recoverable=True, details={"hwnd": window.hwnd, "operation": "capture_frame"})
+            await self.emit("window_diagnostics", **self._window_payload(window, request_id))
+            await self.emit("error", code=ErrorCode.WINDOW_INVALID.value, message="Cannot capture a minimized game window", recoverable=True, details={"hwnd": window.hwnd, "operation": "capture_frame"}, request_id=request_id)
             return
         started = perf_counter()
         try:
             frame = self.context.capture.capture(window.client_rect)
             self.context.metrics.screenshots += 1
-            path = self._save_debug_frame(frame.image)
+            captured_at = datetime.now(timezone.utc)
+            path = self._save_debug_frame(frame.image, captured_at)
         except Exception as error:
-            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={"hwnd": window.hwnd, "region": self._rect_payload(window.client_rect), "capture_backend_configured": self.config.capture.backend, "capture_backend_active": self.context.capture.backend_name})
+            await self.emit("window_diagnostics", **self._window_payload(window, request_id))
+            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={"hwnd": window.hwnd, "region": self._rect_payload(window.client_rect), "capture_backend_configured": self.config.capture.backend, "capture_backend_active": self.context.capture.backend_name, "capture_last_error": self.context.capture.last_error}, request_id=request_id)
             return
-        await self.emit("window_diagnostics", **self._window_payload(window))
+        await self.emit("window_diagnostics", **self._window_payload(window, request_id))
         await self.emit(
             "debug_frame",
             path=str(path),
@@ -144,18 +150,19 @@ class AutomationEngine:
             height=frame.height,
             state=self.context.state_history.current.value,
             source=frame.source,
-            captured_at=datetime.now(timezone.utc).isoformat(),
+            captured_at=captured_at.isoformat(),
             capture_ms=round((perf_counter() - started) * 1000, 2),
             file_size=path.stat().st_size,
             region=self._rect_payload(window.client_rect),
             hwnd=window.hwnd,
+            request_id=request_id,
         )
 
     @staticmethod
     def _rect_payload(rect: Rect) -> dict[str, int]:
         return {"left": rect.left, "top": rect.top, "width": rect.width, "height": rect.height}
 
-    def _window_payload(self, window: WindowInfo) -> dict[str, object]:
+    def _window_payload(self, window: WindowInfo, request_id: str | None = None) -> dict[str, object]:
         return {
             "found": True,
             "hwnd": window.hwnd,
@@ -170,61 +177,73 @@ class AutomationEngine:
             "match_reasons": window.match_reasons,
             "capture_backend": self.context.capture.backend_name,
             "capture_backend_configured": self.config.capture.backend,
+            "capture_last_error": self.context.capture.last_error,
+            "request_id": request_id,
         }
 
-    async def _test_template(self, command: dict[str, Any]) -> None:
+    async def _test_template(self, command: dict[str, Any], request_id: str | None = None) -> None:
         template_value = command.get("template")
         if not isinstance(template_value, str) or not template_value:
-            await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="A template path is required", recoverable=True, details={})
+            await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="A template path is required", recoverable=True, details={}, request_id=request_id)
             return
         template_root = Path(__file__).resolve().parents[2] / "assets" / "templates"
         template_path = (template_root / template_value).resolve()
         if not template_path.is_relative_to(template_root.resolve()) or not template_path.is_file():
-            await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="Template must be an existing file under assets/templates", recoverable=True, details={"template": template_value})
+            await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="Template must be an existing file under assets/templates", recoverable=True, details={"template": template_value}, request_id=request_id)
+            return
+        window = self.context.window.find_window()
+        if window is None:
+            await self.emit("error", code=ErrorCode.WINDOW_NOT_FOUND.value, message="Cannot test a template before the configured game window is found", recoverable=True, details={"operation": "test_template"}, request_id=request_id)
+            return
+        if window.is_minimized:
+            await self.emit("window_diagnostics", **self._window_payload(window, request_id))
+            await self.emit("error", code=ErrorCode.WINDOW_INVALID.value, message="Cannot test a template against a minimized game window", recoverable=True, details={"hwnd": window.hwnd, "operation": "test_template"}, request_id=request_id)
             return
         try:
             import cv2
             from vision.template_matcher import TemplateMatcher
-            window = self.context.window.find_window()
-            frame = self.context.capture.capture(window.client_rect if window else None)
+            frame = self.context.capture.capture(window.client_rect)
             self.context.metrics.screenshots += 1
             template = cv2.imread(str(template_path), cv2.IMREAD_UNCHANGED)
             match = TemplateMatcher().match(frame.image, template, self.config.vision.template_threshold)
         except Exception as error:
-            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={"template": template_value})
+            await self.emit("error", code=ErrorCode.CAPTURE_FAILED.value, message=str(error), recoverable=True, details={"template": template_value, "hwnd": window.hwnd, "region": self._rect_payload(window.client_rect), "capture_backend_active": self.context.capture.backend_name}, request_id=request_id)
             return
-        await self.emit("template_match", template=template_value, found=match.found, confidence=match.confidence, bbox=match.bbox, threshold=self.config.vision.template_threshold)
+        await self.emit("window_diagnostics", **self._window_payload(window, request_id))
+        await self.emit("template_match", template=template_value, found=match.found, confidence=match.confidence, bbox=match.bbox, threshold=self.config.vision.template_threshold, request_id=request_id)
 
-    async def _input_test(self, command: dict[str, Any]) -> None:
+    async def _input_test(self, command: dict[str, Any], request_id: str | None = None) -> None:
         action = command.get("action")
         if not isinstance(action, dict):
-            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="input_test action must be an object", recoverable=True, details={})
+            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="input_test action must be an object", recoverable=True, details={}, request_id=request_id)
             return
         if action.get("type") == "set_enabled":
             self._developer_input_enabled = bool(action.get("enabled"))
-            await self.emit("planned_action", action="input_test_enabled", input="none", target=None, dry_run=self.context.input.dry_run, enabled=self._developer_input_enabled)
+            await self.emit("planned_action", action="input_test_enabled", input="none", target=None, dry_run=self.context.input.dry_run, enabled=self._developer_input_enabled, request_id=request_id)
             return
         if not self._developer_input_enabled:
-            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="Developer input test mode is disabled", recoverable=True, details={})
+            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="Developer input test mode is disabled", recoverable=True, details={}, request_id=request_id)
             return
         try:
             if action.get("type") == "click":
                 from core.models import Point
                 point = Point(int(action["x"]), int(action["y"]))
                 self.context.input.click(point)
-                await self.emit("planned_action", action="input_test_click", input="click", target={"x": point.x, "y": point.y}, dry_run=self.context.input.dry_run)
+                await self.emit("planned_action", action="input_test_click", input="click", target={"x": point.x, "y": point.y}, dry_run=self.context.input.dry_run, request_id=request_id)
             elif action.get("type") == "press":
                 key = str(action["key"])
                 self.context.input.press(key)
-                await self.emit("planned_action", action="input_test_press", input="key", target={"key": key}, dry_run=self.context.input.dry_run)
+                await self.emit("planned_action", action="input_test_press", input="key", target={"key": key}, dry_run=self.context.input.dry_run, request_id=request_id)
             else:
                 raise ValueError("input_test supports click and press actions")
         except (KeyError, TypeError, ValueError, RuntimeError) as error:
-            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message=str(error), recoverable=True, details={})
+            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message=str(error), recoverable=True, details={}, request_id=request_id)
 
-    def _save_debug_frame(self, image: Any) -> Path:
+    def _save_debug_frame(self, image: Any, captured_at: datetime) -> Path:
         import cv2
-        path = Path(__file__).resolve().parents[2] / "debug" / "latest.png"
+
+        capture_id = f"{captured_at:%Y%m%dT%H%M%S%fZ}-{uuid4().hex[:8]}"
+        path = Path(__file__).resolve().parents[2] / "debug" / "captures" / f"{capture_id}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(path), image):
             raise RuntimeError("could not save debug frame")

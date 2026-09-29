@@ -2,6 +2,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
 use tauri::State;
+use uuid::Uuid;
 
 use crate::engine::EngineSupervisor;
 
@@ -10,12 +11,13 @@ async fn request(
     command_type: &str,
     extra: Value,
 ) -> Result<Value, String> {
-    let mut command = json!({"type": command_type});
+    let request_id = Uuid::new_v4().to_string();
+    let mut command = json!({"type": command_type, "request_id": request_id});
     if let (Some(command), Some(extra)) = (command.as_object_mut(), extra.as_object()) {
         command.extend(extra.clone());
     }
     supervisor.send(command).await?;
-    Ok(json!({"requested": true}))
+    Ok(json!({"requested": true, "request_id": request_id}))
 }
 
 #[tauri::command]
@@ -59,10 +61,17 @@ pub fn read_debug_frame(path: String) -> Result<String, String> {
         return Err("Debug frame path is outside the project debug directory".into());
     }
     let metadata = fs::metadata(&requested).map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err("Debug frame path is not a regular file".into());
+    }
     if metadata.len() > 20 * 1024 * 1024 {
         return Err("Debug frame exceeds the 20 MiB limit".into());
     }
-    let mime = match requested.extension().and_then(|value| value.to_str()) {
+    let extension = requested
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase);
+    let mime = match extension.as_deref() {
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("png") => "image/png",
         _ => return Err("Only PNG and JPEG debug frames are supported".into()),
