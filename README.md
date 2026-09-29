@@ -15,11 +15,12 @@ Identity V Assistant 是 Windows 桌面端的《第五人格》外部视觉自�
 - 可暂停、恢复、停止的 MockTask
 - Pydantic 配置校验、加载与持久化
 - Windows 窗口发现、客户区和 DPI 诊断框架
-- DXcam 捕获与 MSS 回退抽象
+- Windows 窗口级捕捉，支持被其他窗口遮挡或放在副屏的游戏窗口
+- DXcam 与 MSS 兼容回退
 - OpenCV 模板匹配与可配置置信度
 - 可选 RapidOCR 后端的惰性 OCR 接口
 - 状态证据、历史确认、未知状态和恢复框架
-- 全局 dry run、SendInput 抽象和输入释放
+- 全局 dry run、后台窗口坐标输入和输入释放
 - Debug、日志过滤、设置和开发者输入测试界面
 - Python 与 Rust 核心测试基础
 
@@ -37,8 +38,10 @@ Rust lifecycle supervisor
 Python visual automation engine
         |
         v
-visible window + normal Windows input
+window surface + client-area Windows input
 ```
+
+自动捕捉会优先按游戏窗口句柄读取完整客户区，不依赖窗口是否处于最前方，也不依赖主屏位置。后台点击使用游戏客户区坐标发送给目标窗口；开发者输入测试默认仍受模拟模式保护。
 
 职责边界见 [docs/architecture.md](docs/architecture.md)，协议见 [docs/ipc.md](docs/ipc.md)。
 

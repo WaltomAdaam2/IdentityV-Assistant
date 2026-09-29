@@ -15,11 +15,12 @@ Identity V Assistant is a Windows desktop framework for external visual automati
 * Pause, resume, and stop controls for a safe MockTask
 * Pydantic-validated configuration loading and persistence
 * Windows discovery, client rectangle, and DPI diagnostics
-* DXcam capture with MSS fallback
+* Window-level capture for game windows covered by other windows or placed on another monitor
+* DXcam and MSS compatibility fallbacks
 * OpenCV template matching with configurable confidence
 * Lazy OCR interface with an optional RapidOCR backend
 * State evidence, confirmation history, unknown-state, and recovery foundations
-* Global dry run, SendInput abstraction, and held-input cleanup
+* Global dry run, background client-area input, and held-input cleanup
 * Debug, log filtering, settings, and developer input-test pages
 * Python and Rust core test foundations
 
@@ -37,8 +38,10 @@ Rust lifecycle supervisor
 Python visual automation engine
         |
         v
-visible window + normal Windows input
+window surface + client-area Windows input
 ```
+
+Automatic capture first reads the complete client area by game window handle. It does not depend on the game being in front or on the primary monitor. Background clicks are sent in game client coordinates, while developer input tests remain protected by simulation mode by default.
 
 See [Architecture](docs/architecture.md) for layer boundaries and [IPC Protocol](docs/ipc.md) for message definitions.
 
