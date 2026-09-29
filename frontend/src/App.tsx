@@ -713,6 +713,7 @@ export default function App() {
       )
       .catch(() => undefined);
     let dispose: (() => void) | undefined;
+    let disposed = false;
     void bridge
       .onEngineEvent((event: EngineEvent) => {
         const current = translations[languageRef.current];
@@ -816,11 +817,13 @@ export default function App() {
           setSnapshot((current) => ({ ...current, status: "error" }));
       })
       .then((unlisten) => {
-        dispose = unlisten;
+        if (disposed) void unlisten();
+        else dispose = unlisten;
       })
       .catch(() => undefined);
     const timer = window.setInterval(() => void refreshSnapshot(), 5_000);
     return () => {
+      disposed = true;
       window.clearInterval(timer);
       dispose?.();
     };

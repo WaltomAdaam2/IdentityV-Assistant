@@ -110,6 +110,7 @@ impl EngineSupervisor {
             .arg("--config")
             .arg(crate::config::active_path()?)
             .current_dir(engine_path.parent().unwrap_or_else(|| Path::new(".")))
+            .env("PYTHONIOENCODING", "utf-8")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
