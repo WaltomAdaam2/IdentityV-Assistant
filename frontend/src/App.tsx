@@ -594,6 +594,7 @@ export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
   const [pagePhase, setPagePhase] = useState<"enter" | "leave">("enter");
   const pageTransitionTimer = useRef<number | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const [snapshot, setSnapshot] = useState<EngineSnapshot>({
     state: "stopped",
     queue_size: 0,
@@ -838,13 +839,15 @@ export default function App() {
   const navigate = useCallback(
     (nextPage: Page) => {
       if (nextPage === page || pagePhase === "leave") return;
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      workspaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       setPagePhase("leave");
       pageTransitionTimer.current = window.setTimeout(() => {
         setPage(nextPage);
         setPagePhase("enter");
         pageTransitionTimer.current = null;
-        window.requestAnimationFrame(() => window.scrollTo(0, 0));
+        window.requestAnimationFrame(() =>
+          workspaceRef.current?.scrollTo({ top: 0 }),
+        );
       }, 160);
     },
     [page, pagePhase],
@@ -856,7 +859,7 @@ export default function App() {
     ) {
       setPage("settings");
       setPagePhase("enter");
-      window.scrollTo(0, 0);
+      workspaceRef.current?.scrollTo({ top: 0 });
     }
   }, [page, settings.app.developer_mode]);
   const actions = {
@@ -961,7 +964,10 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div className="sidebar-footer">
+          <div
+            className="sidebar-footer"
+            title={`${t.localConsole}\n${t.localOnly}\nv0.1.0`}
+          >
             <span className={`local-status-dot ${engineState(snapshot)}`} />
             <span className="local-status-copy">
               <strong>{t.localConsole}</strong>
@@ -970,7 +976,7 @@ export default function App() {
             <b>v0.1.0</b>
           </div>
         </aside>
-        <section className="workspace">
+        <section className="workspace" ref={workspaceRef}>
           <header className="topbar">
             <div>
               <h1>{t.nav[page]}</h1>
