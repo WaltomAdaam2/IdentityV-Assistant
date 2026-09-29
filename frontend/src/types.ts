@@ -29,9 +29,19 @@ export interface EngineEvent {
   client_rect?: { left?: number; top?: number; width?: number; height?: number } | null;
   dpi_scale?: number | null;
   capture_backend?: string | null;
+  capture_backend_configured?: string | null;
+  process_name?: string | null;
+  class_name?: string | null;
+  is_minimized?: boolean | null;
+  is_foreground?: boolean | null;
+  match_reasons?: string[] | null;
   path?: string;
   width?: number;
   height?: number;
+  captured_at?: string | null;
+  capture_ms?: number | null;
+  file_size?: number | null;
+  region?: { left?: number; top?: number; width?: number; height?: number } | null;
   template?: string;
   bbox?: [number, number, number, number] | null;
   threshold?: number;
@@ -57,6 +67,12 @@ export interface WindowInfo {
   client_rect?: { left?: number; top?: number; width?: number; height?: number } | null;
   dpi_scale?: number | null;
   capture_backend?: string | null;
+  capture_backend_configured?: string | null;
+  process_name?: string | null;
+  class_name?: string | null;
+  is_minimized?: boolean | null;
+  is_foreground?: boolean | null;
+  match_reasons?: string[] | null;
   [key: string]: unknown;
 }
 
@@ -67,6 +83,11 @@ export interface CaptureFrame {
   height?: number;
   state?: string;
   source?: string;
+  captured_at?: string | null;
+  capture_ms?: number | null;
+  file_size?: number | null;
+  region?: { left?: number; top?: number; width?: number; height?: number } | null;
+  hwnd?: number | null;
   [key: string]: unknown;
 }
 
