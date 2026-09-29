@@ -117,6 +117,6 @@ engine/tests/fixtures/ Generated test images
 
 项目不会加入进程内挂钩、内存读取、反作弊绕过、内核输入或网络协议操作。
 
-## License
+## 许可证
 
-[MIT](LICENSE)
+本项目采用 [GNU General Public License v3.0 only](LICENSE)（`GPL-3.0-only`）。分发修改版本时必须依照该许可证提供对应源代码并保留许可证与版权声明。

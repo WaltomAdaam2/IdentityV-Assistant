@@ -117,4 +117,4 @@ Process hooks, memory access, anti-cheat bypass, kernel input, and network proto
 
 ## License
 
-See [LICENSE](LICENSE).
+This project is licensed under the [GNU General Public License v3.0 only](LICENSE) (`GPL-3.0-only`). Modified distributions must provide the corresponding source and preserve the license and copyright notices as required by the license.
