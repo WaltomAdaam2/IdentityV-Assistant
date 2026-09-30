@@ -70,9 +70,7 @@ const translations = {
         "登录进大厅",
         "自动识别当前登录画面，选择平台并关闭弹窗，直到进入归宿",
       ],
-      home_book: ["识别归宿并点击书本", "用十个固定像素判断归宿界面并点击右侧书本"],
-      mock_weekly: ["模拟周常流程", "不操作真实窗口的可验证任务流程"],
-      weekly: ["周常任务", "执行已实现的周常任务状态流"],
+      blackjack: ["黑杰克", "自动匹配、游玩并返回归宿"],
     },
     dashboard: {
       eyebrow: "自动化服务状态",
@@ -99,7 +97,7 @@ const translations = {
     },
     tasks: {
       title: "自动任务",
-      hint: "任务由自动化服务依次执行。当前版本每次执行一个已启用任务。",
+      hint: "按列表顺序依次执行已启用任务。",
       startEnabled: "启动已启用任务",
       pause: "暂停",
       resume: "恢复",
@@ -175,9 +173,6 @@ const translations = {
       testClick: "测试点击",
       testEsc: "测试 Esc",
       lastAction: "最近计划操作",
-      mode: "模式",
-      simulation: "模拟",
-      realInput: "真实输入",
       detectWindow: "检测窗口",
       captureFrame: "捕获画面",
       testTemplateRequest: "测试模板",
@@ -208,17 +203,6 @@ const translations = {
       titleKeywords: "窗口标题关键词",
       processNames: "进程名",
       classNames: "窗口类名",
-      backgroundMode: "后台伪全屏模式",
-      backgroundModeHint: "移除游戏窗口边框，并允许在副屏后台捕捉与点击",
-      resolution: "运行分辨率",
-      position: "窗口位置",
-      positionFree: "不限制（保持当前位置）",
-      positionCenter: "居中",
-      positionLeftTop: "左上",
-      positionRightTop: "右上",
-      positionLeftBottom: "左下",
-      positionRightBottom: "右下",
-      restoreWindow: "任务结束后恢复游戏窗口",
       loginAutomation: "登录自动化",
       loginAutomationHint: "随机偏移始终启用；每次点击前会重复确认当前画面。",
       loginPlatform: "登录平台",
@@ -235,15 +219,12 @@ const translations = {
       developerSection: "开发者设置",
       developerSectionHint: "以下选项用于诊断和高级调整。",
       engineCapture: "服务与捕捉",
-      engineCaptureHint:
-        "默认以安全的模拟模式运行，确认识别与输入链路后再关闭。",
+      engineCaptureHint: "服务与捕捉诊断设置。",
       heartbeat: "连接检测间隔（秒）",
       captureBackend: "捕获后端",
       auto: "自动选择",
       windowCapture: "窗口捕捉（推荐）",
       idleFps: "空闲帧率",
-      dryRun: "模拟模式",
-      dryRunHint: "跳过真实输入操作",
       memoryProtection: "内存占用保护",
       memoryProtectionHint: "系统内存超过 90% 时清理未使用缓存",
       recognition: "识别与诊断",
@@ -317,15 +298,7 @@ const translations = {
         "Enter the home lobby",
         "Detects the current login screen, selects a platform, and dismisses popups until home is reached",
       ],
-      home_book: [
-        "Detect home and click the book",
-        "Checks ten fixed pixels on the home screen, then clicks the book on the right",
-      ],
-      mock_weekly: [
-        "Mock weekly flow",
-        "A verifiable task flow that does not operate the game window",
-      ],
-      weekly: ["Weekly tasks", "Runs the implemented weekly task state flow"],
+      blackjack: ["Blackjack", "Match, play and return to the home lobby"],
     },
     dashboard: {
       eyebrow: "AUTOMATION SERVICE",
@@ -353,7 +326,7 @@ const translations = {
     tasks: {
       title: "Automated tasks",
       hint: "The automation service runs enabled tasks one at a time.",
-      startEnabled: "Start enabled task",
+      startEnabled: "Start enabled tasks",
       pause: "Pause",
       resume: "Resume",
       execute: "Run",
@@ -430,9 +403,6 @@ const translations = {
       testClick: "Test click",
       testEsc: "Test Esc",
       lastAction: "Latest planned action",
-      mode: "Mode",
-      simulation: "Simulation",
-      realInput: "Real input",
       detectWindow: "Detect window",
       captureFrame: "Capture frame",
       testTemplateRequest: "Test template",
@@ -464,17 +434,6 @@ const translations = {
       titleKeywords: "Window title keywords",
       processNames: "Process names",
       classNames: "Window classes",
-      backgroundMode: "Background borderless mode",
-      backgroundModeHint: "Removes the game border for background capture and input on any monitor",
-      resolution: "Runtime resolution",
-      position: "Window position",
-      positionFree: "Unrestricted (keep current position)",
-      positionCenter: "Center",
-      positionLeftTop: "Top left",
-      positionRightTop: "Top right",
-      positionLeftBottom: "Bottom left",
-      positionRightBottom: "Bottom right",
-      restoreWindow: "Restore the game window after a task",
       loginAutomation: "Login automation",
       loginAutomationHint:
         "Random variation is always enabled. The current screen is confirmed again before every click.",
@@ -492,15 +451,12 @@ const translations = {
       developerSection: "Developer settings",
       developerSectionHint: "These options are intended for diagnostics and advanced tuning.",
       engineCapture: "Service and capture",
-      engineCaptureHint:
-        "Simulation mode is enabled by default. Turn it off after confirming the recognition and input chain.",
+      engineCaptureHint: "Service and capture diagnostic settings.",
       heartbeat: "Connection check interval (seconds)",
       captureBackend: "Capture backend",
       auto: "Automatic",
       windowCapture: "Window capture (recommended)",
       idleFps: "Idle frame rate",
-      dryRun: "Simulation mode",
-      dryRunHint: "Skip real input actions",
       memoryProtection: "Memory protection",
       memoryProtectionHint: "Release unused caches when system memory usage exceeds 90%",
       recognition: "Recognition and diagnostics",
@@ -553,22 +509,8 @@ const initialTasks: TaskItem[] = [
     status: "idle",
   },
   {
-    id: "home_book",
-    name: "home_book",
-    description: "",
-    enabled: false,
-    status: "idle",
-  },
-  {
-    id: "mock_weekly",
-    name: "mock_weekly",
-    description: "",
-    enabled: false,
-    status: "idle",
-  },
-  {
-    id: "weekly",
-    name: "weekly",
+    id: "blackjack",
+    name: "blackjack",
     description: "",
     enabled: false,
     status: "idle",
@@ -582,19 +524,13 @@ const defaults: Settings = {
     developer_mode: false,
   },
   engine: {
-    dry_run: true,
     memory_protection: false,
     heartbeat_interval_seconds: 2,
-    mock_step_delay_seconds: 1,
   },
   game_window: {
     process_names: ["dwrg.exe", "IdentityV.exe"],
     title_contains: ["第五人格", "Identity V"],
     class_names: [],
-    background_mode: true,
-    resolution: "1600x900",
-    position: "free",
-    restore_after_task: true,
   },
   capture: { backend: "wgc", idle_fps: 3, active_fps: 10 },
   vision: { template_threshold: 0.85, state_confirmation_count: 2 },
@@ -1694,8 +1630,6 @@ function Debug({
           <dl className="key-values">
             <dt>{t.lastAction}</dt>
             <dd>{lastPlannedAction.action ?? dash}</dd>
-            <dt>{t.mode}</dt>
-            <dd>{lastPlannedAction.dry_run ? t.simulation : t.realInput}</dd>
           </dl>
         )}
       </section>
@@ -1990,65 +1924,6 @@ function SettingsPage({
             }
           />
         </label>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={settings.game_window.background_mode}
-            onChange={(event) =>
-              updateWindow({ background_mode: event.target.checked })
-            }
-          />
-          <span>
-            {t.backgroundMode}
-            <small>{t.backgroundModeHint}</small>
-          </span>
-        </label>
-        <label>
-          {t.resolution}
-          <select
-            value={settings.game_window.resolution}
-            onChange={(event) =>
-              updateWindow({
-                resolution: event.target
-                  .value as Settings["game_window"]["resolution"],
-              })
-            }
-          >
-            <option value="1280x720">1280 × 720</option>
-            <option value="1600x900">1600 × 900</option>
-            <option value="1920x1080">1920 × 1080</option>
-            <option value="2560x1400">2560 × 1400</option>
-          </select>
-        </label>
-        <label>
-          {t.position}
-          <select
-            value={settings.game_window.position}
-            onChange={(event) =>
-              updateWindow({
-                position: event.target
-                  .value as Settings["game_window"]["position"],
-              })
-            }
-          >
-            <option value="free">{t.positionFree}</option>
-            <option value="center">{t.positionCenter}</option>
-            <option value="left_top">{t.positionLeftTop}</option>
-            <option value="right_top">{t.positionRightTop}</option>
-            <option value="left_bottom">{t.positionLeftBottom}</option>
-            <option value="right_bottom">{t.positionRightBottom}</option>
-          </select>
-        </label>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={settings.game_window.restore_after_task}
-            onChange={(event) =>
-              updateWindow({ restore_after_task: event.target.checked })
-            }
-          />
-          {t.restoreWindow}
-        </label>
       </section>
       <section className="panel developer-panel">
         <h2>{t.engineCapture}</h2>
@@ -2090,16 +1965,6 @@ function SettingsPage({
               updateCapture({ idle_fps: Number(event.target.value) })
             }
           />
-        </label>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={settings.engine.dry_run}
-            onChange={(event) =>
-              updateEngine({ dry_run: event.target.checked })
-            }
-          />
-          {t.dryRun} <small>{t.dryRunHint}</small>
         </label>
         <label className="check-label">
           <input

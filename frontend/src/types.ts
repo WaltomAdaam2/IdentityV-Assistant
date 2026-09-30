@@ -51,7 +51,6 @@ export interface EngineEvent {
   action?: string;
   input?: string;
   target?: Record<string, unknown> | null;
-  dry_run?: boolean;
   enabled?: boolean;
   from?: string;
   to?: string;
@@ -130,19 +129,13 @@ export interface Settings {
     developer_mode: boolean;
   };
   engine: {
-    dry_run: boolean;
     memory_protection: boolean;
     heartbeat_interval_seconds: number;
-    mock_step_delay_seconds: number;
   };
   game_window: {
     process_names: string[];
     title_contains: string[];
     class_names: string[];
-    background_mode: boolean;
-    resolution: "1280x720" | "1600x900" | "1920x1080" | "2560x1400";
-    position: "free" | "center" | "left_top" | "right_top" | "left_bottom" | "right_bottom";
-    restore_after_task: boolean;
   };
   capture: { backend: string; idle_fps: number; active_fps: number };
   vision: { template_threshold: number; state_confirmation_count: number };

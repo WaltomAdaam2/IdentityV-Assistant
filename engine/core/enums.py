@@ -13,7 +13,6 @@ class EngineStatus(str, Enum):
 
 class TaskFinishReason(str, Enum):
     COMPLETED = "completed"
-    WEEKLY_LIMIT = "weekly_limit"
     USER_STOPPED = "user_stopped"
     TIMEOUT = "timeout"
     ENGINE_ERROR = "engine_error"

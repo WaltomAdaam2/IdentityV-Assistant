@@ -24,10 +24,7 @@ from runtime.metrics import RuntimeMetrics
 from runtime.memory_guard import MemoryGuard
 from states.history import StateHistory
 from tasks.base import AutomationTask, TaskControl
-from tasks.home_book_task import HomeBookTask
 from tasks.login_lobby_task import LoginLobbyTask
-from tasks.mock_task import MockTask
-from tasks.weekly_task import WeeklyTask
 from window.base import WindowInfo
 from window.windows import WindowsWindowManager
 
@@ -52,7 +49,6 @@ class AutomationEngine:
             CaptureManager(config.capture),
             InputController(
                 WindowsMessageInput(window.current_hwnd),
-                config.dry_run,
                 position_jitter_px=config.automation.click_position_jitter_px,
                 click_duration_jitter_ms=config.automation.click_duration_jitter_ms,
             ),
@@ -132,7 +128,7 @@ class AutomationEngine:
                 **self._window_health_payload(window),
             )
         elif command_type == "start_task":
-            await self._start_task(str(command.get("task", "mock_weekly")))
+            await self._start_task(str(command.get("task", "login_lobby")))
         elif command_type == "pause_task" and self._task_control:
             self._task_control.pause()
             self.status, self.task_status = EngineStatus.PAUSED, "paused"
@@ -182,7 +178,6 @@ class AutomationEngine:
         self.config = config
         self.context.config = config
         self.context.window.config = config.window
-        self.context.input.dry_run = config.dry_run
         self.context.input.position_jitter_px = config.automation.click_position_jitter_px
         self.context.input.click_duration_jitter_ms = config.automation.click_duration_jitter_ms
         self.context.memory_guard.enabled = config.memory_protection
@@ -193,21 +188,6 @@ class AutomationEngine:
             self.context.capture.backend = None
             self.context.capture.backend_name = "not_initialized"
             self.context.capture.last_error = None
-
-        try:
-            if previous.window.background_mode and not config.window.background_mode:
-                self.context.window.restore_window_mode()
-            elif config.window.background_mode and self.context.window.find_window() is not None:
-                self.context.window.prepare_background_mode()
-        except Exception as error:
-            await self.emit(
-                "error",
-                code="WINDOW_MODE_FAILED",
-                message=str(error),
-                recoverable=True,
-                details={},
-            )
-            return
 
         await self.emit("settings_reloaded", level="info", source="settings")
 
@@ -386,7 +366,7 @@ class AutomationEngine:
             return
         if action.get("type") == "set_enabled":
             self._developer_input_enabled = bool(action.get("enabled"))
-            await self.emit("planned_action", action="input_test_enabled", input="none", target=None, dry_run=self.context.input.dry_run, enabled=self._developer_input_enabled, request_id=request_id)
+            await self.emit("planned_action", action="input_test_enabled", input="none", target=None, enabled=self._developer_input_enabled, request_id=request_id)
             return
         if not self._developer_input_enabled:
             await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="Developer input test mode is disabled", recoverable=True, details={}, request_id=request_id)
@@ -400,11 +380,11 @@ class AutomationEngine:
                 point = CoordinateSpace().to_client(reference, window.client_rect)
                 screen = Point(window.client_rect.left + point.x, window.client_rect.top + point.y)
                 self.context.input.click(point)
-                await self.emit("planned_action", action="input_test_click", input="click", target={"x": point.x, "y": point.y, "screen_x": screen.x, "screen_y": screen.y, "reference_x": reference.x, "reference_y": reference.y, "hwnd": window.hwnd}, dry_run=self.context.input.dry_run, request_id=request_id)
+                await self.emit("planned_action", action="input_test_click", input="click", target={"x": point.x, "y": point.y, "screen_x": screen.x, "screen_y": screen.y, "reference_x": reference.x, "reference_y": reference.y, "hwnd": window.hwnd}, request_id=request_id)
             elif action.get("type") == "press":
                 key = str(action["key"])
                 self.context.input.press(key)
-                await self.emit("planned_action", action="input_test_press", input="key", target={"key": key}, dry_run=self.context.input.dry_run, request_id=request_id)
+                await self.emit("planned_action", action="input_test_press", input="key", target={"key": key}, request_id=request_id)
             else:
                 raise ValueError("input_test supports click and press actions")
         except (KeyError, TypeError, ValueError, RuntimeError) as error:
@@ -426,9 +406,6 @@ class AutomationEngine:
             return
         factories: dict[str, type[AutomationTask]] = {
             "login_lobby": LoginLobbyTask,
-            "home_book": HomeBookTask,
-            "mock_weekly": MockTask,
-            "weekly": WeeklyTask,
         }
         if task_name not in factories:
             await self.emit("error", code="TASK_UNKNOWN", message=f"Unknown task: {task_name}", recoverable=True, details={})
@@ -446,9 +423,6 @@ class AutomationEngine:
             reason = TaskFinishReason.ENGINE_ERROR
         finally:
             self.context.input.release_all()
-            if self.config.window.restore_after_task:
-                with suppress(Exception):
-                    self.context.window.restore_window_mode()
         if self.status != EngineStatus.ERROR:
             self.status, self.task_status = EngineStatus.IDLE, "idle"
         await self.emit("task_finished", reason=reason.value, stats=self.context.metrics.snapshot())

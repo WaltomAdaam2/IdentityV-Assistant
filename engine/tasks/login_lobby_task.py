@@ -21,20 +21,9 @@ class LoginLobbyTask(AutomationTask):
     """Select a login platform, dismiss startup pages, and wait for the home lobby."""
 
     async def run(self, ctx: AutomationContext, control: TaskControl) -> TaskFinishReason:
-        if ctx.input.dry_run:
-            await ctx.emit(
-                "log",
-                level="warning",
-                source="login_lobby",
-                message="Login task requires simulation mode to be turned off",
-                data={"important": True},
-            )
-            return TaskFinishReason.USER_STOPPED
-
         deadline = monotonic() + ctx.config.automation.login_timeout_seconds
         try:
             await self._wait_for_window(ctx, control, deadline)
-            self._prepare_window(ctx)
             await self._random_delay(350, ctx.config.automation.click_interval_jitter_ms, deadline)
             last_action_stage = ""
             last_action_at = 0.0
@@ -98,7 +87,6 @@ class LoginLobbyTask(AutomationTask):
             await self._check_control(ctx, control)
             window = ctx.window.find_window()
             if window is not None and window.is_responding and not window.is_minimized:
-                self._prepare_window(ctx)
                 ctx.memory_guard.protect()
                 try:
                     frame = ctx.capture.capture(window.client_rect, window.hwnd)
@@ -179,11 +167,6 @@ class LoginLobbyTask(AutomationTask):
             return Point(65, 80), "close_activity_popup"
         raise ValueError(f"unsupported login stage: {stage}")
 
-    @staticmethod
-    def _prepare_window(ctx: AutomationContext) -> None:
-        if not ctx.window.prepare_background_mode():
-            raise RuntimeError("could not apply the configured game window mode")
-
     async def _click(
         self,
         ctx: AutomationContext,
@@ -204,7 +187,6 @@ class LoginLobbyTask(AutomationTask):
             action=action,
             input="left_click",
             target={"x": point.x, "y": point.y},
-            dry_run=False,
         )
         await self._random_delay(
             ctx.config.automation.screenshot_after_click_ms,

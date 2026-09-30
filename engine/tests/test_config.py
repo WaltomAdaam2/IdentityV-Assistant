@@ -5,11 +5,8 @@ from config.schema import EngineConfig
 
 
 def test_config_accepts_default_shape() -> None:
-    config = parse_config({"engine": {"dry_run": True}, "game_window": {"process_names": ["game.exe"], "title_contains": ["Game"]}})
-    assert config.dry_run is True
+    config = parse_config({"engine": {"memory_protection": False}, "game_window": {"process_names": ["game.exe"], "title_contains": ["Game"]}})
     assert config.window.process_names == ("game.exe",)
-    assert config.window.resolution == "1600x900"
-    assert config.window.position == "free"
     assert config.capture.backend == "wgc"
     assert config.memory_protection is False
     assert config.automation.login_platform == "android"

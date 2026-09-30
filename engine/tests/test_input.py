@@ -18,21 +18,9 @@ class RecordingBackend(InputBackend):
     def key_up(self, key: str) -> None: self.calls.append(f"key_up:{key}")
 
 
-def test_dry_run_records_without_touching_backend() -> None:
-    backend = RecordingBackend()
-    recorded: list[dict] = []
-    controller = InputController(backend, dry_run=True, on_action=recorded.append)
-    controller.click(Point(1, 2))
-    controller.key_down("A")
-    controller.release_all()
-    assert backend.calls == []
-    assert controller.pressed_keys == set()
-    assert [item["action"] for item in recorded] == ["click", "key_down", "release_all"]
-
-
 def test_release_all_releases_held_input() -> None:
     backend = RecordingBackend()
-    controller = InputController(backend, dry_run=False)
+    controller = InputController(backend)
     controller.key_down("A")
     controller.mouse_down()
     controller.release_all()
