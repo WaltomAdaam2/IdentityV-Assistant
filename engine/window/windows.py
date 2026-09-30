@@ -24,7 +24,7 @@ class WindowsWindowManager(WindowManager):
     def __init__(self, config: WindowConfig) -> None:
         self.config = config
         self._window: WindowInfo | None = None
-        self._original_window: tuple[int, int, tuple[int, int, int, int]] | None = None
+        self._original_window: tuple[int, int, int, tuple[int, int, int, int]] | None = None
         self._user32: Any | None = None
         self._kernel32: Any | None = None
         if sys.platform == "win32":
@@ -265,8 +265,9 @@ class WindowsWindowManager(WindowManager):
         import win32con
         import win32gui
 
-        if self._original_window is None:
+        if self._original_window is None or self._original_window[0] != hwnd:
             self._original_window = (
+                hwnd,
                 win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE),
                 win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE),
                 win32gui.GetWindowRect(hwnd),
@@ -281,8 +282,19 @@ class WindowsWindowManager(WindowManager):
             | win32con.WS_THICKFRAME
             | win32con.WS_SIZEBOX
             | win32con.WS_MAXIMIZEBOX
+            | win32con.WS_MINIMIZEBOX
+            | win32con.WS_SYSMENU
+        )
+        style |= win32con.WS_POPUP | win32con.WS_VISIBLE
+        ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+        ex_style &= ~(
+            win32con.WS_EX_DLGMODALFRAME
+            | win32con.WS_EX_CLIENTEDGE
+            | win32con.WS_EX_STATICEDGE
+            | win32con.WS_EX_WINDOWEDGE
         )
         win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
+        win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex_style)
         win32gui.SetWindowPos(
             hwnd,
             None,
@@ -296,12 +308,10 @@ class WindowsWindowManager(WindowManager):
             | win32con.SWP_NOACTIVATE
             | win32con.SWP_FRAMECHANGED,
         )
+        if win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE) & win32con.WS_CAPTION:
+            raise RuntimeError("the game restored its title bar")
 
-        client_width, client_height = map(int, self.config.resolution.split("x"))
-        window_rect = win32gui.GetWindowRect(hwnd)
-        client_rect = win32gui.GetClientRect(hwnd)
-        width = client_width + (window_rect[2] - window_rect[0] - client_rect[2])
-        height = client_height + (window_rect[3] - window_rect[1] - client_rect[3])
+        width, height = map(int, self.config.resolution.split("x"))
         monitor = win32api.GetMonitorInfo(
             win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
         )["Monitor"]
@@ -331,7 +341,11 @@ class WindowsWindowManager(WindowManager):
         import win32con
         import win32gui
 
-        style, ex_style, rect = self._original_window
+        original_hwnd, style, ex_style, rect = self._original_window
+        if self._user32 and not self._user32.IsWindow(original_hwnd):
+            self._original_window = None
+            return False
+        hwnd = original_hwnd
         win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
         win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex_style)
         win32gui.SetWindowPos(
