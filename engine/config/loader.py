@@ -17,6 +17,7 @@ def parse_config(data: dict[str, Any]) -> EngineConfig:
     capture_data = _mapping(root.get("capture", {}), "capture")
     vision_data = _mapping(root.get("vision", {}), "vision")
     engine_data = _mapping(root.get("engine", {}), "engine")
+    automation_data = _mapping(root.get("automation", {}), "automation")
     return EngineConfig.model_validate(
         {
             "dry_run": engine_data.get("dry_run", True),
@@ -40,6 +41,15 @@ def parse_config(data: dict[str, Any]) -> EngineConfig:
             "vision": {
                 "template_threshold": vision_data.get("template_threshold", 0.85),
                 "state_confirmation_count": vision_data.get("state_confirmation_count", 2),
+            },
+            "automation": {
+                "login_platform": automation_data.get("login_platform", "android"),
+                "login_timeout_seconds": automation_data.get("login_timeout_seconds", 300),
+                "screenshot_after_click_ms": automation_data.get("screenshot_after_click_ms", 500),
+                "click_after_detection_ms": automation_data.get("click_after_detection_ms", 500),
+                "click_position_jitter_px": automation_data.get("click_position_jitter_px", 6),
+                "click_interval_jitter_ms": automation_data.get("click_interval_jitter_ms", 120),
+                "click_duration_jitter_ms": automation_data.get("click_duration_jitter_ms", 15),
             },
             "debug": _mapping(root.get("debug", {}), "debug"),
         },

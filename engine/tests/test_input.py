@@ -1,7 +1,9 @@
+import random
+
 from core.models import Point
 from input.base import InputBackend
 from input.controller import InputController
-from input.windows_message import WindowsMessageInput, _point_lparam
+from input.windows_message import WindowsMessageInput, _curved_route, _point_lparam
 from input.windows_sendinput import _virtual_key
 
 
@@ -48,3 +50,9 @@ def test_window_message_supports_both_mouse_buttons() -> None:
 
 def test_task_shortcuts_have_virtual_keys() -> None:
     assert [_virtual_key(key) for key in ("Q", "F", "ESC")] == [0x51, 0x46, 0x1B]
+
+
+def test_mouse_route_is_curved_and_ends_at_target() -> None:
+    route = _curved_route((0, 0), (1000, 500), random.Random(7))
+    assert route[-1] == (1000, 500)
+    assert any(y * 2 != x for x, y in route[:-1])

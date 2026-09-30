@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import random
 from collections.abc import Callable
+from math import hypot
 from time import sleep
 
 from core.models import Point
@@ -31,7 +33,9 @@ class WindowsMessageInput(InputBackend):
         if self._saved_cursor is None:
             self._saved_cursor = win32api.GetCursorPos()
         screen_point = win32gui.ClientToScreen(hwnd, (point.x, point.y))
-        win32api.SetCursorPos(screen_point)
+        for route_point in _curved_route(self._saved_cursor, screen_point):
+            win32api.SetCursorPos(route_point)
+            sleep(random.uniform(0.001, 0.003))
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
         win32api.PostMessage(hwnd, win32con.WM_ACTIVATE, win32con.WA_ACTIVE, 0)
@@ -43,7 +47,6 @@ class WindowsMessageInput(InputBackend):
             _, _, _, hwnd = self._target()
             message, state = self._mouse_message(button, True)
             win32api.PostMessage(hwnd, message, state, _point_lparam(self._point))
-            sleep(0.03)
         except Exception:
             self._restore_cursor(win32api)
             raise
@@ -55,7 +58,6 @@ class WindowsMessageInput(InputBackend):
             _, _, _, hwnd = self._target()
             message, _ = self._mouse_message(button, False)
             win32api.PostMessage(hwnd, message, 0, _point_lparam(self._point))
-            sleep(0.03)
         finally:
             self._restore_cursor(win32api)
 
@@ -108,3 +110,49 @@ class WindowsMessageInput(InputBackend):
 
 def _point_lparam(point: Point) -> int:
     return (point.x & 0xFFFF) | ((point.y & 0xFFFF) << 16)
+
+
+def _curved_route(
+    start: tuple[int, int],
+    end: tuple[int, int],
+    rng: random.Random | None = None,
+) -> list[tuple[int, int]]:
+    randomizer = rng or random
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    distance = hypot(dx, dy)
+    if distance < 4:
+        return [end]
+
+    normal_x, normal_y = -dy / distance, dx / distance
+    bend = randomizer.choice((-1.0, 1.0)) * min(70.0, max(10.0, distance * 0.14))
+    control_1 = (
+        start[0] + dx * 0.32 + normal_x * bend,
+        start[1] + dy * 0.32 + normal_y * bend,
+    )
+    control_2 = (
+        start[0] + dx * 0.76 - normal_x * bend * 0.35,
+        start[1] + dy * 0.76 - normal_y * bend * 0.35,
+    )
+    steps = min(12, max(5, round(distance / 180)))
+    exponent = randomizer.uniform(0.72, 1.28)
+    route: list[tuple[int, int]] = []
+    for index in range(1, steps + 1):
+        t = (index / steps) ** exponent
+        inverse = 1.0 - t
+        x = (
+            inverse**3 * start[0]
+            + 3 * inverse**2 * t * control_1[0]
+            + 3 * inverse * t**2 * control_2[0]
+            + t**3 * end[0]
+        )
+        y = (
+            inverse**3 * start[1]
+            + 3 * inverse**2 * t * control_1[1]
+            + 3 * inverse * t**2 * control_2[1]
+            + t**3 * end[1]
+        )
+        candidate = (round(x), round(y))
+        if not route or route[-1] != candidate:
+            route.append(candidate)
+    route[-1] = end
+    return route

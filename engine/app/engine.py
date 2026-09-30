@@ -24,6 +24,7 @@ from runtime.memory_guard import MemoryGuard
 from states.history import StateHistory
 from tasks.base import AutomationTask, TaskControl
 from tasks.home_book_task import HomeBookTask
+from tasks.login_lobby_task import LoginLobbyTask
 from tasks.mock_task import MockTask
 from tasks.weekly_task import WeeklyTask
 from window.base import WindowInfo
@@ -48,7 +49,12 @@ class AutomationEngine:
             config,
             window,
             CaptureManager(config.capture),
-            InputController(WindowsMessageInput(window.current_hwnd), config.dry_run),
+            InputController(
+                WindowsMessageInput(window.current_hwnd),
+                config.dry_run,
+                position_jitter_px=config.automation.click_position_jitter_px,
+                click_duration_jitter_ms=config.automation.click_duration_jitter_ms,
+            ),
             RuntimeMetrics(),
             CancellationToken(),
             StateHistory(config.vision.state_confirmation_count),
@@ -360,6 +366,7 @@ class AutomationEngine:
             await self.emit("error", code="TASK_ALREADY_RUNNING", message="A task is already running", recoverable=True, details={})
             return
         factories: dict[str, type[AutomationTask]] = {
+            "login_lobby": LoginLobbyTask,
             "home_book": HomeBookTask,
             "mock_weekly": MockTask,
             "weekly": WeeklyTask,

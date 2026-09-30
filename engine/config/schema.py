@@ -13,6 +13,10 @@ PositiveInt = Annotated[StrictInt, Field(ge=1)]
 UnitInterval = Annotated[float, Field(ge=0.0, le=1.0)]
 HeartbeatInterval = Annotated[float, Field(ge=0.1, le=60.0)]
 MockStepDelay = Annotated[float, Field(ge=0.0, le=60.0)]
+TaskTimeout = Annotated[StrictInt, Field(ge=30, le=900)]
+DelayMilliseconds = Annotated[StrictInt, Field(ge=0, le=10_000)]
+PositionJitter = Annotated[StrictInt, Field(ge=1, le=50)]
+TimeJitter = Annotated[StrictInt, Field(ge=1, le=2_000)]
 
 
 class WindowConfig(_ConfigModel):
@@ -43,6 +47,16 @@ class VisionConfig(_ConfigModel):
         return value
 
 
+class AutomationConfig(_ConfigModel):
+    login_platform: Literal["android", "ios"] = "android"
+    login_timeout_seconds: TaskTimeout = 300
+    screenshot_after_click_ms: DelayMilliseconds = 500
+    click_after_detection_ms: DelayMilliseconds = 500
+    click_position_jitter_px: PositionJitter = 6
+    click_interval_jitter_ms: TimeJitter = 120
+    click_duration_jitter_ms: TimeJitter = 15
+
+
 class EngineConfig(_ConfigModel):
     dry_run: StrictBool = True
     memory_protection: StrictBool = False
@@ -51,6 +65,7 @@ class EngineConfig(_ConfigModel):
     window: WindowConfig = Field(default_factory=WindowConfig)
     capture: CaptureConfig = Field(default_factory=CaptureConfig)
     vision: VisionConfig = Field(default_factory=VisionConfig)
+    automation: AutomationConfig = Field(default_factory=AutomationConfig)
     debug: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("heartbeat_interval_seconds", "mock_step_delay_seconds", mode="before")

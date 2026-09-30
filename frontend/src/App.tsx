@@ -66,6 +66,10 @@ const translations = {
     },
     levels: { debug: "调试", info: "信息", warning: "警告", error: "错误" },
     taskNames: {
+      login_lobby: [
+        "登录进大厅",
+        "自动识别当前登录画面，选择平台并关闭弹窗，直到进入归宿",
+      ],
       home_book: ["识别归宿并点击书本", "用十个固定像素判断归宿界面并点击右侧书本"],
       mock_weekly: ["模拟周常流程", "不操作真实窗口的可验证任务流程"],
       weekly: ["周常任务", "执行已实现的周常任务状态流"],
@@ -215,6 +219,17 @@ const translations = {
       positionLeftBottom: "左下",
       positionRightBottom: "右下",
       restoreWindow: "任务结束后恢复游戏窗口",
+      loginAutomation: "登录自动化",
+      loginAutomationHint: "随机偏移始终启用；每次点击前会重复确认当前画面。",
+      loginPlatform: "登录平台",
+      android: "Android",
+      ios: "iOS",
+      loginTimeout: "最长等待时间（秒）",
+      screenshotDelay: "点击后等待截图（毫秒）",
+      clickDelay: "识别后等待点击（毫秒）",
+      positionJitter: "点击位置随机范围（像素）",
+      intervalJitter: "点击间隔随机范围（毫秒）",
+      durationJitter: "按住时长随机范围（毫秒）",
       developerMode: "开发者模式",
       developerModeHint: "显示服务详情与手动命令",
       developerSection: "开发者设置",
@@ -298,6 +313,10 @@ const translations = {
       error: "Error",
     },
     taskNames: {
+      login_lobby: [
+        "Enter the home lobby",
+        "Detects the current login screen, selects a platform, and dismisses popups until home is reached",
+      ],
       home_book: [
         "Detect home and click the book",
         "Checks ten fixed pixels on the home screen, then clicks the book on the right",
@@ -456,6 +475,18 @@ const translations = {
       positionLeftBottom: "Bottom left",
       positionRightBottom: "Bottom right",
       restoreWindow: "Restore the game window after a task",
+      loginAutomation: "Login automation",
+      loginAutomationHint:
+        "Random variation is always enabled. The current screen is confirmed again before every click.",
+      loginPlatform: "Login platform",
+      android: "Android",
+      ios: "iOS",
+      loginTimeout: "Maximum wait time (seconds)",
+      screenshotDelay: "Wait before screenshot after click (ms)",
+      clickDelay: "Wait before click after detection (ms)",
+      positionJitter: "Click position variation (px)",
+      intervalJitter: "Click interval variation (ms)",
+      durationJitter: "Click hold variation (ms)",
       developerMode: "Developer mode",
       developerModeHint: "Show service details and manual commands",
       developerSection: "Developer settings",
@@ -515,10 +546,17 @@ const nav: Array<{ id: Page; icon: string }> = [
 ];
 const initialTasks: TaskItem[] = [
   {
+    id: "login_lobby",
+    name: "login_lobby",
+    description: "",
+    enabled: true,
+    status: "idle",
+  },
+  {
     id: "home_book",
     name: "home_book",
     description: "",
-    enabled: true,
+    enabled: false,
     status: "idle",
   },
   {
@@ -560,6 +598,15 @@ const defaults: Settings = {
   },
   capture: { backend: "wgc", idle_fps: 3, active_fps: 10 },
   vision: { template_threshold: 0.85, state_confirmation_count: 2 },
+  automation: {
+    login_platform: "android",
+    login_timeout_seconds: 300,
+    screenshot_after_click_ms: 500,
+    click_after_detection_ms: 500,
+    click_position_jitter_px: 6,
+    click_interval_jitter_ms: 120,
+    click_duration_jitter_ms: 15,
+  },
   debug: { save_debug_screenshots: false, verbose_logs: false },
 };
 function now(language: Language) {
@@ -763,6 +810,7 @@ export default function App() {
           game_window: { ...defaults.game_window, ...loaded.game_window },
           capture: { ...defaults.capture, ...loaded.capture },
           vision: { ...defaults.vision, ...loaded.vision },
+          automation: { ...defaults.automation, ...loaded.automation },
           debug: { ...defaults.debug, ...loaded.debug },
         });
         setSettingsLoaded(true);
@@ -1732,6 +1780,11 @@ function SettingsPage({
     });
   const updateCapture = (patch: Partial<Settings["capture"]>) =>
     setSettings({ ...settings, capture: { ...settings.capture, ...patch } });
+  const updateAutomation = (patch: Partial<Settings["automation"]>) =>
+    setSettings({
+      ...settings,
+      automation: { ...settings.automation, ...patch },
+    });
   const updateVision = (patch: Partial<Settings["vision"]>) =>
     setSettings({ ...settings, vision: { ...settings.vision, ...patch } });
   const updateDebug = (patch: Partial<Settings["debug"]>) =>
@@ -1795,6 +1848,98 @@ function SettingsPage({
             {t.developerMode}
             <small>{t.developerModeHint}</small>
           </span>
+        </label>
+      </section>
+      <section className="panel developer-panel">
+        <h2>{t.loginAutomation}</h2>
+        <p>{t.loginAutomationHint}</p>
+        <label>
+          {t.loginPlatform}
+          <select
+            value={settings.automation.login_platform}
+            onChange={(event) =>
+              updateAutomation({
+                login_platform: event.target.value as Settings["automation"]["login_platform"],
+              })
+            }
+          >
+            <option value="android">{t.android}</option>
+            <option value="ios">{t.ios}</option>
+          </select>
+        </label>
+        <label>
+          {t.loginTimeout}
+          <input
+            type="number"
+            min="30"
+            max="900"
+            value={settings.automation.login_timeout_seconds}
+            onChange={(event) =>
+              updateAutomation({ login_timeout_seconds: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label>
+          {t.screenshotDelay}
+          <input
+            type="number"
+            min="0"
+            max="10000"
+            step="50"
+            value={settings.automation.screenshot_after_click_ms}
+            onChange={(event) =>
+              updateAutomation({ screenshot_after_click_ms: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label>
+          {t.clickDelay}
+          <input
+            type="number"
+            min="0"
+            max="10000"
+            step="50"
+            value={settings.automation.click_after_detection_ms}
+            onChange={(event) =>
+              updateAutomation({ click_after_detection_ms: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label>
+          {t.positionJitter}
+          <input
+            type="number"
+            min="1"
+            max="50"
+            value={settings.automation.click_position_jitter_px}
+            onChange={(event) =>
+              updateAutomation({ click_position_jitter_px: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label>
+          {t.intervalJitter}
+          <input
+            type="number"
+            min="1"
+            max="2000"
+            value={settings.automation.click_interval_jitter_ms}
+            onChange={(event) =>
+              updateAutomation({ click_interval_jitter_ms: Number(event.target.value) })
+            }
+          />
+        </label>
+        <label>
+          {t.durationJitter}
+          <input
+            type="number"
+            min="1"
+            max="2000"
+            value={settings.automation.click_duration_jitter_ms}
+            onChange={(event) =>
+              updateAutomation({ click_duration_jitter_ms: Number(event.target.value) })
+            }
+          />
         </label>
       </section>
       <section className="panel developer-panel">

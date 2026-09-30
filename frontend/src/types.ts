@@ -146,6 +146,15 @@ export interface Settings {
   };
   capture: { backend: string; idle_fps: number; active_fps: number };
   vision: { template_threshold: number; state_confirmation_count: number };
+  automation: {
+    login_platform: "android" | "ios";
+    login_timeout_seconds: number;
+    screenshot_after_click_ms: number;
+    click_after_detection_ms: number;
+    click_position_jitter_px: number;
+    click_interval_jitter_ms: number;
+    click_duration_jitter_ms: number;
+  };
   debug: { save_debug_screenshots: boolean; verbose_logs: boolean };
 }
 
