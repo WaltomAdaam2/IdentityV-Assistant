@@ -58,6 +58,10 @@ class WindowsWindowManager(WindowManager):
         user32.IsWindow.restype = wintypes.BOOL
         user32.SetForegroundWindow.argtypes = [wintypes.HWND]
         user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.ShowWindow.restype = wintypes.BOOL
+        user32.BringWindowToTop.argtypes = [wintypes.HWND]
+        user32.BringWindowToTop.restype = wintypes.BOOL
         user32.SendMessageTimeoutW.argtypes = [
             wintypes.HWND,
             wintypes.UINT,
@@ -249,6 +253,9 @@ class WindowsWindowManager(WindowManager):
 
     def bring_to_front(self) -> None:
         if self._window and self._user32:
+            if self._user32.IsIconic(self._window.hwnd):
+                self._user32.ShowWindow(self._window.hwnd, 9)
+            self._user32.BringWindowToTop(self._window.hwnd)
             self._user32.SetForegroundWindow(self._window.hwnd)
 
     def get_dpi_scale(self) -> float:

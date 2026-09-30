@@ -9,6 +9,7 @@ from app.context import AutomationContext
 from core.enums import TaskFinishReason
 from core.models import CoordinateSpace, Point
 from tasks.base import AutomationTask, TaskControl
+from vision.blackjack_detector import BlackjackDetector
 from vision.home_detector import detect_home_book
 from vision.login_detector import is_activity_popup, is_announcement, is_login_landing, is_platform_choice
 
@@ -28,7 +29,7 @@ class LoginLobbyTask(AutomationTask):
             last_action_stage = ""
             last_action_at = 0.0
             while True:
-                stage, window = await self._wait_for_confirmed_stage(ctx, control, deadline)
+                stage, window, deadline = await self._wait_for_confirmed_stage(ctx, control, deadline)
                 if stage == "home_lobby":
                     break
                 if stage == last_action_stage and monotonic() - last_action_at < 2.0:
@@ -83,6 +84,8 @@ class LoginLobbyTask(AutomationTask):
         control: TaskControl,
         deadline: float,
     ):
+        loading_detector = BlackjackDetector()
+        loading_started: float | None = None
         while monotonic() < deadline:
             await self._check_control(ctx, control)
             window = ctx.window.find_window()
@@ -94,6 +97,20 @@ class LoginLobbyTask(AutomationTask):
                     frame = None
                 if frame is not None:
                     ctx.metrics.screenshots += 1
+                    if loading_detector.detect(frame.image, "loading").found:
+                        await asyncio.sleep(0.01)
+                        again = ctx.capture.capture(window.client_rect, window.hwnd)
+                        ctx.metrics.screenshots += 1
+                        if loading_detector.detect(again.image, "loading").found:
+                            loading_started = loading_started or monotonic()
+                            if monotonic() - loading_started >= 300:
+                                raise TimeoutError("loading animation")
+                            before = monotonic()
+                            await self._check_control(ctx, control)
+                            await asyncio.sleep(0.25)
+                            deadline += monotonic() - before
+                            continue
+                    loading_started = None
                     stage = self._detect_stage(frame.image)
                     if stage and await self._confirm_stage(
                         ctx, control, deadline, window.hwnd, stage
@@ -101,7 +118,7 @@ class LoginLobbyTask(AutomationTask):
                         await ctx.emit("login_stage", stage=stage, found=True)
                         current = ctx.window.find_window()
                         if current is not None:
-                            return stage, current
+                            return stage, current, deadline
             await self._random_delay(
                 250,
                 ctx.config.automation.click_interval_jitter_ms,

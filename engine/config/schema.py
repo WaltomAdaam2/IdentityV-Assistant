@@ -50,6 +50,8 @@ class AutomationConfig(_ConfigModel):
     click_position_jitter_px: PositionJitter = 6
     click_interval_jitter_ms: TimeJitter = 120
     click_duration_jitter_ms: TimeJitter = 15
+    blackjack_infinite_loop: StrictBool = False
+    camera_turn_scale_percent: Annotated[StrictInt, Field(ge=20, le=300)] = 100
 
 
 class EngineConfig(_ConfigModel):

@@ -24,6 +24,7 @@ from runtime.metrics import RuntimeMetrics
 from runtime.memory_guard import MemoryGuard
 from states.history import StateHistory
 from tasks.base import AutomationTask, TaskControl
+from tasks.blackjack_task import BlackjackTask
 from tasks.login_lobby_task import LoginLobbyTask
 from window.base import WindowInfo
 from window.windows import WindowsWindowManager
@@ -417,7 +418,7 @@ class AutomationEngine:
 
     @staticmethod
     def _task_factories() -> dict[str, type[AutomationTask]]:
-        return {"login_lobby": LoginLobbyTask}
+        return {"login_lobby": LoginLobbyTask, "blackjack": BlackjackTask}
 
     async def _start_task(self, task_name: str, preserve_queue: bool = False) -> None:
         if self._task_runner and not self._task_runner.done():
