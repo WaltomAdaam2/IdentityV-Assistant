@@ -23,6 +23,8 @@ Identity V Assistant is a Windows desktop framework for external visual automati
 * State evidence, confirmation history, unknown-state, and recovery foundations
 * Global dry run, background left/right click and Q / F / Esc input, and held-input cleanup
 * Ten fixed-pixel home-screen recognition with an eight-match book click
+* An “Enter the home lobby” task that resumes from any recognized login screen, confirms two frames, selects the platform, dismisses popups, and waits for home
+* Configurable login timeout, capture and click delays, with always-on variation for click position, interval, and hold duration
 * Optional memory protection that collects unused objects above 90% system memory use
 * Capture diagnostics, concise logs, and window settings available to regular users
 * Python and Rust core test foundations
