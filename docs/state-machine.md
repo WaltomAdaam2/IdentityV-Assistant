@@ -2,12 +2,10 @@
 
 The game state model currently defines `unknown`, `game_not_found`, `startup`, `login`, `lobby`, `mode_select`, `matchmaking`, `loading`, `in_match`, `result`, `reward`, `weekly_limit`, `network_error`, and `popup`.
 
-The mock task follows:
+The Blackjack task follows:
 
 ```text
-UNKNOWN -> LOBBY -> MODE_SELECT -> MATCHMAKING -> LOADING -> IN_MATCH -> RESULT -> LOBBY
+HOME -> BOOK -> CHAOS -> BLACKJACK -> MATCHMAKING -> READY -> CARD -> IN_MATCH -> RESULT -> HOME
 ```
 
-Real detectors produce a `StateDetection` containing a state, confidence, and evidence list. `StateHistory` confirms ordinary transitions across multiple observations so one uncertain frame does not cause state churn. `UNKNOWN` is retried and measured; it is a valid observation, not an exception.
-
-The weekly task is intentionally a placeholder. Its handlers return semantic planned actions without guessed screen coordinates.
+The Blackjack detector normalizes frames to 1920 × 1080, searches small template regions, and confirms a critical screen in two observations at least 10 ms apart. Home detection uses ten sampled pixels and requires eight matches. Loading pauses each ordinary 300-second stage timeout, while 300 seconds of continuous loading is an error. After a match, the task confirms the result and return buttons, then counts a completed cycle only after home is recognized again.

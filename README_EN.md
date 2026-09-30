@@ -2,31 +2,32 @@
 
 **Language / 语言:** [中文](README.md) | English
 
-Identity V Assistant is a Windows desktop framework for external visual automation of the PC version of Identity V. It organizes workflows around visible screen recognition, a state machine, and normal Windows input. It does not read or modify game process memory, inject DLLs, or manipulate network traffic.
+Identity V Assistant is a Windows desktop visual automation assistant for Identity V. It recognizes window screenshots and runs tasks through normal Windows input.
 
-> The project is currently at the **0.1.0 framework stage**. Full match automation, weekly farming, character logic, and pathfinding are not implemented.
+> This is a **0.1.0 development version**. The Blackjack flow has passed screenshot recognition and timing checks, but a full match has not been verified in the live game.
 
 ## Features
 
-* React and TypeScript desktop utility interface in Simplified Chinese
+* React and TypeScript desktop interface in Chinese and English, with Chinese as the default
 * Tauri 2 process supervision and command bridge in Rust
 * Long-running Python engine with NDJSON IPC
 * Ready, heartbeat, log, state, action, metrics, and structured error events
-* Pause, resume, and stop controls for a safe MockTask
+* Pause, resume, and stop controls for the “Enter the home lobby” and “Blackjack” tasks
 * Pydantic-validated configuration loading and persistence
 * Live Windows discovery, client rectangle, response-state, and DPI diagnostics
 * Window-level capture for game windows covered by other windows or placed on another monitor
-* Configurable borderless background mode, 1600 × 900 default resolution, positioning, and restoration
 * DXcam and MSS compatibility fallbacks
 * OpenCV template matching with configurable confidence
 * Lazy OCR interface with an optional RapidOCR backend
 * State evidence, confirmation history, unknown-state, and recovery foundations
-* Global dry run, background left/right click and Q / F / Esc input, and held-input cleanup
+* Window message input for login; foreground SendInput for Blackjack after restoring and focusing the game window
 * Ten fixed-pixel home-screen recognition with an eight-match book click
 * An “Enter the home lobby” task that resumes from any recognized login screen, confirms two frames, selects the platform, dismisses popups, and waits for home
-* Configurable login timeout, capture and click delays, with always-on variation for click position, interval, and hold duration
+* A Blackjack task that opens the book from home, selects the mode, matches and readies up, acts according to the detected role, and returns home after the result screen; optional indefinite looping
+* Task card editors for login platform, timeout, click delays and variation, camera turn scale, and looping; changes save automatically
+* Enabled task selection survives restarts; enabled tasks run in list order
 * Optional memory protection that collects unused objects above 90% system memory use
-* Capture diagnostics, concise logs, and window settings available to regular users
+* Capture diagnostics, concise logs, and window settings available to regular users; logs support search, filtering, pagination, and page jumping
 * Python and Rust core test foundations
 
 ## Architecture
@@ -43,10 +44,31 @@ Rust lifecycle supervisor
 Python visual automation engine
         |
         v
-window surface + client-area Windows input
+window capture + Windows input
 ```
 
-Automatic capture uses Windows Graphics Capture by default to read the complete client area by game window handle. It does not depend on the game being in front or on the primary monitor. Background tasks send client-area input through Win32 messages. Simulation mode remains enabled by default; turn it off in Settings to send real clicks.
+Automatic capture uses Windows Graphics Capture by default to read the game window's complete client area. Login can use window messages. Blackjack brings the game to the foreground and checks focus again before input. Templates and supplied reference screenshots are together in [`assets/templates/blackjack`](assets/templates/blackjack).
+
+## Run tasks
+
+1. Open Identity V and this app.
+2. On Tasks, use Edit to choose Android or iOS for login and tune Blackjack settings.
+3. Enable the tasks you want and select Start enabled tasks. When both are enabled, login runs before Blackjack.
+4. The game stays in the foreground during Blackjack. Pausing or stopping releases held keys.
+
+The left sidebar shows the current stage, role, and completed cycle count. Indefinite looping is off by default. Loading does not count toward an ordinary stage timeout, but 300 seconds of continuous loading times out.
+
+## Local data
+
+Settings and runtime data are stored under `%LOCALAPPDATA%\IdentityV-Assistant\`:
+
+```text
+config.json                  Settings and enabled tasks
+logs\YYYY-MM-DD.jsonl       Complete daily event archive
+debug\captures\            Manual diagnostic screenshots
+```
+
+Daily logs are kept for 30 days. Expired files are removed on startup and when the date changes. The Logs page shows only the current app session, retaining at most 99,000 entries with 1,000 per page. Clearing the page does not delete daily files. Verbose mode changes only what the page shows; disk logs remain complete.
 
 See [Architecture](docs/architecture.md) for layer boundaries and [IPC Protocol](docs/ipc.md) for message definitions.
 
@@ -115,9 +137,7 @@ scripts/        Windows development helpers
 
 ## Planned Work
 
-* Collect legal game screenshots and templates
-* Implement and tune real state detectors
-* Add verified semantic actions for the weekly task
+* Calibrate screen recognition and input against live game sessions
 * Package the Python engine as a standalone executable
 * Add the OCR backend and real-environment integration tests
 

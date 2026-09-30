@@ -8,7 +8,8 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 
 | Type | Main fields | Purpose |
 | --- | --- | --- |
-| `start_task` | `task` | Start a registered task; dry-run comes from active configuration |
+| `start_task` | `task` | Start one registered task |
+| `start_tasks` | ordered `tasks` array | Run enabled tasks in list order |
 | `pause_task` | — | Pause the active task |
 | `resume_task` | — | Resume it |
 | `stop_task` | — | Cancel it and release held inputs |
@@ -27,7 +28,10 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | `heartbeat` | `engine_status`, `task_status` | Liveness and lifecycle |
 | `task_state` | `state`, `previous_state`, `confidence` | Stable detected state |
 | `state_transition` | `from`, `to`, `confidence`, `duration_in_previous_state` | One event per transition |
-| `planned_action` | `action`, `input`, `target`, `dry_run` | Next semantic action |
+| `planned_action` | `action`, `input`, `target` | Action sent to the game |
+| `task_started` | `task_id` | Task selected from the queue |
+| `task_progress` | `task_id`, `stage`, `role`, `completed_cycles`, `infinite_loop` | Current Blackjack progress |
+| `recognition_evidence` | `task_id`, `stage`, `confidence`, `bbox` | Confirmed visual evidence |
 | `log` | `level`, `source`, `message`, `data` | Structured UI log |
 | `metrics` | counters | Runtime statistics |
 | `debug_frame` | `path`, dimensions, `state` | Safe local frame metadata |
@@ -36,4 +40,4 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 
 Unknown message types may be logged and ignored for forward compatibility. A protocol version mismatch is an error.
 
-Task-specific `options` are reserved for later protocol versions and are currently ignored by the mock task.
+The frontend saves UI events through the Tauri `append_ui_log` command. Engine and UI events are appended to `%LOCALAPPDATA%\IdentityV-Assistant\logs\YYYY-MM-DD.jsonl`.

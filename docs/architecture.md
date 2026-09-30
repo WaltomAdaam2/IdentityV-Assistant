@@ -19,4 +19,4 @@ React UI -> Tauri commands -> Rust supervisor -> NDJSON stdin -> Python engine
 React UI <- engine-event  <- Rust parser     <- NDJSON stdout <- Python engine
 ```
 
-The default mock task exercises this whole path without requiring Identity V or sending real input.
+The login task uses window messages. Blackjack requires the game to be in the foreground and uses SendInput. The Rust supervisor writes complete engine events to dated AppData logs; the frontend sends its own UI events to the same archive.
