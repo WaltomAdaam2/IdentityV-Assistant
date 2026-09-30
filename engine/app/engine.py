@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from app.context import AutomationContext
 from capture.manager import CaptureManager
+from config.loader import parse_config
 from config.schema import EngineConfig
 from core.enums import EngineStatus, ErrorCode, TaskFinishReason
 from core.models import CoordinateSpace, Point, Rect
@@ -149,8 +150,66 @@ class AutomationEngine:
             await self._test_template(command, request_id)
         elif command_type == "input_test":
             await self._input_test(command, request_id)
+        elif command_type == "reload_settings":
+            await self._reload_settings(command)
         elif command_type == "shutdown":
             self._shutdown.set()
+
+    async def _reload_settings(self, command: dict) -> None:
+        settings = command.get("settings")
+        if not isinstance(settings, dict):
+            await self.emit(
+                "error",
+                code="CONFIG_INVALID",
+                message="Settings must be an object",
+                recoverable=True,
+                details={},
+            )
+            return
+        try:
+            config = parse_config(settings)
+        except ValueError as error:
+            await self.emit(
+                "error",
+                code="CONFIG_INVALID",
+                message=str(error),
+                recoverable=True,
+                details={},
+            )
+            return
+
+        previous = self.config
+        self.config = config
+        self.context.config = config
+        self.context.window.config = config.window
+        self.context.input.dry_run = config.dry_run
+        self.context.input.position_jitter_px = config.automation.click_position_jitter_px
+        self.context.input.click_duration_jitter_ms = config.automation.click_duration_jitter_ms
+        self.context.memory_guard.enabled = config.memory_protection
+        self.context.state_history = StateHistory(config.vision.state_confirmation_count)
+
+        if previous.capture != config.capture:
+            self.context.capture.config = config.capture
+            self.context.capture.backend = None
+            self.context.capture.backend_name = "not_initialized"
+            self.context.capture.last_error = None
+
+        try:
+            if previous.window.background_mode and not config.window.background_mode:
+                self.context.window.restore_window_mode()
+            elif config.window.background_mode and self.context.window.find_window() is not None:
+                self.context.window.prepare_background_mode()
+        except Exception as error:
+            await self.emit(
+                "error",
+                code="WINDOW_MODE_FAILED",
+                message=str(error),
+                recoverable=True,
+                details={},
+            )
+            return
+
+        await self.emit("settings_reloaded", level="info", source="settings")
 
     async def _detect_window(self, request_id: str | None = None) -> None:
         window = self.context.window.find_window()

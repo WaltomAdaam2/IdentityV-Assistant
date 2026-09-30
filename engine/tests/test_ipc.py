@@ -12,3 +12,7 @@ def test_event_round_trips_as_single_ndjson_object() -> None:
 def test_command_validation_rejects_event_type() -> None:
     with pytest.raises(ProtocolError, match="unsupported command"):
         validate_envelope(event("ready"), commands_only=True)
+
+
+def test_reload_settings_is_a_valid_command() -> None:
+    validate_envelope(event("reload_settings", settings={}), commands_only=True)

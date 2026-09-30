@@ -699,6 +699,8 @@ export default function App() {
     state: "stopped",
     queue_size: 0,
   });
+  const engineStatusRef = useRef("stopped");
+  engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -953,14 +955,28 @@ export default function App() {
   useEffect(() => {
     if (!settingsLoaded) return;
     const timer = window.setTimeout(() => {
-      void bridge.saveSettings(settings).catch((error) => {
-        const message = translations[languageRef.current].actionFailed(
-          translations[languageRef.current].nav.settings,
-          asMessage(error),
-        );
-        appendLog("error", message, "settings");
-        setNotice(message);
-      });
+      void (async () => {
+        try {
+          await bridge.saveSettings(settings);
+          if (
+            !["stopped", "starting", "stopping", "error"].includes(
+              engineStatusRef.current,
+            )
+          ) {
+            await bridge.sendEngineCommand({
+              type: "reload_settings",
+              settings,
+            });
+          }
+        } catch (error) {
+          const message = translations[languageRef.current].actionFailed(
+            translations[languageRef.current].nav.settings,
+            asMessage(error),
+          );
+          appendLog("error", message, "settings");
+          setNotice(message);
+        }
+      })();
     }, 350);
     return () => window.clearTimeout(timer);
   }, [appendLog, settings, settingsLoaded]);
