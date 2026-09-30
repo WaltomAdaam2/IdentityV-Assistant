@@ -9,3 +9,8 @@ pub fn load_settings() -> Result<Value, String> {
 pub fn save_settings(settings: Value) -> Result<(), String> {
     crate::config::save(&settings)
 }
+
+#[tauri::command]
+pub fn append_ui_log(entry: Value) -> Result<(), String> {
+    crate::logs::append(&entry)
+}

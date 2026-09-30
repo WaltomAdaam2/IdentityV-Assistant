@@ -406,7 +406,10 @@ class AutomationEngine:
         import cv2
 
         capture_id = f"{captured_at:%Y%m%dT%H%M%S%fZ}-{uuid4().hex[:8]}"
-        path = Path(__file__).resolve().parents[2] / "debug" / "captures" / f"{capture_id}.png"
+        import os
+
+        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share"))
+        path = root / "IdentityV-Assistant" / "debug" / "captures" / f"{capture_id}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         if not cv2.imwrite(str(path), image):
             raise RuntimeError("could not save debug frame")

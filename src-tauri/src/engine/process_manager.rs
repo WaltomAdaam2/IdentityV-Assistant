@@ -8,7 +8,7 @@ use std::{
 use chrono::Utc;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
@@ -195,12 +195,12 @@ impl EngineSupervisor {
                             } else {
                                 "IPC_PARSE_ERROR"
                             };
-                            let _ = app.emit("engine-event", protocol_error(code, &error));
+                            crate::logs::emit(&app, protocol_error(code, &error));
                             continue;
                         }
                         let is_ready = message.get("type").and_then(Value::as_str) == Some("ready");
                         supervisor.apply_event(&message).await;
-                        let _ = app.emit("engine-event", message);
+                        crate::logs::emit(&app, message);
                         if is_ready {
                             if let Some(sender) = ready_sender.take() {
                                 let _ = sender.send(Ok(()));
@@ -209,7 +209,7 @@ impl EngineSupervisor {
                     }
                     Err(error) => {
                         let event = protocol_error("IPC_PARSE_ERROR", &format!("{error}: {line}"));
-                        let _ = app.emit("engine-event", event);
+                        crate::logs::emit(&app, event);
                     }
                 }
             }
@@ -231,8 +231,8 @@ impl EngineSupervisor {
                     let mut state = supervisor.inner.lock().await;
                     state.last_error = Some(line.clone());
                 }
-                let _ = app.emit(
-                    "engine-event",
+                crate::logs::emit(
+                    &app,
                     json!({
                         "version": 1,
                         "type": "log",
@@ -280,7 +280,7 @@ impl EngineSupervisor {
                     }
                 };
                 if let Some(message) = exit {
-                    let _ = app.emit("engine-event", protocol_error("ENGINE_CRASHED", &message));
+                    crate::logs::emit(&app, protocol_error("ENGINE_CRASHED", &message));
                     return;
                 }
             }

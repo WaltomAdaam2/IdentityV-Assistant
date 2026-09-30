@@ -16,6 +16,7 @@ export const bridge = {
   getEngineSnapshot: () => invoke<EngineSnapshot>("get_engine_snapshot"),
   loadSettings: () => invoke<Settings>("load_settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
+  appendUiLog: (entry: Record<string, unknown>) => invoke<void>("append_ui_log", { entry }),
   detectWindow: () => invoke<DiagnosticRequest>("detect_window"),
   captureFrame: () => invoke<DiagnosticRequest>("capture_frame"),
   readDebugFrame: (path: string) => invoke<string>("read_debug_frame", { path }),

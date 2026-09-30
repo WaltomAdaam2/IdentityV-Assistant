@@ -27,6 +27,7 @@ interface LogEntry {
   level: LogLevel;
   message: string;
   source: string;
+  important?: boolean;
 }
 
 const translations = {
@@ -182,12 +183,17 @@ const translations = {
     logs: {
       all: "全部级别",
       filter: "筛选日志",
-      clear: "清空本页日志",
+      clear: "清空当前会话日志",
       time: "时间",
       level: "级别",
       source: "来源",
       message: "消息",
       empty: "没有匹配的日志。",
+      previous: "上一页",
+      next: "下一页",
+      jump: "跳转",
+      page: "页",
+      total: "条记录",
     },
     settings: {
       general: "常规",
@@ -412,12 +418,17 @@ const translations = {
     logs: {
       all: "All levels",
       filter: "Filter logs",
-      clear: "Clear page logs",
+      clear: "Clear session logs",
       time: "Time",
       level: "Level",
       source: "Source",
       message: "Message",
       empty: "No matching logs.",
+      previous: "Previous",
+      next: "Next",
+      jump: "Go",
+      page: "Page",
+      total: "entries",
     },
     settings: {
       general: "General",
@@ -644,8 +655,6 @@ export default function App() {
   const language = settings.app.language;
   const languageRef = useRef<Language>(language);
   languageRef.current = language;
-  const verboseLogsRef = useRef(settings.debug.verbose_logs);
-  verboseLogsRef.current = settings.debug.verbose_logs;
   const t = translations[language];
   const [logs, setLogs] = useState<LogEntry[]>([
     {
@@ -654,6 +663,7 @@ export default function App() {
       level: "info",
       message: translations[defaults.app.language].ready,
       source: "ui",
+      important: true,
     },
   ]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -671,7 +681,9 @@ export default function App() {
   const [developerInputEnabled, setDeveloperInputEnabled] = useState(false);
   const [runtimeEvent, setRuntimeEvent] = useState<EngineEvent | null>(null);
   const appendLog = useCallback(
-    (level: LogLevel, message: string, source = "engine") =>
+    (level: LogLevel, message: string, source = "engine", important = false, persist = true) => {
+      if (persist)
+        void bridge.appendUiLog({ type: "ui_log", timestamp: new Date().toISOString(), level, source, message }).catch(console.error);
       setLogs((current) =>
         [
           {
@@ -680,10 +692,12 @@ export default function App() {
             level,
             message,
             source,
+            important,
           },
           ...current,
-        ].slice(0, 500),
-      ),
+        ].slice(0, 99_000),
+      );
+    },
     [],
   );
   const updateFrame = useCallback(
@@ -714,8 +728,7 @@ export default function App() {
       const current = translations[languageRef.current];
       try {
         await action();
-        if (verboseLogsRef.current)
-          appendLog("info", current.actionSent(label), "ui");
+        appendLog("info", current.actionSent(label), "ui");
         setNotice(current.actionNotice(label));
       } catch (error) {
         const message = current.actionFailed(label, asMessage(error));
@@ -787,13 +800,7 @@ export default function App() {
           event.data?.important === true ||
           event.type === "ready" ||
           event.type === "task_finished";
-        if (
-          verboseLogsRef.current ||
-          level === "warning" ||
-          level === "error" ||
-          important
-        )
-          appendLog(level, eventMessage, event.source ?? event.type ?? "engine");
+        appendLog(level, eventMessage, event.source ?? event.type ?? "engine", important, false);
         if (event.type === "heartbeat") {
           setSnapshot((current) => ({
             ...current,
@@ -1028,7 +1035,7 @@ export default function App() {
       />
     ),
     logs: (
-      <Logs language={language} entries={logs} onClear={() => setLogs([])} />
+      <Logs language={language} entries={logs} verbose={settings.debug.verbose_logs} onClear={() => setLogs([])} />
     ),
     settings: (
       <SettingsPage
@@ -1651,33 +1658,44 @@ function Debug({
 function Logs({
   language,
   entries,
+  verbose,
   onClear,
 }: {
   language: Language;
   entries: LogEntry[];
+  verbose: boolean;
   onClear: () => void;
 }) {
   const t = translations[language].logs;
   const [level, setLevel] = useState<"all" | LogLevel>("all");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [jump, setJump] = useState("");
   const shown = useMemo(
     () =>
       entries.filter(
         (entry) =>
+          (verbose || entry.important || entry.level === "warning" || entry.level === "error") &&
           (level === "all" || entry.level === level) &&
           entry.message.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
       ),
-    [entries, level, query],
+    [entries, level, query, verbose],
   );
+  const pageCount = Math.max(1, Math.min(99, Math.ceil(shown.length / 1000)));
+  const currentPage = Math.min(page, pageCount);
+  const visible = shown.slice((currentPage - 1) * 1000, currentPage * 1000);
+  const pages = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])]
+    .filter((value) => value >= 1 && value <= pageCount).sort((a, b) => a - b);
   return (
     <section className="panel logs-panel">
       <div className="log-toolbar">
         <div className="filters">
           <select
             value={level}
-            onChange={(event) =>
-              setLevel(event.target.value as "all" | LogLevel)
-            }
+            onChange={(event) => {
+              setLevel(event.target.value as "all" | LogLevel);
+              setPage(1);
+            }}
           >
             <option value="all">{t.all}</option>
             {(["debug", "info", "warning", "error"] as const).map((item) => (
@@ -1689,10 +1707,10 @@ function Logs({
           <input
             placeholder={t.filter}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); setPage(1); }}
           />
         </div>
-        <button onClick={onClear}>{t.clear}</button>
+        <button onClick={() => { onClear(); setPage(1); }}>{t.clear}</button>
       </div>
       <div className="log-table">
         <div className="log-head">
@@ -1701,8 +1719,8 @@ function Logs({
           <span>{t.source}</span>
           <span>{t.message}</span>
         </div>
-        {shown.length ? (
-          shown.map((entry) => (
+        {visible.length ? (
+          visible.map((entry) => (
             <div className="log-row" key={entry.id}>
               <time>{entry.at}</time>
               <span>
@@ -1717,6 +1735,23 @@ function Logs({
         ) : (
           <p className="empty">{t.empty}</p>
         )}
+      </div>
+      <div className="log-pagination">
+        <span>{shown.length} {t.total}</span>
+        <button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>{t.previous}</button>
+        {pages.map((value, index) => (
+          <span key={value}>
+            {index > 0 && value - pages[index - 1] > 1 && <span className="page-gap">…</span>}
+            <button className={value === currentPage ? "active" : ""} onClick={() => setPage(value)}>{value}</button>
+          </span>
+        ))}
+        <button disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>{t.next}</button>
+        {pageCount > 5 && <form onSubmit={(event) => {
+          event.preventDefault();
+          const target = Number(jump);
+          if (Number.isInteger(target) && target >= 1 && target <= pageCount) setPage(target);
+          setJump("");
+        }}><input aria-label={t.page} type="number" min="1" max={pageCount} value={jump} onChange={(event) => setJump(event.target.value)} /><button type="submit">{t.jump}</button></form>}
       </div>
     </section>
   );

@@ -67,14 +67,15 @@ pub fn read_debug_frame(path: String) -> Result<String, String> {
     let requested = PathBuf::from(&path)
         .canonicalize()
         .map_err(|error| format!("Unable to resolve debug frame: {error}"))?;
-    let debug_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let debug_root = crate::config::user_path()?
         .parent()
-        .ok_or("Unable to resolve repository root")?
+        .ok_or("Unable to locate application data")?
         .join("debug")
+        .join("captures")
         .canonicalize()
         .map_err(|error| format!("Unable to resolve debug directory: {error}"))?;
     if !requested.starts_with(&debug_root) {
-        return Err("Debug frame path is outside the project debug directory".into());
+        return Err("Debug frame path is outside the application debug directory".into());
     }
     let metadata = fs::metadata(&requested).map_err(|error| error.to_string())?;
     if !metadata.is_file() {

@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod engine;
+mod logs;
 
 use engine::EngineSupervisor;
 use tauri::Manager;
@@ -17,12 +18,17 @@ pub fn run() {
             commands::engine::get_engine_snapshot,
             commands::settings::load_settings,
             commands::settings::save_settings,
+            commands::settings::append_ui_log,
             commands::diagnostics::detect_window,
             commands::diagnostics::capture_frame,
             commands::diagnostics::test_template,
             commands::diagnostics::input_test,
             commands::diagnostics::read_debug_frame,
         ])
+        .setup(|_| {
+            logs::prune().map_err(std::io::Error::other)?;
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();

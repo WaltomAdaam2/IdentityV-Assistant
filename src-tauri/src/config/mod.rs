@@ -57,13 +57,23 @@ fn migrate(settings: &mut Value) -> bool {
         engine.remove("dry_run");
         engine.remove("mock_step_delay_seconds");
     }
-    if let Some(window) = settings.get_mut("game_window").and_then(Value::as_object_mut) {
-        for key in ["background_mode", "resolution", "position", "restore_after_task"] {
+    if let Some(window) = settings
+        .get_mut("game_window")
+        .and_then(Value::as_object_mut)
+    {
+        for key in [
+            "background_mode",
+            "resolution",
+            "position",
+            "restore_after_task",
+        ] {
             window.remove(key);
         }
     }
     if let Some(root) = settings.as_object_mut() {
-        let tasks = root.entry("tasks").or_insert_with(|| json!({"enabled": ["login_lobby"]}));
+        let tasks = root
+            .entry("tasks")
+            .or_insert_with(|| json!({"enabled": ["login_lobby"]}));
         if let Some(enabled) = tasks.get_mut("enabled").and_then(Value::as_array_mut) {
             for id in enabled {
                 if id.as_str() == Some("home_book") {
