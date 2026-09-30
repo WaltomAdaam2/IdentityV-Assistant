@@ -517,6 +517,7 @@ const initialTasks: TaskItem[] = [
   },
 ];
 const defaults: Settings = {
+  tasks: { enabled: ["login_lobby"] },
   app: {
     language: "zh-CN",
     theme: "light",
@@ -740,9 +741,16 @@ export default function App() {
     void bridge
       .loadSettings()
       .then((loaded) => {
+        const enabled = new Set(
+          (loaded.tasks?.enabled ?? defaults.tasks.enabled).map((id) =>
+            id === "home_book" ? "blackjack" : id,
+          ),
+        );
+        setTasks(initialTasks.map((task) => ({ ...task, enabled: enabled.has(task.id) })));
         setSettings({
           ...defaults,
           ...loaded,
+          tasks: { enabled: initialTasks.filter((task) => enabled.has(task.id)).map((task) => task.id) },
           app: { ...defaults.app, ...loaded.app },
           engine: { ...defaults.engine, ...loaded.engine },
           game_window: { ...defaults.game_window, ...loaded.game_window },
@@ -864,6 +872,10 @@ export default function App() {
                 : task,
             ),
           );
+        if (event.type === "task_started" && event.task_id)
+          setTasks((current) =>
+            current.map((task) => ({ ...task, status: task.id === event.task_id ? "running" : "idle" })),
+          );
         if (event.type === "task_finished") {
           setTasks((current) =>
             current.map((task) => ({ ...task, status: "idle" })),
@@ -893,7 +905,7 @@ export default function App() {
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          await bridge.saveSettings(settings);
+          await bridge.saveSettings({ ...settings, tasks: { enabled: tasks.filter((task) => task.enabled).map((task) => task.id) } });
           if (
             !["stopped", "starting", "stopping", "error"].includes(
               engineStatusRef.current,
@@ -915,7 +927,7 @@ export default function App() {
       })();
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [appendLog, settings, settingsLoaded]);
+  }, [appendLog, settings, settingsLoaded, tasks]);
   useEffect(() => {
     document.title = t.about.name;
   }, [t.about.name]);
@@ -1222,11 +1234,11 @@ function Tasks({
     onChange(
       tasks.map((task) => (task.id === id ? { ...task, ...patch } : task)),
     );
-  const firstEnabled = tasks.find((task) => task.enabled);
+  const enabledTasks = tasks.filter((task) => task.enabled);
   const startFirst = () => {
-    if (!firstEnabled) return;
-    update(firstEnabled.id, { status: "running" });
-    onCommand(t.startEnabled, { type: "start_task", task: firstEnabled.id });
+    if (!enabledTasks.length) return;
+    update(enabledTasks[0].id, { status: "running" });
+    onCommand(t.startEnabled, { type: "start_tasks", tasks: enabledTasks.map((task) => task.id) });
   };
   return (
     <>
@@ -1237,7 +1249,7 @@ function Tasks({
         </div>
         <button
           className="primary"
-          disabled={!firstEnabled}
+          disabled={!enabledTasks.length}
           onClick={startFirst}
         >
           {t.startEnabled}

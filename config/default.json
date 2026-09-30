@@ -1,5 +1,6 @@
 {
   "app": {"language": "zh-CN", "theme": "light", "launch_engine_on_start": false, "developer_mode": false},
+  "tasks": {"enabled": ["login_lobby"]},
   "engine": {"memory_protection": false, "heartbeat_interval_seconds": 2.0},
   "game_window": {"process_names": ["dwrg.exe", "IdentityV.exe"], "title_contains": ["第五人格", "Identity V"], "class_names": []},
   "capture": {"backend": "wgc", "idle_fps": 3, "active_fps": 10},

@@ -122,6 +122,7 @@ export interface DiagnosticRequest {
 }
 
 export interface Settings {
+  tasks: { enabled: string[] };
   app: {
     language: "zh-CN" | "en-US";
     theme: "system" | "light" | "dark";

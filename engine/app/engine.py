@@ -39,6 +39,7 @@ class AutomationEngine:
         self._shutdown = asyncio.Event()
         self._task_control: TaskControl | None = None
         self._task_runner: asyncio.Task[None] | None = None
+        self._task_queue: list[str] = []
         self._developer_input_enabled = False
         self._window_health: str | None = None
         self._memory_pressure = False
@@ -129,6 +130,17 @@ class AutomationEngine:
             )
         elif command_type == "start_task":
             await self._start_task(str(command.get("task", "login_lobby")))
+        elif command_type == "start_tasks":
+            names = command.get("tasks")
+            if not isinstance(names, list) or not names or any(not isinstance(name, str) for name in names):
+                await self.emit("error", code="TASK_UNKNOWN", message="Expected a nonempty task list", recoverable=True, details={})
+            elif any(name not in self._task_factories() for name in names):
+                await self.emit("error", code="TASK_UNKNOWN", message="Unknown task in queue", recoverable=True, details={})
+            elif self._task_runner and not self._task_runner.done():
+                await self.emit("error", code="TASK_ALREADY_RUNNING", message="A task is already running", recoverable=True, details={})
+            else:
+                self._task_queue = names[1:]
+                await self._start_task(names[0], preserve_queue=True)
         elif command_type == "pause_task" and self._task_control:
             self._task_control.pause()
             self.status, self.task_status = EngineStatus.PAUSED, "paused"
@@ -400,18 +412,23 @@ class AutomationEngine:
             raise RuntimeError("could not save debug frame")
         return path
 
-    async def _start_task(self, task_name: str) -> None:
+    @staticmethod
+    def _task_factories() -> dict[str, type[AutomationTask]]:
+        return {"login_lobby": LoginLobbyTask}
+
+    async def _start_task(self, task_name: str, preserve_queue: bool = False) -> None:
         if self._task_runner and not self._task_runner.done():
             await self.emit("error", code="TASK_ALREADY_RUNNING", message="A task is already running", recoverable=True, details={})
             return
-        factories: dict[str, type[AutomationTask]] = {
-            "login_lobby": LoginLobbyTask,
-        }
+        factories = self._task_factories()
         if task_name not in factories:
             await self.emit("error", code="TASK_UNKNOWN", message=f"Unknown task: {task_name}", recoverable=True, details={})
             return
+        if not preserve_queue:
+            self._task_queue.clear()
         self._task_control = TaskControl()
         self.status, self.task_status = EngineStatus.RUNNING, "running"
+        await self.emit("task_started", task_id=task_name)
         self._task_runner = asyncio.create_task(self._run_task(factories[task_name]()))
 
     async def _run_task(self, task: AutomationTask) -> None:
@@ -426,8 +443,17 @@ class AutomationEngine:
         if self.status != EngineStatus.ERROR:
             self.status, self.task_status = EngineStatus.IDLE, "idle"
         await self.emit("task_finished", reason=reason.value, stats=self.context.metrics.snapshot())
+        if reason == TaskFinishReason.COMPLETED and self._task_queue:
+            next_name = self._task_queue.pop(0)
+            self._task_control = TaskControl()
+            self.status, self.task_status = EngineStatus.RUNNING, "running"
+            await self.emit("task_started", task_id=next_name)
+            self._task_runner = asyncio.create_task(self._run_task(self._task_factories()[next_name]()))
+        else:
+            self._task_queue.clear()
 
     async def _stop_task(self, reason: TaskFinishReason) -> None:
+        self._task_queue.clear()
         if not self._task_runner or self._task_runner.done():
             return
         if self._task_control:

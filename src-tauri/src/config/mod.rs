@@ -1,6 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const DEFAULT_SETTINGS: &str = include_str!("../../../config/default.json");
 const APP_DIRECTORY: &str = "IdentityV-Assistant";
@@ -43,8 +43,36 @@ pub fn load() -> Result<Value, String> {
     let path = ensure_user_config()?;
     let text = fs::read_to_string(&path)
         .map_err(|error| format!("Unable to read {}: {error}", path.display()))?;
-    serde_json::from_str(&text)
-        .map_err(|error| format!("Invalid configuration in {}: {error}", path.display()))
+    let mut settings: Value = serde_json::from_str(&text)
+        .map_err(|error| format!("Invalid configuration in {}: {error}", path.display()))?;
+    if migrate(&mut settings) {
+        save(&settings)?;
+    }
+    Ok(settings)
+}
+
+fn migrate(settings: &mut Value) -> bool {
+    let before = settings.clone();
+    if let Some(engine) = settings.get_mut("engine").and_then(Value::as_object_mut) {
+        engine.remove("dry_run");
+        engine.remove("mock_step_delay_seconds");
+    }
+    if let Some(window) = settings.get_mut("game_window").and_then(Value::as_object_mut) {
+        for key in ["background_mode", "resolution", "position", "restore_after_task"] {
+            window.remove(key);
+        }
+    }
+    if let Some(root) = settings.as_object_mut() {
+        let tasks = root.entry("tasks").or_insert_with(|| json!({"enabled": ["login_lobby"]}));
+        if let Some(enabled) = tasks.get_mut("enabled").and_then(Value::as_array_mut) {
+            for id in enabled {
+                if id.as_str() == Some("home_book") {
+                    *id = Value::from("blackjack");
+                }
+            }
+        }
+    }
+    *settings != before
 }
 
 pub fn active_path() -> Result<PathBuf, String> {
@@ -81,5 +109,14 @@ mod tests {
             path,
             PathBuf::from("local-data/IdentityV-Assistant/config.json")
         );
+    }
+
+    #[test]
+    fn migrates_old_task_and_window_settings() {
+        let mut settings = json!({"engine": {"dry_run": true}, "game_window": {"resolution": "1600x900"}, "tasks": {"enabled": ["home_book"]}});
+        assert!(migrate(&mut settings));
+        assert_eq!(settings["tasks"]["enabled"], json!(["blackjack"]));
+        assert!(settings["engine"].get("dry_run").is_none());
+        assert!(settings["game_window"].get("resolution").is_none());
     }
 }
