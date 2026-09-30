@@ -29,6 +29,13 @@ interface LogEntry {
   source: string;
   important?: boolean;
 }
+interface TaskProgress {
+  taskId: string;
+  stage: string;
+  role: "hunter" | "survivor" | null;
+  completedCycles: number;
+  result?: string;
+}
 
 const translations = {
   "zh-CN": {
@@ -106,6 +113,34 @@ const translations = {
       startTask: "启动任务",
       pauseTask: "暂停任务",
       resumeTask: "恢复任务",
+      edit: "编辑",
+      closeEdit: "收起",
+      infiniteLoop: "无限循环",
+      cameraScale: "视角转动幅度（%）",
+      editHint: "更改会自动保存，并立即应用到正在运行的服务。",
+    },
+    progress: {
+      title: "任务进度",
+      cycles: "完成循环",
+      role: "角色",
+      hunter: "监管者",
+      survivor: "求生者",
+      unknown: "待确认",
+      results: { completed: "已完成", user_stopped: "已停止", timeout: "等待超时", window_lost: "窗口已关闭", engine_error: "执行失败" },
+      stages: {
+        starting: "正在启动", waiting_home: "等待归宿", home: "已到归宿",
+        waiting_chaos: "等待混沌纷争", chaos: "混沌纷争",
+        waiting_blackjack: "等待黑杰克", blackjack: "黑杰克",
+        waiting_start_case: "等待开始案件还原", start_case: "准备匹配",
+        waiting_matching: "等待匹配", matching: "匹配中",
+        waiting_ready_case: "等待确认匹配", ready_case: "确认匹配",
+        waiting_ready_start: "等待准备开始", ready_start: "准备开始",
+        waiting_card_confirm: "等待卡牌", card_confirm: "收下卡牌",
+        waiting_role: "等待对局角色", playing: "对局中",
+        continue: "对局结束", waiting_return_lobby: "等待返回大厅",
+        return_lobby: "返回大厅", cycle_complete: "本局完成",
+        loading: "加载中", running: "运行中",
+      },
     },
     runtime: {
       snapshot: "服务状态数据",
@@ -339,6 +374,34 @@ const translations = {
       startTask: "Start task",
       pauseTask: "Pause task",
       resumeTask: "Resume task",
+      edit: "Edit",
+      closeEdit: "Collapse",
+      infiniteLoop: "Loop indefinitely",
+      cameraScale: "Camera turn scale (%)",
+      editHint: "Changes are saved automatically and applied to the running service.",
+    },
+    progress: {
+      title: "Task progress",
+      cycles: "Completed cycles",
+      role: "Role",
+      hunter: "Hunter",
+      survivor: "Survivor",
+      unknown: "Unconfirmed",
+      results: { completed: "Completed", user_stopped: "Stopped", timeout: "Timed out", window_lost: "Game window lost", engine_error: "Failed" },
+      stages: {
+        starting: "Starting", waiting_home: "Waiting for home", home: "At home",
+        waiting_chaos: "Waiting for Chaos", chaos: "Chaos mode",
+        waiting_blackjack: "Waiting for Blackjack", blackjack: "Blackjack",
+        waiting_start_case: "Waiting to start case", start_case: "Preparing match",
+        waiting_matching: "Waiting for match", matching: "Matching",
+        waiting_ready_case: "Waiting for match confirmation", ready_case: "Confirming match",
+        waiting_ready_start: "Waiting for ready", ready_start: "Ready to start",
+        waiting_card_confirm: "Waiting for card", card_confirm: "Taking card",
+        waiting_role: "Waiting for role", playing: "Playing",
+        continue: "Match ended", waiting_return_lobby: "Waiting to return",
+        return_lobby: "Returning to lobby", cycle_complete: "Cycle complete",
+        loading: "Loading", running: "Running",
+      },
     },
     runtime: {
       snapshot: "Service status data",
@@ -554,6 +617,8 @@ const defaults: Settings = {
     click_position_jitter_px: 6,
     click_interval_jitter_ms: 120,
     click_duration_jitter_ms: 15,
+    blackjack_infinite_loop: false,
+    camera_turn_scale_percent: 100,
   },
   debug: { save_debug_screenshots: false, verbose_logs: false },
 };
@@ -650,6 +715,7 @@ export default function App() {
   const engineStatusRef = useRef("stopped");
   engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
+  const [progress, setProgress] = useState<TaskProgress | null>(null);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const language = settings.app.language;
@@ -880,10 +946,20 @@ export default function App() {
             ),
           );
         if (event.type === "task_started" && event.task_id)
+          setProgress({ taskId: event.task_id, stage: "running", role: null, completedCycles: 0 });
+        if (event.type === "task_progress" && event.task_id)
+          setProgress({
+            taskId: event.task_id,
+            stage: event.stage ?? "running",
+            role: event.role ?? null,
+            completedCycles: event.completed_cycles ?? 0,
+          });
+        if (event.type === "task_started" && event.task_id)
           setTasks((current) =>
             current.map((task) => ({ ...task, status: task.id === event.task_id ? "running" : "idle" })),
           );
         if (event.type === "task_finished") {
+          setProgress((current) => current && { ...current, result: event.reason ?? "finished" });
           setTasks((current) =>
             current.map((task) => ({ ...task, status: "idle" })),
           );
@@ -932,7 +1008,7 @@ export default function App() {
           setNotice(message);
         }
       })();
-    }, 350);
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [appendLog, settings, settingsLoaded, tasks]);
   useEffect(() => {
@@ -1005,6 +1081,8 @@ export default function App() {
         language={language}
         tasks={tasks}
         onChange={setTasks}
+        settings={settings}
+        setSettings={setSettings}
         onCommand={(label, command) =>
           run(label, () => bridge.sendEngineCommand(command))
         }
@@ -1056,7 +1134,7 @@ export default function App() {
       <WindowTitleBar language={language} />
       <main className="shell">
         <aside className="sidebar">
-          <div className="brand">
+          <div className="brand sidebar-card" title={t.about.name}>
             <span className="brand-mark">V</span>
             <span>{t.about.name}</span>
           </div>
@@ -1072,16 +1150,20 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div
-            className="sidebar-footer"
-            title={`${t.localConsole}\n${t.localOnly}\nv0.1.0`}
-          >
-            <span className={`local-status-dot ${engineState(snapshot)}`} />
-            <span className="local-status-copy">
-              <strong>{t.localConsole}</strong>
-              <small>{t.localOnly}</small>
-            </span>
-            <b>v0.1.0</b>
+          <div className="sidebar-bottom">
+            {progress && <div className="progress-card sidebar-card" title={`${taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]} · ${progress.stage}`}>
+              <strong>{t.progress.title} · {taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]}</strong>
+              <small>{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
+              <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
+            </div>}
+            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.0`}>
+              <span className={`local-status-dot ${engineState(snapshot)}`} />
+              <span className="local-status-copy">
+                <strong>{t.localConsole}</strong>
+                <small>{t.localOnly}</small>
+              </span>
+              <b>v0.1.0</b>
+            </div>
           </div>
         </aside>
         <section className="workspace" ref={workspaceRef}>
@@ -1229,14 +1311,29 @@ function Tasks({
   language,
   tasks,
   onChange,
+  settings,
+  setSettings,
   onCommand,
 }: {
   language: Language;
   tasks: TaskItem[];
   onChange: (tasks: TaskItem[]) => void;
+  settings: Settings;
+  setSettings: (value: Settings) => void;
   onCommand: (label: string, command: Record<string, unknown>) => void;
 }) {
   const t = translations[language].tasks;
+  const labels = translations[language].settings;
+  const [editingTask, setEditingTask] = useState<string | null>(null);
+  const updateAutomation = (patch: Partial<Settings["automation"]>) =>
+    setSettings({ ...settings, automation: { ...settings.automation, ...patch } });
+  const timingFields = [
+    ["screenshot_after_click_ms", labels.screenshotDelay, 0, 10000],
+    ["click_after_detection_ms", labels.clickDelay, 0, 10000],
+    ["click_position_jitter_px", labels.positionJitter, 1, 50],
+    ["click_interval_jitter_ms", labels.intervalJitter, 1, 2000],
+    ["click_duration_jitter_ms", labels.durationJitter, 1, 2000],
+  ] as const;
   const update = (id: string, patch: Partial<TaskItem>) =>
     onChange(
       tasks.map((task) => (task.id === id ? { ...task, ...patch } : task)),
@@ -1278,7 +1375,8 @@ function Tasks({
                 : t.startTask;
           const [name, description] = taskCopy(task, language);
           return (
-            <article className="task-card" key={task.id}>
+            <div className="task-block" key={task.id}>
+            <article className="task-card">
               <label className="switch">
                 <input
                   type="checkbox"
@@ -1293,9 +1391,6 @@ function Tasks({
                 <h3>{name}</h3>
                 <p>{description}</p>
               </div>
-              <span className={`tag ${task.status}`}>
-                {statusLabel(task.status, language)}
-              </span>
               <button
                 onClick={() => {
                   update(task.id, {
@@ -1317,7 +1412,35 @@ function Tasks({
                     ? t.resume
                     : t.execute}
               </button>
+              <button className="task-edit-button" onClick={() => setEditingTask(editingTask === task.id ? null : task.id)}>
+                {editingTask === task.id ? t.closeEdit : t.edit}
+              </button>
+              <span className={`tag ${task.status}`}>{statusLabel(task.status, language)}</span>
             </article>
+            {editingTask === task.id && <section className="task-editor panel">
+              <h3>{name} · {t.edit}</h3>
+              {task.id === "login_lobby" ? <>
+                <label>{labels.loginPlatform}
+                  <select value={settings.automation.login_platform} onChange={(event) => updateAutomation({ login_platform: event.target.value as Settings["automation"]["login_platform"] })}>
+                    <option value="android">{labels.android}</option>
+                    <option value="ios">{labels.ios}</option>
+                  </select>
+                </label>
+                <label>{labels.loginTimeout}
+                  <input type="number" min="30" max="900" value={settings.automation.login_timeout_seconds} onChange={(event) => updateAutomation({ login_timeout_seconds: Math.max(30, Math.min(900, Number(event.target.value))) })} />
+                </label>
+              </> : <>
+                <label className="check-label"><input type="checkbox" checked={settings.automation.blackjack_infinite_loop} onChange={(event) => updateAutomation({ blackjack_infinite_loop: event.target.checked })} />{t.infiniteLoop}</label>
+                <label>{t.cameraScale}
+                  <input type="number" min="20" max="300" value={settings.automation.camera_turn_scale_percent} onChange={(event) => updateAutomation({ camera_turn_scale_percent: Math.max(20, Math.min(300, Number(event.target.value))) })} />
+                </label>
+                {timingFields.map(([key, label, min, max]) => <label key={key}>{label}
+                  <input type="number" min={min} max={max} value={settings.automation[key]} onChange={(event) => updateAutomation({ [key]: Math.max(min, Math.min(max, Number(event.target.value))) })} />
+                </label>)}
+              </>}
+              <p>{t.editHint}</p>
+            </section>}
+            </div>
           );
         })}
       </div>

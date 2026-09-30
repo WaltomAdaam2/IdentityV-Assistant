@@ -17,6 +17,10 @@ export interface EngineEvent {
   message?: string;
   timestamp?: string;
   task_id?: string;
+  stage?: string;
+  role?: "hunter" | "survivor" | null;
+  completed_cycles?: number;
+  infinite_loop?: boolean;
   engine_status?: string;
   task_status?: string;
   source?: string;
@@ -148,6 +152,8 @@ export interface Settings {
     click_position_jitter_px: number;
     click_interval_jitter_ms: number;
     click_duration_jitter_ms: number;
+    blackjack_infinite_loop: boolean;
+    camera_turn_scale_percent: number;
   };
   debug: { save_debug_screenshots: boolean; verbose_logs: boolean };
 }

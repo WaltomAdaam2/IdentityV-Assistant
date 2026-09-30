@@ -5,6 +5,6 @@
   "game_window": {"process_names": ["dwrg.exe", "IdentityV.exe"], "title_contains": ["第五人格", "Identity V"], "class_names": []},
   "capture": {"backend": "wgc", "idle_fps": 3, "active_fps": 10},
   "vision": {"template_threshold": 0.85, "state_confirmation_count": 2},
-  "automation": {"login_platform": "android", "login_timeout_seconds": 300, "screenshot_after_click_ms": 500, "click_after_detection_ms": 500, "click_position_jitter_px": 6, "click_interval_jitter_ms": 120, "click_duration_jitter_ms": 15},
+  "automation": {"login_platform": "android", "login_timeout_seconds": 300, "screenshot_after_click_ms": 500, "click_after_detection_ms": 500, "click_position_jitter_px": 6, "click_interval_jitter_ms": 120, "click_duration_jitter_ms": 15, "blackjack_infinite_loop": false, "camera_turn_scale_percent": 100},
   "debug": {"save_debug_screenshots": false, "verbose_logs": false}
 }
