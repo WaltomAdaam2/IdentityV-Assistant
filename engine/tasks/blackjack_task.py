@@ -51,10 +51,12 @@ class BlackjackTask(AutomationTask):
         self.role: str | None = None
         self.stage = "starting"
         self._resume_recheck = False
+        self._recovering = False
 
     async def run(self, ctx: AutomationContext, control: TaskControl) -> TaskFinishReason:
         previous_backend = ctx.input.backend
         try:
+            await self._capture(ctx, control)
             window = self._window(ctx)
             ctx.input.backend = WindowsSendInput(window.hwnd)
             while True:
@@ -123,8 +125,6 @@ class BlackjackTask(AutomationTask):
         window = ctx.window.find_window()
         if window is None:
             raise _WindowLost("game window is closed")
-        if not window.is_responding:
-            raise _WindowLost("game window is not responding")
         if window.is_minimized or not window.is_foreground:
             for _ in range(3):
                 ctx.window.bring_to_front()
@@ -134,16 +134,35 @@ class BlackjackTask(AutomationTask):
                     break
         if window is None or window.is_minimized or not window.is_foreground:
             raise _WindowLost("could not bring the game window to the foreground")
-        if not window.is_responding:
-            raise _WindowLost("game window is not responding")
         return window
 
-    def _capture(self, ctx: AutomationContext):
+    def _capture_once(self, ctx: AutomationContext):
         window = self._window(ctx)
         ctx.memory_guard.protect()
         frame = ctx.capture.capture(window.client_rect, window.hwnd)
         ctx.metrics.screenshots += 1
         return self.detector.normalize(frame.image)
+
+    async def _capture(self, ctx: AutomationContext, control: TaskControl):
+        started: float | None = None
+        while True:
+            await self._check(ctx, control)
+            try:
+                image = self._capture_once(ctx)
+                if self._recovering:
+                    await self._log(ctx, "info", "Game window capture recovered")
+                    self._recovering = False
+                    self._resume_recheck = True
+                return image
+            except (_WindowLost, RuntimeError, OSError, ValueError) as error:
+                if started is None:
+                    started = monotonic()
+                    self._recovering = True
+                    await self._log(ctx, "warning", f"Waiting for game window capture: {error}")
+                if monotonic() - started >= 300:
+                    await self._log(ctx, "error", "Game window capture unavailable for 300 seconds")
+                    raise _WindowLost("game window capture unavailable for 300 seconds") from error
+                await self._sleep(ctx, control, 0.25)
 
     async def _check(self, ctx: AutomationContext, control: TaskControl) -> None:
         if control.cancelled.is_set() or ctx.cancellation.cancelled:
@@ -153,7 +172,6 @@ class BlackjackTask(AutomationTask):
             await control.wait_if_paused()
             if control.cancelled.is_set() or ctx.cancellation.cancelled:
                 raise _Stopped
-            self._window(ctx)
             self._resume_recheck = True
 
     async def _sleep(self, ctx: AutomationContext, control: TaskControl, seconds: float) -> None:
@@ -170,8 +188,13 @@ class BlackjackTask(AutomationTask):
             if not detect_home_book(image).found:
                 return False
             await asyncio.sleep(0.01)
-            return detect_home_book(self._capture(ctx)).found
-        result = await self.detector.confirm(image, name, lambda: self._capture(ctx))
+            return detect_home_book(await self._capture(ctx, control)).found
+        first = self.detector.detect(image, name)
+        if not first.found:
+            return False
+        await self._sleep(ctx, control, 0.01)
+        second = self.detector.detect(await self._capture(ctx, control), name)
+        result = second if second.found else None
         if result:
             await ctx.emit(
                 "recognition_evidence", task_id="blackjack", stage=name,
@@ -185,7 +208,7 @@ class BlackjackTask(AutomationTask):
         loading = 0.0
         while active < 300.0:
             await self._check(ctx, control)
-            image = self._capture(ctx)
+            image = await self._capture(ctx, control)
             if await self._confirmed(ctx, control, image, name):
                 await self._progress(ctx, name)
                 return
@@ -204,7 +227,7 @@ class BlackjackTask(AutomationTask):
     async def _click(self, ctx: AutomationContext, control: TaskControl, name: str, action: str) -> None:
         config = ctx.config.automation
         await self._sleep(ctx, control, max(0, config.click_after_detection_ms + self.rng.uniform(-config.click_interval_jitter_ms, config.click_interval_jitter_ms)) / 1000)
-        image = self._capture(ctx)
+        image = await self._capture(ctx, control)
         if not await self._confirmed(ctx, control, image, name):
             raise RuntimeError(f"screen changed before {action}; no click was sent")
         window = self._window(ctx)
@@ -247,14 +270,14 @@ class BlackjackTask(AutomationTask):
         elapsed = 0.0
         loading = 0.0
         while elapsed < 300:
-            image = self._capture(ctx)
+            image = await self._capture(ctx, control)
             if await self._confirmed(ctx, control, image, "continue"):
                 await self._progress(ctx, "continue")
                 return None
             role, _ = self.detector.role(image)
             if role:
                 await self._sleep(ctx, control, 0.01)
-                confirmed, _ = self.detector.role(self._capture(ctx))
+                confirmed, _ = self.detector.role(await self._capture(ctx, control))
                 if confirmed == role:
                     self.role = role
                     await self._progress(ctx, "playing")
@@ -273,12 +296,12 @@ class BlackjackTask(AutomationTask):
         await self._check(ctx, control)
         self._window(ctx)
         if self._resume_recheck:
-            image = self._capture(ctx)
+            image = await self._capture(ctx, control)
             role, _ = self.detector.role(image)
             if role != self.role:
                 return False
             await self._sleep(ctx, control, 0.01)
-            role, _ = self.detector.role(self._capture(ctx))
+            role, _ = self.detector.role(await self._capture(ctx, control))
             if role != self.role:
                 return False
             self._resume_recheck = False
@@ -388,7 +411,7 @@ class BlackjackTask(AutomationTask):
                         error = task.exception()
                         if error:
                             raise error
-                image = self._capture(ctx)
+                image = await self._capture(ctx, control)
                 if await self._confirmed(ctx, control, image, "continue"):
                     await self._progress(ctx, "continue")
                     return
@@ -406,7 +429,7 @@ class BlackjackTask(AutomationTask):
                 role, _ = self.detector.role(image)
                 if role and role != self.role:
                     await self._sleep(ctx, control, 0.01)
-                    confirmed, _ = self.detector.role(self._capture(ctx))
+                    confirmed, _ = self.detector.role(await self._capture(ctx, control))
                     if confirmed == role:
                         actions.cancel()
                         await asyncio.gather(actions, return_exceptions=True)
