@@ -239,6 +239,8 @@ const translations = {
       dark: "深色",
       language: "界面语言",
       launch: "启动应用时启动自动化服务",
+      preventSystemSleep: "禁止电脑自动休眠",
+      preventDisplaySleep: "禁止电脑自动熄屏",
       gameWindow: "游戏窗口",
       gameWindowHint: "通过进程名、标题关键词和窗口类名定位游戏窗口。",
       titleKeywords: "窗口标题关键词",
@@ -502,6 +504,8 @@ const translations = {
       dark: "Dark",
       language: "Interface language",
       launch: "Start the automation service when the app opens",
+      preventSystemSleep: "Prevent computer sleep",
+      preventDisplaySleep: "Prevent display sleep",
       gameWindow: "Game window",
       gameWindowHint:
         "Find the game window by process name, title keywords, and window class.",
@@ -597,6 +601,8 @@ const defaults: Settings = {
     theme: "light",
     launch_engine_on_start: false,
     developer_mode: false,
+    prevent_system_sleep: false,
+    prevent_display_sleep: false,
   },
   engine: {
     memory_protection: false,
@@ -983,6 +989,19 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = settings.app.theme;
   }, [settings.app.theme]);
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void bridge
+      .setPowerPrevention(settings.app.prevent_system_sleep, settings.app.prevent_display_sleep)
+      .catch((error) => {
+        appendLog("error", asMessage(error), "power");
+      });
+  }, [
+    appendLog,
+    settingsLoaded,
+    settings.app.prevent_system_sleep,
+    settings.app.prevent_display_sleep,
+  ]);
   useEffect(() => {
     if (!settingsLoaded) return;
     const timer = window.setTimeout(() => {
@@ -1955,6 +1974,26 @@ function SettingsPage({
             }
           />
           {t.launch}
+        </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={settings.app.prevent_system_sleep}
+            onChange={(event) =>
+              updateApp({ prevent_system_sleep: event.target.checked })
+            }
+          />
+          {t.preventSystemSleep}
+        </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={settings.app.prevent_display_sleep}
+            onChange={(event) =>
+              updateApp({ prevent_display_sleep: event.target.checked })
+            }
+          />
+          {t.preventDisplaySleep}
         </label>
         <label className="check-label developer-toggle">
           <input

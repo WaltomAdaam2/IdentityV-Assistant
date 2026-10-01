@@ -132,6 +132,8 @@ export interface Settings {
     theme: "system" | "light" | "dark";
     launch_engine_on_start: boolean;
     developer_mode: boolean;
+    prevent_system_sleep: boolean;
+    prevent_display_sleep: boolean;
   };
   engine: {
     memory_protection: boolean;
