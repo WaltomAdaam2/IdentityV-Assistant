@@ -81,30 +81,84 @@ class BlackjackTask(AutomationTask):
             ctx.input.backend = previous_backend
 
     async def _cycle(self, ctx: AutomationContext, control: TaskControl) -> None:
-        sequence = (
-            ("home", "open_book"),
-            ("chaos", "choose_chaos"),
-            ("blackjack", "choose_blackjack"),
-            ("start_case", "start_case_reconstruction"),
+        actions = {
+            "home": "open_book",
+            "chaos": "choose_chaos",
+            "blackjack": "choose_blackjack",
+            "start_case": "start_case_reconstruction",
+            "ready_case": "accept_match",
+            "ready_start": "ready_to_start",
+            "card_confirm": "accept_card",
+            "continue": "continue_after_match",
+            "return_lobby": "return_to_lobby",
+        }
+        last_stage: str | None = None
+        acted_stage: str | None = None
+        returning = False
+        unknown_since: float | None = None
+        loading_since: float | None = None
+        while True:
+            image = await self._capture(ctx, control)
+            stage = await self._detect_stage(ctx, control, image)
+            if stage is None:
+                if unknown_since is None:
+                    unknown_since = monotonic()
+                if monotonic() - unknown_since >= 300:
+                    raise TimeoutError("unknown Blackjack screen for 300 seconds")
+                await self._sleep(ctx, control, 0.25)
+                continue
+            unknown_since = None
+            if stage == "loading":
+                if loading_since is None:
+                    loading_since = monotonic()
+                if monotonic() - loading_since >= 300:
+                    raise TimeoutError("loading lasted longer than 300 seconds")
+            else:
+                loading_since = None
+            if stage != last_stage:
+                await self._progress(ctx, stage)
+                acted_stage = None
+                last_stage = stage
+            if stage == "home" and returning:
+                self.role = None
+                return
+            if stage in ("hunter", "survivor"):
+                self.role = stage
+                returning = True
+                await self._progress(ctx, "playing")
+                await self._play(ctx, control)
+                last_stage = None
+                continue
+            if stage in ("continue", "return_lobby"):
+                returning = True
+            if stage in actions and acted_stage != stage:
+                if await self._click(ctx, control, stage, actions[stage]):
+                    acted_stage = stage
+            await self._sleep(ctx, control, 0.25)
+
+    async def _detect_stage(self, ctx: AutomationContext, control: TaskControl, image) -> str | None:
+        priority = (
+            "return_lobby", "continue", "card_confirm", "ready_start", "ready_case",
+            "start_case", "blackjack", "chaos", "matching", "home",
+            "hunter", "survivor", "loading",
         )
-        for stage, action in sequence:
-            await self._wait_for(ctx, control, stage)
-            await self._click(ctx, control, stage, action)
-        await self._wait_for(ctx, control, "matching")
-        await self._wait_for(ctx, control, "ready_case")
-        await self._click(ctx, control, "ready_case", "accept_match")
-        await self._wait_for(ctx, control, "ready_start")
-        await self._click(ctx, control, "ready_start", "ready_to_start")
-        await self._wait_for(ctx, control, "card_confirm")
-        await self._click(ctx, control, "card_confirm", "accept_card")
-        self.role = await self._wait_for_role(ctx, control)
-        if self.role is not None:
-            await self._play(ctx, control)
-        await self._click(ctx, control, "continue", "continue_after_match")
-        await self._wait_for(ctx, control, "return_lobby")
-        await self._click(ctx, control, "return_lobby", "return_to_lobby")
-        await self._wait_for(ctx, control, "home")
-        self.role = None
+        for stage in priority:
+            if stage in ("hunter", "survivor"):
+                role, _ = self.detector.role(image)
+                if role != stage:
+                    continue
+                await self._sleep(ctx, control, 0.01)
+                confirmed, _ = self.detector.role(await self._capture(ctx, control))
+                if confirmed == stage:
+                    return stage
+                continue
+            if stage == "home":
+                found = detect_home_book(image).found
+            else:
+                found = self.detector.detect(image, stage).found
+            if found and await self._confirmed(ctx, control, image, stage):
+                return stage
+        return None
 
     async def _progress(self, ctx: AutomationContext, stage: str) -> None:
         self.stage = stage
@@ -224,12 +278,12 @@ class BlackjackTask(AutomationTask):
             await self._sleep(ctx, control, 0.25)
         raise TimeoutError(f"waiting for {name} exceeded 300 seconds")
 
-    async def _click(self, ctx: AutomationContext, control: TaskControl, name: str, action: str) -> None:
+    async def _click(self, ctx: AutomationContext, control: TaskControl, name: str, action: str) -> bool:
         config = ctx.config.automation
         await self._sleep(ctx, control, max(0, config.click_after_detection_ms + self.rng.uniform(-config.click_interval_jitter_ms, config.click_interval_jitter_ms)) / 1000)
         image = await self._capture(ctx, control)
         if not await self._confirmed(ctx, control, image, name):
-            raise RuntimeError(f"screen changed before {action}; no click was sent")
+            return False
         window = self._window(ctx)
         reference = (1800, 760) if name == "home" else MARKS[name].click
         if reference is None:
@@ -246,6 +300,7 @@ class BlackjackTask(AutomationTask):
             ctx.input.mouse_up("left")
         await ctx.emit("planned_action", action=action, input="foreground_click", target={"x": actual.x, "y": actual.y})
         await self._sleep(ctx, control, config.screenshot_after_click_ms / 1000)
+        return True
 
     async def _curved_move(self, ctx: AutomationContext, control: TaskControl, target: Point) -> None:
         backend = ctx.input.backend
@@ -412,20 +467,12 @@ class BlackjackTask(AutomationTask):
                         if error:
                             raise error
                 image = await self._capture(ctx, control)
-                if await self._confirmed(ctx, control, image, "continue"):
-                    await self._progress(ctx, "continue")
-                    return
-                if await self._confirmed(ctx, control, image, "loading"):
-                    movement.cancel()
-                    actions.cancel()
-                    await asyncio.gather(movement, actions, return_exceptions=True)
-                    ctx.input.release_all()
-                    self.role = await self._wait_for_role(ctx, control)
-                    if self.role is None:
+                for result_stage in ("continue", "return_lobby"):
+                    if await self._confirmed(ctx, control, image, result_stage):
+                        await self._progress(ctx, result_stage)
                         return
-                    movement = asyncio.create_task(self._movement(ctx, control))
-                    actions = asyncio.create_task(self._hunter(ctx, control) if self.role == "hunter" else self._survivor(ctx, control))
-                    continue
+                if await self._confirmed(ctx, control, image, "loading"):
+                    return
                 role, _ = self.detector.role(image)
                 if role and role != self.role:
                     await self._sleep(ctx, control, 0.01)
