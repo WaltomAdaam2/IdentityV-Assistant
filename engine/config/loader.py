@@ -45,6 +45,8 @@ def parse_config(data: dict[str, Any]) -> EngineConfig:
                 "click_interval_jitter_ms": automation_data.get("click_interval_jitter_ms", 120),
                 "click_duration_jitter_ms": automation_data.get("click_duration_jitter_ms", 15),
                 "blackjack_infinite_loop": automation_data.get("blackjack_infinite_loop", False),
+                "hunter_match_infinite_loop": automation_data.get("hunter_match_infinite_loop", False),
+                "hunter_rank_infinite_loop": automation_data.get("hunter_rank_infinite_loop", False),
                 "camera_turn_scale_percent": automation_data.get("camera_turn_scale_percent", 100),
             },
             "debug": _mapping(root.get("debug", {}), "debug"),

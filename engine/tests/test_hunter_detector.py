@@ -56,3 +56,12 @@ def test_rank_and_normal_matching_labels_do_not_overlap() -> None:
     ranked = HunterDetector(ranked=True)
     assert not ranked.detect(reference("hunter_match", "matching"), "rank_matching").found
     assert not normal.detect(reference("hunter_rank", "matching"), "normal_matching").found
+
+
+def test_both_modes_share_existing_hunter_hud_icon() -> None:
+    screenshot = cv2.imread(str(ROOT / "blackjack" / "reference" / "hunter.png"))[45:1125, 2:1922]
+    survivor = cv2.imread(str(ROOT / "blackjack" / "reference" / "survivor.png"))[45:1125, 2:1922]
+    for ranked in (False, True):
+        detector = HunterDetector(ranked=ranked)
+        assert detector.detect(screenshot, "playing").found
+        assert not detector.detect(survivor, "playing").found

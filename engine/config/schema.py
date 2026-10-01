@@ -51,6 +51,8 @@ class AutomationConfig(_ConfigModel):
     click_interval_jitter_ms: TimeJitter = 120
     click_duration_jitter_ms: TimeJitter = 15
     blackjack_infinite_loop: StrictBool = False
+    hunter_match_infinite_loop: StrictBool = False
+    hunter_rank_infinite_loop: StrictBool = False
     camera_turn_scale_percent: Annotated[StrictInt, Field(ge=20, le=300)] = 100
 
 

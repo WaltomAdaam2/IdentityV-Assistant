@@ -6,7 +6,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 
 Push-Location engine
 try {
-    uv sync --extra windows --extra dev
+    uv sync --extra windows --extra ocr --extra dev
     uv run pytest
     Write-Host "Python engine verified. Executable packaging is planned for a later phase."
 }

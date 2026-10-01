@@ -34,6 +34,7 @@ class HunterDetector:
     def __init__(self, ranked: bool = False) -> None:
         self.ranked = ranked
         self._templates: dict[tuple[str, str], Any] = {}
+        self._role_detector = BlackjackDetector()
 
     normalize = staticmethod(BlackjackDetector.normalize)
 
@@ -45,6 +46,8 @@ class HunterDetector:
     def detect(self, image: Any, name: str) -> Detection:
         import cv2
 
+        if name == "playing":
+            return self._role_detector.detect(image, "hunter")
         if name == "start_case" and self.detect(image, "queue_warning").found:
             return Detection(False, 0.0, None)
         if name == "result_first" and (

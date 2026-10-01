@@ -46,7 +46,7 @@ jobs:
 
       - name: Install Python dependencies
         working-directory: engine
-        run: uv sync --extra windows --extra dev
+        run: uv sync --extra windows --extra ocr --extra dev
 
       - name: Test Python engine
         working-directory: engine

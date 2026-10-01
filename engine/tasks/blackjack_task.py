@@ -57,7 +57,7 @@ class BlackjackTask(AutomationTask):
         previous_backend = ctx.input.backend
         try:
             await self._capture(ctx, control)
-            window = self._window(ctx)
+            window = await self._input_window(ctx, control)
             ctx.input.backend = WindowsSendInput(window.hwnd)
             while True:
                 await self._cycle(ctx, control)
@@ -190,6 +190,21 @@ class BlackjackTask(AutomationTask):
             raise _WindowLost("could not bring the game window to the foreground")
         return window
 
+    async def _input_window(self, ctx: AutomationContext, control: TaskControl):
+        started = monotonic()
+        while True:
+            try:
+                window = self._window(ctx)
+                backend = ctx.input.backend
+                if isinstance(backend, WindowsSendInput) and backend._expected_hwnd != window.hwnd:
+                    ctx.input.release_all()
+                    ctx.input.backend = WindowsSendInput(window.hwnd)
+                return window
+            except _WindowLost:
+                if monotonic() - started >= 300:
+                    raise
+                await self._capture(ctx, control)
+
     def _capture_once(self, ctx: AutomationContext):
         window = self._window(ctx)
         ctx.memory_guard.protect()
@@ -284,15 +299,15 @@ class BlackjackTask(AutomationTask):
         image = await self._capture(ctx, control)
         if not await self._confirmed(ctx, control, image, name):
             return False
-        window = self._window(ctx)
-        reference = (1800, 760) if name == "home" else MARKS[name].click
+        window = await self._input_window(ctx, control)
+        reference = self._click_target(name)
         if reference is None:
             raise ValueError(f"no click target for {name}")
         client = CoordinateSpace().to_client(Point(*reference), window.client_rect)
         screen = Point(window.client_rect.left + client.x, window.client_rect.top + client.y)
         actual = ctx.input._jitter_point(screen)
         await self._curved_move(ctx, control, actual)
-        self._window(ctx)
+        await self._input_window(ctx, control)
         ctx.input.mouse_down("left")
         try:
             await self._sleep(ctx, control, max(0.01, (35 + self.rng.uniform(-config.click_duration_jitter_ms, config.click_duration_jitter_ms)) / 1000))
@@ -301,6 +316,9 @@ class BlackjackTask(AutomationTask):
         await ctx.emit("planned_action", action=action, input="foreground_click", target={"x": actual.x, "y": actual.y})
         await self._sleep(ctx, control, config.screenshot_after_click_ms / 1000)
         return True
+
+    def _click_target(self, name: str) -> tuple[int, int] | None:
+        return (1800, 760) if name == "home" else MARKS[name].click
 
     async def _curved_move(self, ctx: AutomationContext, control: TaskControl, target: Point) -> None:
         backend = ctx.input.backend
@@ -349,7 +367,7 @@ class BlackjackTask(AutomationTask):
 
     async def _before_game_input(self, ctx: AutomationContext, control: TaskControl) -> bool:
         await self._check(ctx, control)
-        self._window(ctx)
+        await self._input_window(ctx, control)
         if self._resume_recheck:
             image = await self._capture(ctx, control)
             role, _ = self.detector.role(image)
@@ -384,7 +402,7 @@ class BlackjackTask(AutomationTask):
         backend = ctx.input.backend
         if not isinstance(backend, WindowsSendInput):
             raise RuntimeError("foreground input is unavailable")
-        width = self._window(ctx).client_rect.width
+        width = (await self._input_window(ctx, control)).client_rect.width
         angle = self.rng.uniform(60, 150)
         direction = self.rng.choice((-1, 1))
         pixels = max(1, round(width * angle / 360 * ctx.config.automation.camera_turn_scale_percent / 100)) * direction

@@ -79,6 +79,8 @@ const translations = {
         "自动识别当前登录画面，选择平台并关闭弹窗，直到进入归宿",
       ],
       blackjack: ["黑杰克", "自动匹配、游玩并返回归宿"],
+      hunter_match: ["自动监管者匹配", "自动进入普通匹配、游玩并返回归宿"],
+      hunter_rank: ["自动监管者排位", "自动进入传统排位、游玩并返回归宿"],
     },
     dashboard: {
       eyebrow: "自动化服务状态",
@@ -139,6 +141,10 @@ const translations = {
         waiting_role: "等待对局角色", playing: "对局中",
         continue: "对局结束", waiting_return_lobby: "等待返回大厅",
         return_lobby: "返回大厅", cycle_complete: "本局完成",
+        diary: "日记推理", rank_entry: "排位模式", traditional_rank: "传统排位",
+        hunter_choice: "选择监管者", normal_matching: "普通匹配中", rank_matching: "排位匹配中",
+        queue_warning: "阵营队列人数过多", result_first: "首个结算页",
+        result_second: "第二个结算页", surrendering: "等待投降", surrender: "投降菜单",
         loading: "加载中", running: "运行中",
       },
     },
@@ -240,7 +246,7 @@ const translations = {
       language: "界面语言",
       launch: "启动应用时启动自动化服务",
       preventSystemSleep: "禁止电脑自动休眠",
-      preventDisplaySleep: "禁止电脑自动熄屏",
+      preventDisplaySleep: "禁止自动熄屏和闲置锁屏",
       gameWindow: "游戏窗口",
       gameWindowHint: "通过进程名、标题关键词和窗口类名定位游戏窗口。",
       titleKeywords: "窗口标题关键词",
@@ -342,6 +348,8 @@ const translations = {
         "Detects the current login screen, selects a platform, and dismisses popups until home is reached",
       ],
       blackjack: ["Blackjack", "Match, play and return to the home lobby"],
+      hunter_match: ["Automatic Hunter Match", "Join a normal hunter match, play and return home"],
+      hunter_rank: ["Automatic Hunter Rank", "Join traditional hunter rank, play and return home"],
     },
     dashboard: {
       eyebrow: "AUTOMATION SERVICE",
@@ -402,6 +410,10 @@ const translations = {
         waiting_role: "Waiting for role", playing: "Playing",
         continue: "Match ended", waiting_return_lobby: "Waiting to return",
         return_lobby: "Returning to lobby", cycle_complete: "Cycle complete",
+        diary: "Diary deduction", rank_entry: "Rank mode", traditional_rank: "Traditional rank",
+        hunter_choice: "Choose hunter", normal_matching: "Normal matching", rank_matching: "Rank matching",
+        queue_warning: "Hunter queue is full", result_first: "First result page",
+        result_second: "Second result page", surrendering: "Waiting to surrender", surrender: "Surrender menu",
         loading: "Loading", running: "Running",
       },
     },
@@ -505,7 +517,7 @@ const translations = {
       language: "Interface language",
       launch: "Start the automation service when the app opens",
       preventSystemSleep: "Prevent computer sleep",
-      preventDisplaySleep: "Prevent display sleep",
+      preventDisplaySleep: "Prevent display sleep and idle lock",
       gameWindow: "Game window",
       gameWindowHint:
         "Find the game window by process name, title keywords, and window class.",
@@ -593,6 +605,20 @@ const initialTasks: TaskItem[] = [
     enabled: false,
     status: "idle",
   },
+  {
+    id: "hunter_match",
+    name: "hunter_match",
+    description: "",
+    enabled: false,
+    status: "idle",
+  },
+  {
+    id: "hunter_rank",
+    name: "hunter_rank",
+    description: "",
+    enabled: false,
+    status: "idle",
+  },
 ];
 const defaults: Settings = {
   tasks: { enabled: ["login_lobby"] },
@@ -624,6 +650,8 @@ const defaults: Settings = {
     click_interval_jitter_ms: 120,
     click_duration_jitter_ms: 15,
     blackjack_infinite_loop: false,
+    hunter_match_infinite_loop: false,
+    hunter_rank_infinite_loop: false,
     camera_turn_scale_percent: 100,
   },
   debug: { save_debug_screenshots: false, verbose_logs: false },
@@ -1380,6 +1408,11 @@ function Tasks({
       </div>
       <div className="task-list">
         {tasks.map((task) => {
+          const loopKey = task.id === "blackjack"
+            ? "blackjack_infinite_loop"
+            : task.id === "hunter_rank"
+              ? "hunter_rank_infinite_loop"
+              : "hunter_match_infinite_loop";
           const action =
             task.status === "running"
               ? "pause"
@@ -1449,10 +1482,10 @@ function Tasks({
                   <input type="number" min="30" max="900" value={settings.automation.login_timeout_seconds} onChange={(event) => updateAutomation({ login_timeout_seconds: Math.max(30, Math.min(900, Number(event.target.value))) })} />
                 </label>
               </> : <>
-                <label className="check-label"><input type="checkbox" checked={settings.automation.blackjack_infinite_loop} onChange={(event) => updateAutomation({ blackjack_infinite_loop: event.target.checked })} />{t.infiniteLoop}</label>
-                <label>{t.cameraScale}
+                <label className="check-label"><input type="checkbox" checked={settings.automation[loopKey]} onChange={(event) => updateAutomation({ [loopKey]: event.target.checked })} />{t.infiniteLoop}</label>
+                {task.id === "blackjack" && <label>{t.cameraScale}
                   <input type="number" min="20" max="300" value={settings.automation.camera_turn_scale_percent} onChange={(event) => updateAutomation({ camera_turn_scale_percent: Math.max(20, Math.min(300, Number(event.target.value))) })} />
-                </label>
+                </label>}
                 {timingFields.map(([key, label, min, max]) => <label key={key}>{label}
                   <input type="number" min={min} max={max} value={settings.automation[key]} onChange={(event) => updateAutomation({ [key]: Math.max(min, Math.min(max, Number(event.target.value))) })} />
                 </label>)}

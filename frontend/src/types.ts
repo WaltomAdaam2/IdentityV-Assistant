@@ -155,6 +155,8 @@ export interface Settings {
     click_interval_jitter_ms: number;
     click_duration_jitter_ms: number;
     blackjack_infinite_loop: boolean;
+    hunter_match_infinite_loop: boolean;
+    hunter_rank_infinite_loop: boolean;
     camera_turn_scale_percent: number;
   };
   debug: { save_debug_screenshots: boolean; verbose_logs: boolean };
