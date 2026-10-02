@@ -53,6 +53,10 @@ class BlackjackTask(AutomationTask):
         self._resume_recheck = False
         self._recovering = False
 
+    @staticmethod
+    def _now(control: TaskControl | None) -> float:
+        return monotonic() - (control.paused_seconds if control is not None else 0.0)
+
     async def run(self, ctx: AutomationContext, control: TaskControl) -> TaskFinishReason:
         previous_backend = ctx.input.backend
         try:
@@ -102,16 +106,16 @@ class BlackjackTask(AutomationTask):
             stage = await self._detect_stage(ctx, control, image)
             if stage is None:
                 if unknown_since is None:
-                    unknown_since = monotonic()
-                if monotonic() - unknown_since >= 300:
+                    unknown_since = self._now(control)
+                if self._now(control) - unknown_since >= 300:
                     raise TimeoutError("unknown Blackjack screen for 300 seconds")
                 await self._sleep(ctx, control, 0.25)
                 continue
             unknown_since = None
             if stage == "loading":
                 if loading_since is None:
-                    loading_since = monotonic()
-                if monotonic() - loading_since >= 300:
+                    loading_since = self._now(control)
+                if self._now(control) - loading_since >= 300:
                     raise TimeoutError("loading lasted longer than 300 seconds")
             else:
                 loading_since = None
@@ -191,7 +195,7 @@ class BlackjackTask(AutomationTask):
         return window
 
     async def _input_window(self, ctx: AutomationContext, control: TaskControl):
-        started = monotonic()
+        started = self._now(control)
         while True:
             try:
                 window = self._window(ctx)
@@ -201,7 +205,7 @@ class BlackjackTask(AutomationTask):
                     ctx.input.backend = WindowsSendInput(window.hwnd)
                 return window
             except _WindowLost:
-                if monotonic() - started >= 300:
+                if self._now(control) - started >= 300:
                     raise
                 await self._capture(ctx, control)
 
@@ -225,10 +229,10 @@ class BlackjackTask(AutomationTask):
                 return image
             except (_WindowLost, RuntimeError, OSError, ValueError) as error:
                 if started is None:
-                    started = monotonic()
+                    started = self._now(control)
                     self._recovering = True
                     await self._log(ctx, "warning", f"Waiting for game window capture: {error}")
-                if monotonic() - started >= 300:
+                if self._now(control) - started >= 300:
                     await self._log(ctx, "error", "Game window capture unavailable for 300 seconds")
                     raise _WindowLost("game window capture unavailable for 300 seconds") from error
                 await self._sleep(ctx, control, 0.25)

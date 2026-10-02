@@ -4,7 +4,6 @@ import asyncio
 import random
 import re
 from dataclasses import dataclass
-from time import monotonic
 
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
@@ -162,16 +161,16 @@ class HunterMatchTask(BlackjackTask):
             stage = await self._detect_stage(ctx, control, image)
             if stage is None:
                 if unknown_since is None:
-                    unknown_since = monotonic()
-                if monotonic() - unknown_since >= 300:
+                    unknown_since = self._now(control)
+                if self._now(control) - unknown_since >= 300:
                     raise TimeoutError("unknown hunter screen for 300 seconds")
                 await self._sleep(ctx, control, 0.25)
                 continue
             unknown_since = None
             if stage == "loading":
                 if loading_since is None:
-                    loading_since = monotonic()
-                if monotonic() - loading_since >= 300:
+                    loading_since = self._now(control)
+                if self._now(control) - loading_since >= 300:
                     raise TimeoutError("loading lasted longer than 300 seconds")
             else:
                 loading_since = None
@@ -192,15 +191,15 @@ class HunterMatchTask(BlackjackTask):
             if stage in ("result_first", "result_second", "return_lobby"):
                 returning = True
             if stage == "queue_warning":
-                queue_retry_at = monotonic() + 30
-            if stage == "start_case" and monotonic() < queue_retry_at:
+                queue_retry_at = self._now(control) + 30
+            if stage == "start_case" and self._now(control) < queue_retry_at:
                 await self._sleep(ctx, control, 0.25)
                 continue
             if stage == "surrender":
                 returning = True
-                if monotonic() >= surrender_retry_at:
+                if self._now(control) >= surrender_retry_at:
                     if await self._click(ctx, control, stage, "surrender"):
-                        surrender_retry_at = monotonic() + 15
+                        surrender_retry_at = self._now(control) + 15
                 await self._sleep(ctx, control, 0.25)
                 continue
             if stage in actions and acted_stage != stage:
@@ -262,7 +261,7 @@ class HunterMatchTask(BlackjackTask):
         return None
 
     async def _play(self, ctx: AutomationContext, control: TaskControl) -> None:
-        clock = SurrenderClock.start(monotonic())
+        clock = SurrenderClock.start(self._now(control))
         movement = asyncio.create_task(self._movement(ctx, control))
         actions = asyncio.create_task(self._combat(ctx, control))
         surrendering = False
@@ -285,27 +284,27 @@ class HunterMatchTask(BlackjackTask):
                     return
                 if not surrendering:
                     displayed = None
-                    if monotonic() >= next_clock_check:
-                        next_clock_check = monotonic() + 5
+                    if self._now(control) >= next_clock_check:
+                        next_clock_check = self._now(control) + 5
                         try:
                             displayed = self._displayed_seconds(image)
                         except RuntimeError as error:
                             if not self._ocr_warning_logged:
                                 await self._log(ctx, "warning", f"OCR unavailable; using local timer: {error}")
                                 self._ocr_warning_logged = True
-                    if clock.due(monotonic(), displayed):
+                    if clock.due(self._now(control), displayed):
                         surrendering = True
                         movement.cancel()
                         actions.cancel()
                         await asyncio.gather(movement, actions, return_exceptions=True)
                         ctx.input.release_all()
                         await self._progress(ctx, "surrendering")
-                if surrendering and monotonic() >= retry_at:
+                if surrendering and self._now(control) >= retry_at:
                     if await self._confirmed(ctx, control, image, "surrender"):
                         await self._click(ctx, control, "surrender", "surrender")
                     else:
                         await self._key(ctx, control, "esc")
-                    retry_at = monotonic() + 15
+                    retry_at = self._now(control) + 15
         finally:
             movement.cancel()
             actions.cancel()

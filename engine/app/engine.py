@@ -42,6 +42,7 @@ class AutomationEngine:
         self._task_control: TaskControl | None = None
         self._task_runner: asyncio.Task[None] | None = None
         self._task_queue: list[str] = []
+        self._active_task_id: str | None = None
         self._developer_input_enabled = False
         self._window_health: str | None = None
         self._window_style_error: str | None = None
@@ -65,6 +66,9 @@ class AutomationEngine:
 
     async def emit(self, event_type: str, **payload: object) -> None:
         await self.writer.send(event(event_type, **payload))
+        if (event_type == "error" and payload.get("recoverable") is False
+                and asyncio.current_task() is self._task_runner):
+            raise RuntimeError(str(payload.get("message", "Task failed")))
 
     async def run(self) -> None:
         self.status = EngineStatus.IDLE
@@ -188,9 +192,11 @@ class AutomationEngine:
             self._task_control.pause()
             self.status, self.task_status = EngineStatus.PAUSED, "paused"
             self.context.input.release_all()
+            await self.emit("task_paused", task_id=self._active_task_id, reason="user_paused")
         elif command_type == "resume_task" and self._task_control:
             self._task_control.resume()
             self.status, self.task_status = EngineStatus.RUNNING, "running"
+            await self.emit("task_resumed", task_id=self._active_task_id)
         elif command_type == "stop_task":
             await self._stop_task(TaskFinishReason.USER_STOPPED)
         elif command_type == "detect_window":
@@ -478,30 +484,60 @@ class AutomationEngine:
         if not preserve_queue:
             self._task_queue.clear()
         self._task_control = TaskControl()
+        self._active_task_id = task_name
         self.status, self.task_status = EngineStatus.RUNNING, "running"
         await self.emit("task_started", task_id=task_name)
         self._task_runner = asyncio.create_task(self._run_task(factories[task_name]()))
 
     async def _run_task(self, task: AutomationTask) -> None:
-        try:
-            reason = await task.run(self.context, self._task_control or TaskControl())
-        except Exception as error:
-            self.status, self.task_status = EngineStatus.ERROR, "error"
-            await self.emit("error", code=ErrorCode.ENGINE_CRASHED.value, message=str(error), recoverable=False, details={})
-            reason = TaskFinishReason.ENGINE_ERROR
-        finally:
-            self.context.input.release_all()
-        if self.status != EngineStatus.ERROR:
-            self.status, self.task_status = EngineStatus.IDLE, "idle"
+        control = self._task_control or TaskControl()
+        while True:
+            message = None
+            try:
+                reason = await task.run(self.context, control)
+            except Exception as error:
+                message = str(error)
+                await self.writer.send(event("error", code=ErrorCode.ENGINE_CRASHED.value,
+                                             message=message, recoverable=False, details={}))
+                reason = TaskFinishReason.ENGINE_ERROR
+            finally:
+                try:
+                    self.context.input.release_all()
+                except Exception as error:
+                    message = f"Could not release task inputs: {error}"
+                    await self.writer.send(event("error", code=ErrorCode.INPUT_FAILED.value,
+                                                 message=message, recoverable=False, details={}))
+                    reason = TaskFinishReason.ENGINE_ERROR
+            if control.cancelled.is_set():
+                reason = TaskFinishReason.USER_STOPPED
+            if reason in (TaskFinishReason.COMPLETED, TaskFinishReason.USER_STOPPED):
+                break
+            control.pause()
+            self.status, self.task_status = EngineStatus.PAUSED, "paused"
+            await self.emit("task_paused", task_id=self._active_task_id,
+                            reason=reason.value, message=message or reason.value)
+            await control.wait_if_paused()
+            if control.cancelled.is_set():
+                reason = TaskFinishReason.USER_STOPPED
+                break
+            # Re-enter the screen router, retaining the completed loop count.
+            cycles = getattr(task, "cycles", None)
+            task = type(task)()
+            if cycles is not None:
+                task.cycles = cycles
+        self.status, self.task_status = EngineStatus.IDLE, "idle"
         await self.emit("task_finished", reason=reason.value, stats=self.context.metrics.snapshot())
         if reason == TaskFinishReason.COMPLETED and self._task_queue:
             next_name = self._task_queue.pop(0)
             self._task_control = TaskControl()
+            self._active_task_id = next_name
             self.status, self.task_status = EngineStatus.RUNNING, "running"
             await self.emit("task_started", task_id=next_name)
             self._task_runner = asyncio.create_task(self._run_task(self._task_factories()[next_name]()))
         else:
             self._task_queue.clear()
+            self._task_control = None
+            self._active_task_id = None
 
     async def _stop_task(self, reason: TaskFinishReason) -> None:
         self._task_queue.clear()
