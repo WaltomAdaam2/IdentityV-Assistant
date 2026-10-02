@@ -4,7 +4,7 @@
 
 Identity V Assistant is a Windows desktop visual automation assistant for Identity V. It recognizes window screenshots and runs tasks through normal Windows input.
 
-> This is a **0.1.0 development version**. Blackjack, automatic hunter match, and automatic hunter rank have passed screenshot and logic checks. As requested, no live game match was run.
+> This is a **0.1.0 development version**. Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek have passed the supplied screenshot and logic checks. As requested, no live game match was run.
 
 ## Features
 
@@ -12,7 +12,7 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 * Tauri 2 process supervision and command bridge in Rust
 * Long-running Python engine with NDJSON IPC
 * Ready, heartbeat, log, state, action, metrics, and structured error events
-* Pause, resume, and stop controls for login, Blackjack, automatic hunter match, and automatic hunter rank
+* Pause, resume, and stop controls for login, Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek
 * Pydantic-validated configuration loading and persistence
 * Live Windows discovery, client rectangle, response-state, and DPI diagnostics
 * Window-level capture for game windows covered by other windows or placed on another monitor
@@ -25,11 +25,14 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 * An “Enter the home lobby” task that resumes from any recognized login screen, confirms two frames, selects the platform, dismisses popups, and waits for home
 * Blackjack resumes from a known home, matching, ready, game, or result screen, acts according to the detected role, and returns home
 * Automatic hunter match enters through Diary Deduction; automatic hunter rank enters through Rank Mode and Traditional Rank. Both share hunter gameplay behavior and attempt surrender after the displayed game clock reaches six minutes
-* Each game task has its own indefinite-loop option; known matching and ready screens can remain open for longer than 300 seconds
+* Hide and Seek can take over from home, Chaos, mode selection, matching, ready, any known in-round, elimination, or result stage; it selects Bad Child and runs independent movement and camera loops while fixed
+* Each game task has its own indefinite-loop option; recognized matching, ready, elimination, and result waits have no timeout
 * Temporary window unresponsiveness, disappearance, or capture failure starts a 300-second recovery period; a usable frame clears it
 * Independent options prevent system sleep and display sleep; the display option also keeps the session active to reduce idle locking
-* Task card editors for login platform, timeout, click delays and variation, camera turn scale, and looping; changes save automatically
-* Enabled task selection survives restarts; multiple enabled tasks run in list order
+* Task card editors for login platform, login timeout, click delays and variation, camera turn scale, and looping; login settings are in the Enter the home lobby task editor and changes save automatically
+* Enabled task selection survives restarts; multiple enabled tasks run in list order, and starting a task starts a stopped automation service automatically
+* F3 globally pauses or resumes the active task; pausing releases held inputs and freezes task timers
+* A nonrecoverable task error pauses the active task and retains its queue for manual rerouting; every active task row has Stop, which cancels the active task and clears the remaining queue
 * Optional memory protection that collects unused objects above 90% system memory use
 * Capture diagnostics, concise logs, and window settings available to regular users; logs support search, filtering, pagination, and page jumping
 * Python and Rust core test foundations
@@ -51,16 +54,17 @@ Python visual automation engine
 window capture + Windows input
 ```
 
-Automatic capture uses Windows Graphics Capture by default to read the game window's complete client area. Login can use window messages. Game tasks bring the game to the foreground and check focus again before input. Templates and reference screenshots are under [`assets/templates/blackjack`](assets/templates/blackjack), [`assets/templates/hunter_match`](assets/templates/hunter_match), and [`assets/templates/hunter_rank`](assets/templates/hunter_rank). Normal and ranked hunter tasks share the existing hunter HUD icon template.
+Automatic capture uses Windows Graphics Capture by default to read the game window's complete client area. Login can use window messages. Game tasks bring the game to the foreground and check focus again before input. Templates and reference screenshots are under [`assets/templates/blackjack`](assets/templates/blackjack), [`assets/templates/hunter_match`](assets/templates/hunter_match), [`assets/templates/hunter_rank`](assets/templates/hunter_rank), and [`assets/templates/hide_seek`](assets/templates/hide_seek). Normal and ranked hunter tasks share the existing hunter HUD icon template.
 
 ## Run tasks
 
 1. Open Identity V and this app.
-2. On Tasks, use Edit to choose Android or iOS for login and set each game task's looping and shared timing options.
-3. Enable the tasks you want and select Start enabled tasks. Multiple tasks run in list order.
-4. The game stays in the foreground during game tasks. Pausing or stopping releases held keys.
+2. On Tasks, use the matching card's Edit control. The Enter the home lobby editor contains platform, maximum wait, and click controls; game-task editors contain looping and shared input controls.
+3. Enable the tasks you want and select Start enabled tasks. This starts the automation service when it is stopped; multiple tasks run in list order.
+4. Press F3 to pause or resume the active task. Pausing releases held input and freezes task timers; resuming rechecks the current screen before continuing.
+5. Stop on the active task row stops that task and clears the remaining queue. A nonrecoverable error retains the active task and remaining queue in a paused state until manual resume.
 
-The left sidebar shows the current stage, role, and completed cycle count. Indefinite looping is off by default. On start or resume, a task identifies the current screen and continues from a known stage. Loading does not count toward an ordinary stage timeout, but 300 seconds of continuous loading times out.
+The left sidebar shows the current stage, role, and completed cycle count. Indefinite looping is off by default. On start or resume, a task identifies the current screen and continues from a known stage. Recognized matching, ready, elimination, and result screens wait without a timeout; unknown screens, continuous loading, or unavailable usable window frames still have a 300-second limit. See the [state-machine guide](docs/state-machine.md) for the Hide and Seek stages and actions.
 
 Prevent display sleep and idle lock keeps the display on and periodically sends F15 to refresh Windows' user-idle timer while the app is open. Turning the option off or closing the app stops this. Manual Win+L still locks the session, and device management policy can enforce a lock. A Windows [power request](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest) only keeps the display on; [idle-lock policy](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/interactive-logon-machine-inactivity-limit) follows user-input inactivity.
 
@@ -151,4 +155,4 @@ Process hooks, memory access, anti-cheat bypass, kernel input, and network proto
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0 only](LICENSE) (`GPL-3.0-only`). Modified distributions must provide the corresponding source and preserve the license and copyright notices as required by the license.
+The combined distribution is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (`AGPL-3.0-or-later`). The game-window frame, topmost, sizing, and restoration portions of `engine/window/windows.py` are adapted from AhabAssistantLimbusCompany. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the source, revision, and copyright notice. Modified distributions must provide the corresponding source and preserve the license and copyright notices as required by the license.

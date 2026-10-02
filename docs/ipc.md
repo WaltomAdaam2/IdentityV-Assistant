@@ -10,9 +10,9 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | --- | --- | --- |
 | `start_task` | `task` | Start one registered task |
 | `start_tasks` | ordered `tasks` array | Run enabled tasks in list order |
-| `pause_task` | — | Pause the active task |
-| `resume_task` | — | Resume it |
-| `stop_task` | — | Cancel it and release held inputs |
+| `pause_task` | — | Pause the active task, release held input, and freeze its task timers |
+| `resume_task` | — | Resume the active task and reroute from a fresh screen capture |
+| `stop_task` | — | Cancel the active task, release held inputs, and clear the remaining queue |
 | `ping` | — | Request a liveness response |
 | `shutdown` | — | Graceful engine shutdown |
 | `detect_window` | — | Run window diagnostics |
@@ -30,7 +30,9 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | `state_transition` | `from`, `to`, `confidence`, `duration_in_previous_state` | One event per transition |
 | `planned_action` | `action`, `input`, `target` | Action sent to the game |
 | `task_started` | `task_id` | Task selected from the queue |
-| `task_progress` | `task_id`, `stage`, `role`, `completed_cycles`, `infinite_loop` | Current Blackjack progress |
+| `task_progress` | `task_id`, `stage`, `role`, `completed_cycles`, `infinite_loop` | Current task progress |
+| `task_paused` | `task_id`, `reason`, `message` | User pause or a paused nonrecoverable task failure |
+| `task_resumed` | `task_id` | Resume accepted; the task rechecks its screen before more input |
 | `recognition_evidence` | `task_id`, `stage`, `confidence`, `bbox` | Confirmed visual evidence |
 | `log` | `level`, `source`, `message`, `data` | Structured UI log |
 | `metrics` | counters | Runtime statistics |
@@ -39,5 +41,13 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | `error` | `code`, `message`, `recoverable`, `details` | Structured failure |
 
 Unknown message types may be logged and ignored for forward compatibility. A protocol version mismatch is an error.
+
+## Queue and recovery behavior
+
+When a Tauri `start_task` or `start_tasks` command is issued while the automation service is stopped, the Rust supervisor starts the service before forwarding the command. A direct command written to the Python process still requires that process to be running.
+
+The queue preserves the order supplied in `start_tasks`. A task that completes normally starts the next queued task. `stop_task` clears both the active task and every remaining queued task.
+
+Timeouts, window loss, engine task errors, and a nonrecoverable error event pause the active task instead of silently advancing the queue. The active task and remaining entries are retained. `resume_task` starts the service again if it crashed, then re-enters the active task's screen router; it does not resume blind input from the old stage. The F3 shortcut invokes this same pause/resume behavior outside the IPC transport.
 
 The frontend saves UI events through the Tauri `append_ui_log` command. Engine and UI events are appended to `%LOCALAPPDATA%\IdentityV-Assistant\logs\YYYY-MM-DD.jsonl`.
