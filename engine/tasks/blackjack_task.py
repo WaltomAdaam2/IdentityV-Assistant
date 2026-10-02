@@ -311,6 +311,9 @@ class BlackjackTask(AutomationTask):
         screen = Point(window.client_rect.left + client.x, window.client_rect.top + client.y)
         actual = ctx.input._jitter_point(screen)
         await self._curved_move(ctx, control, actual)
+        if self._resume_recheck:
+            self._resume_recheck = False
+            return False
         await self._input_window(ctx, control)
         ctx.input.mouse_down("left")
         try:
@@ -335,6 +338,8 @@ class BlackjackTask(AutomationTask):
         steps = self.rng.randint(6, 11)
         for index in range(1, steps + 1):
             await self._check(ctx, control)
+            if self._resume_recheck:
+                return
             t = index / steps
             eased = t * t * (3 - 2 * t)
             arc = 4 * t * (1 - t) * bend / max(distance, 1)
