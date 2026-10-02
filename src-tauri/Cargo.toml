@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Identity V external visual automation assistant"
 authors = ["Identity V Assistant contributors"]
 edition = "2021"
-license = "GPL-3.0-only"
+license = "AGPL-3.0-or-later"
 
 [lib]
 name = "identityv_assistant_lib"

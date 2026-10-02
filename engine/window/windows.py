@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import ctypes
+import importlib
 import sys
+from dataclasses import dataclass
 from ctypes import wintypes
 from pathlib import Path
+from time import sleep
 from typing import Any
 
 from config.schema import WindowConfig
@@ -18,6 +21,15 @@ _window_enum_proc = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)(
 )
 
 
+@dataclass(frozen=True)
+class _WindowStyleSnapshot:
+    hwnd: int
+    style: int
+    ex_style: int
+    window_rect: tuple[int, int, int, int]
+    client_size: tuple[int, int]
+
+
 class WindowsWindowManager(WindowManager):
     """Win32 implementation using only visible top-level windows."""
 
@@ -26,6 +38,8 @@ class WindowsWindowManager(WindowManager):
         self._window: WindowInfo | None = None
         self._user32: Any | None = None
         self._kernel32: Any | None = None
+        self._style_snapshot: _WindowStyleSnapshot | None = None
+        self._automation_style_applied = False
         if sys.platform == "win32":
             self._configure_winapi()
 
@@ -257,6 +271,153 @@ class WindowsWindowManager(WindowManager):
                 self._user32.ShowWindow(self._window.hwnd, 9)
             self._user32.BringWindowToTop(self._window.hwnd)
             self._user32.SetForegroundWindow(self._window.hwnd)
+
+    @staticmethod
+    def _load_pywin32() -> tuple[Any, Any]:
+        """Load the Win32 modules only when window styling is requested."""
+
+        return importlib.import_module("win32con"), importlib.import_module("win32gui")
+
+    def apply_automation_style(self) -> bool:
+        """Restore, foreground, crop, and pin the current game window.
+
+        The style mutation sequence is adapted from AALC's ``Screen.reduce_miscontact``
+        and ``Screen.adjust_win_size`` implementation. See THIRD_PARTY_NOTICES.md.
+        """
+
+        hwnd = self.current_hwnd()
+        if not hwnd:
+            return False
+
+        win32con, win32gui = self._load_pywin32()
+        if self._style_snapshot and self._style_snapshot.hwnd != hwnd:
+            self.restore_automation_style()
+
+        if self._style_snapshot is None:
+            client_rect = win32gui.GetClientRect(hwnd)
+            self._style_snapshot = _WindowStyleSnapshot(
+                hwnd=hwnd,
+                style=win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE),
+                ex_style=win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE),
+                window_rect=tuple(win32gui.GetWindowRect(hwnd)),
+                client_size=(client_rect[2] - client_rect[0], client_rect[3] - client_rect[1]),
+            )
+
+        if self._automation_style_applied:
+            return True
+
+        # AALC: restore the window before changing its frame and foreground state.
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(hwnd)
+
+        # AALC Screen.reduce_miscontact: keep this call order and flag set intact.
+        win32gui.SetWindowPos(
+            hwnd,
+            win32con.HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
+        )
+        style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
+        style &= ~win32con.WS_THICKFRAME
+        style &= ~win32con.WS_CAPTION
+        style &= ~win32con.WS_BORDER
+        style &= ~(win32con.WS_SIZEBOX | win32con.WS_MAXIMIZEBOX)
+        win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
+        win32gui.SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            win32con.SWP_NOMOVE
+            | win32con.SWP_NOSIZE
+            | win32con.SWP_NOZORDER
+            | win32con.SWP_FRAMECHANGED,
+        )
+        sleep(0.1)
+
+        # AALC Screen.adjust_win_size: retain the original client dimensions after
+        # removing the non-client frame instead of changing the game's render size.
+        client_width, client_height = self._style_snapshot.client_size
+        window_rect = win32gui.GetWindowRect(hwnd)
+        client_rect = win32gui.GetClientRect(hwnd)
+        window_width = window_rect[2] - window_rect[0]
+        window_height = window_rect[3] - window_rect[1]
+        current_client_width = client_rect[2] - client_rect[0]
+        current_client_height = client_rect[3] - client_rect[1]
+        required_window_width = client_width + (window_width - current_client_width)
+        required_window_height = client_height + (window_height - current_client_height)
+        win32gui.SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            required_window_width,
+            required_window_height,
+            win32con.SWP_NOZORDER | win32con.SWP_NOMOVE,
+        )
+        self._automation_style_applied = True
+        return True
+
+    def restore_automation_style(self) -> bool:
+        """Restore the window state captured before automation styling."""
+
+        snapshot = self._style_snapshot
+        if snapshot is None:
+            return True
+
+        win32con, win32gui = self._load_pywin32()
+        if not win32gui.IsWindow(snapshot.hwnd):
+            self._style_snapshot = None
+            self._automation_style_applied = False
+            return False
+
+        hwnd = snapshot.hwnd
+        # AALC Screen.reset_win: restore the frame, clear topmost, and refresh it.
+        win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, snapshot.style)
+        win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, snapshot.ex_style)
+        win32gui.SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            win32con.SWP_FRAMECHANGED
+            | win32con.SWP_NOMOVE
+            | win32con.SWP_NOSIZE
+            | win32con.SWP_NOZORDER
+            | win32con.SWP_NOACTIVATE,
+        )
+        win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
+        win32gui.SetWindowPos(
+            hwnd,
+            win32con.HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE,
+        )
+
+        left, top, right, bottom = snapshot.window_rect
+        win32gui.SetWindowPos(
+            hwnd,
+            win32con.HWND_TOPMOST if snapshot.ex_style & win32con.WS_EX_TOPMOST else win32con.HWND_NOTOPMOST,
+            left,
+            top,
+            right - left,
+            bottom - top,
+            win32con.SWP_NOACTIVATE | win32con.SWP_FRAMECHANGED,
+        )
+        self._style_snapshot = None
+        self._automation_style_applied = False
+        return True
 
     def get_dpi_scale(self) -> float:
         return self._dpi_scale(self._window.hwnd) if self._window else 1.0

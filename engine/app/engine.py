@@ -44,6 +44,7 @@ class AutomationEngine:
         self._task_queue: list[str] = []
         self._developer_input_enabled = False
         self._window_health: str | None = None
+        self._window_style_error: str | None = None
         self._memory_pressure = False
         window = WindowsWindowManager(config.window)
         self.context = AutomationContext(
@@ -67,6 +68,7 @@ class AutomationEngine:
 
     async def run(self) -> None:
         self.status = EngineStatus.IDLE
+        await self._ensure_window_style(self.context.window.find_window())
         await self.emit(
             "ready",
             engine_version=ENGINE_VERSION,
@@ -82,6 +84,7 @@ class AutomationEngine:
             self.status = EngineStatus.STOPPING
             await self._stop_task(TaskFinishReason.USER_STOPPED)
             self.context.input.release_all()
+            await self._restore_window_style()
             heartbeat.cancel()
             with suppress(asyncio.CancelledError):
                 await heartbeat
@@ -90,6 +93,7 @@ class AutomationEngine:
     async def _heartbeat_loop(self) -> None:
         while not self._shutdown.is_set():
             window = self.context.window.find_window()
+            await self._ensure_window_style(window)
             health = self._window_health_payload(window)
             await self.emit(
                 "heartbeat",
@@ -118,6 +122,43 @@ class AutomationEngine:
                 await asyncio.wait_for(self._shutdown.wait(), timeout=self.config.heartbeat_interval_seconds)
             except TimeoutError:
                 continue
+
+    async def _ensure_window_style(self, window: WindowInfo | None) -> None:
+        if window is None:
+            return
+        apply_style = getattr(self.context.window, "apply_automation_style", None)
+        if not callable(apply_style):
+            return
+        try:
+            apply_style()
+        except Exception as error:
+            message = str(error)
+            if message != self._window_style_error:
+                self._window_style_error = message
+                await self.emit(
+                    "log",
+                    level="error",
+                    source="window",
+                    message=f"Could not apply game window style: {message}",
+                    data={"important": True, "hwnd": window.hwnd},
+                )
+        else:
+            self._window_style_error = None
+
+    async def _restore_window_style(self) -> None:
+        restore_style = getattr(self.context.window, "restore_automation_style", None)
+        if not callable(restore_style):
+            return
+        try:
+            restore_style()
+        except Exception as error:
+            await self.emit(
+                "log",
+                level="error",
+                source="window",
+                message=f"Could not restore game window style: {error}",
+                data={"important": True},
+            )
 
     async def _handle_command(self, command: dict) -> None:
         command_type = command["type"]
