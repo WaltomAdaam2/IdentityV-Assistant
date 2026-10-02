@@ -309,7 +309,13 @@ class WindowsWindowManager(WindowManager):
         # AALC: restore the window before changing its frame and foreground state.
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(hwnd)
+        win32gui.BringWindowToTop(hwnd)
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:
+            # Windows can deny foreground activation even for a valid window.
+            # Topmost/frame styling must still be applied in that case.
+            pass
 
         # AALC Screen.reduce_miscontact: keep this call order and flag set intact.
         win32gui.SetWindowPos(

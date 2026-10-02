@@ -70,6 +70,9 @@ class FakeWin32Gui:
     def SetForegroundWindow(self, hwnd: int) -> None:
         self.calls.append(("SetForegroundWindow", hwnd))
 
+    def BringWindowToTop(self, hwnd: int) -> None:
+        self.calls.append(("BringWindowToTop", hwnd))
+
     def SetWindowPos(self, hwnd: int, insert_after, x: int, y: int, width: int, height: int, flags: int) -> None:
         self.calls.append(("SetWindowPos", hwnd, insert_after, x, y, width, height, flags))
 
@@ -104,12 +107,13 @@ def test_apply_style_uses_aalc_sequence_and_is_idempotent(monkeypatch) -> None:
     assert gui.calls == first_calls
 
     assert first_calls[0] == ("ShowWindow", 42, FakeWin32Con.SW_RESTORE)
-    assert first_calls[1] == ("SetForegroundWindow", 42)
-    assert first_calls[2][0:3] == ("SetWindowPos", 42, FakeWin32Con.HWND_TOPMOST)
-    assert first_calls[3][0:3] == ("SetWindowLong", 42, FakeWin32Con.GWL_STYLE)
+    assert first_calls[1] == ("BringWindowToTop", 42)
+    assert first_calls[2] == ("SetForegroundWindow", 42)
+    assert first_calls[3][0:3] == ("SetWindowPos", 42, FakeWin32Con.HWND_TOPMOST)
+    assert first_calls[4][0:3] == ("SetWindowLong", 42, FakeWin32Con.GWL_STYLE)
     assert gui.style == 0x10000000
-    assert first_calls[4][-1] & FakeWin32Con.SWP_FRAMECHANGED
-    assert first_calls[5][5:7] == (1280, 720)
+    assert first_calls[5][-1] & FakeWin32Con.SWP_FRAMECHANGED
+    assert first_calls[6][5:7] == (1280, 720)
 
 
 def test_restore_style_restores_exact_original_state(monkeypatch) -> None:
