@@ -5,11 +5,40 @@ mod logs;
 mod power;
 
 use engine::EngineSupervisor;
+use serde_json::json;
 use tauri::Manager;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    let app = app.clone();
+                    let supervisor = app.state::<EngineSupervisor>().inner().clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(error) = supervisor.toggle_pause(app.clone()).await {
+                            logs::emit(
+                                &app,
+                                json!({
+                                    "version": 1,
+                                    "type": "error",
+                                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                                    "code": "HOTKEY_FAILED",
+                                    "message": error,
+                                    "recoverable": true,
+                                    "details": {}
+                                }),
+                            );
+                        }
+                    });
+                })
+                .build(),
+        )
         .manage(EngineSupervisor::default())
         .manage(power::PowerManager::default())
         .invoke_handler(tauri::generate_handler![
@@ -29,6 +58,20 @@ pub fn run() {
             commands::diagnostics::read_debug_frame,
         ])
         .setup(|app| {
+            if let Err(error) = app.global_shortcut().register("F3") {
+                logs::emit(
+                    app.handle(),
+                    json!({
+                        "version": 1,
+                        "type": "error",
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                        "code": "HOTKEY_UNAVAILABLE",
+                        "message": format!("Could not register F3: {error}"),
+                        "recoverable": true,
+                        "details": {}
+                    }),
+                );
+            }
             logs::prune().map_err(std::io::Error::other)?;
             let settings = config::load().map_err(std::io::Error::other)?;
             let system = settings["app"]["prevent_system_sleep"]

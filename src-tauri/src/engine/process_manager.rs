@@ -42,16 +42,20 @@ struct EngineState {
     last_heartbeat: Option<chrono::DateTime<Utc>>,
     heartbeat_timeout_seconds: f64,
     last_error: Option<String>,
+    pending_tasks: Vec<String>,
+    active_task_id: Option<String>,
 }
 
 #[derive(Clone)]
 pub struct EngineSupervisor {
     inner: Arc<Mutex<EngineState>>,
+    lifecycle: Arc<Mutex<()>>,
 }
 
 impl Default for EngineSupervisor {
     fn default() -> Self {
         Self {
+            lifecycle: Arc::new(Mutex::new(())),
             inner: Arc::new(Mutex::new(EngineState {
                 process: None,
                 status: "stopped".into(),
@@ -60,6 +64,8 @@ impl Default for EngineSupervisor {
                 last_heartbeat: None,
                 heartbeat_timeout_seconds: 10.0,
                 last_error: None,
+                pending_tasks: Vec::new(),
+                active_task_id: None,
             })),
         }
     }
@@ -67,6 +73,7 @@ impl Default for EngineSupervisor {
 
 impl EngineSupervisor {
     pub async fn start(&self, app: AppHandle) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock().await;
         let wait_for_existing_start = {
             let mut state = self.inner.lock().await;
             if let Some(process) = state.process.as_mut() {
@@ -268,6 +275,9 @@ impl EngineSupervisor {
                                 None
                             } else {
                                 state.status = "error".into();
+                                if !state.pending_tasks.is_empty() {
+                                    state.task_status = "paused".into();
+                                }
                                 let message = state.last_error.clone().unwrap_or_else(|| {
                                     format!("Automation service exited with {status}")
                                 });
@@ -281,6 +291,18 @@ impl EngineSupervisor {
                 };
                 if let Some(message) = exit {
                     crate::logs::emit(&app, protocol_error("ENGINE_CRASHED", &message));
+                    let state = supervisor.inner.lock().await;
+                    if state.task_status == "paused" {
+                        crate::logs::emit(
+                            &app,
+                            json!({
+                                "version": 1, "type": "task_paused",
+                                "timestamp": Utc::now().to_rfc3339(),
+                                "task_id": state.active_task_id.as_ref().or(state.pending_tasks.first()),
+                                "reason": "engine_error", "message": message
+                            }),
+                        );
+                    }
                     return;
                 }
             }
@@ -313,7 +335,50 @@ impl EngineSupervisor {
                     state.task_status = status.to_string();
                 }
             }
-            Some("task_finished") => state.task_status = "idle".into(),
+            Some("task_started") => {
+                state.status = "running".into();
+                if let Some(task_id) = message.get("task_id").and_then(Value::as_str) {
+                    state.active_task_id = Some(task_id.to_string());
+                    if let Some(index) = state.pending_tasks.iter().position(|item| item == task_id)
+                    {
+                        state.pending_tasks.drain(..index);
+                    } else if state.pending_tasks.is_empty() {
+                        state.pending_tasks.push(task_id.to_string());
+                    }
+                }
+                state.task_status = "running".into();
+            }
+            Some("task_paused") => {
+                state.status = "paused".into();
+                state.task_status = "paused".into();
+                if let Some(message) = message.get("message").and_then(Value::as_str) {
+                    state.last_error = Some(message.to_string());
+                }
+            }
+            Some("task_resumed") => {
+                state.status = "running".into();
+                state.task_status = "running".into();
+                state.last_error = None;
+            }
+            Some("task_finished") => {
+                let reason = message
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if reason == "completed" {
+                    if let Some(active) = state.active_task_id.take() {
+                        if state.pending_tasks.first() == Some(&active) {
+                            state.pending_tasks.remove(0);
+                        } else {
+                            state.pending_tasks.retain(|item| item != &active);
+                        }
+                    }
+                } else {
+                    state.pending_tasks.clear();
+                    state.active_task_id = None;
+                }
+                state.task_status = "idle".into();
+            }
             Some("error") if message.get("recoverable") == Some(&Value::Bool(false)) => {
                 state.status = "error".into();
             }
@@ -322,8 +387,29 @@ impl EngineSupervisor {
     }
 
     pub async fn send(&self, command: Value) -> Result<(), String> {
+        let pending_tasks = task_queue_from_command(&command);
+        if let Some(tasks) = &pending_tasks {
+            if tasks.is_empty()
+                || tasks.iter().any(|task| {
+                    !matches!(
+                        task.as_str(),
+                        "login_lobby" | "blackjack" | "hunter_match" | "hunter_rank" | "hide_seek"
+                    )
+                })
+            {
+                return Err("Unknown or empty task queue".into());
+            }
+        }
         let line = normalize_command(command)?;
         let mut state = self.inner.lock().await;
+        if pending_tasks.is_some()
+            && matches!(
+                state.task_status.as_str(),
+                "starting" | "running" | "paused"
+            )
+        {
+            return Err("A task is already running or paused".into());
+        }
         let process = state.process.as_mut().ok_or("Engine is not running")?;
         process
             .stdin
@@ -334,12 +420,59 @@ impl EngineSupervisor {
             .stdin
             .flush()
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        if let Some(tasks) = pending_tasks {
+            state.pending_tasks = tasks;
+            state.active_task_id = None;
+            state.task_status = "starting".into();
+        }
+        Ok(())
+    }
+
+    pub async fn has_process(&self) -> bool {
+        let mut state = self.inner.lock().await;
+        state
+            .process
+            .as_mut()
+            .is_some_and(|process| matches!(process.child.try_wait(), Ok(None)))
+    }
+
+    pub async fn resume(&self, app: AppHandle) -> Result<(), String> {
+        if self.has_process().await {
+            return self.send(json!({"type": "resume_task"})).await;
+        }
+        let pending = self.inner.lock().await.pending_tasks.clone();
+        if pending.is_empty() {
+            return Err("There is no paused task to resume".into());
+        }
+        self.start(app).await?;
+        self.inner.lock().await.task_status = "idle".into();
+        if pending.len() == 1 {
+            self.send(json!({"type": "start_task", "task": pending[0]}))
+                .await
+        } else {
+            self.send(json!({"type": "start_tasks", "tasks": pending}))
+                .await
+        }
+    }
+
+    pub async fn toggle_pause(&self, app: AppHandle) -> Result<(), String> {
+        match self.snapshot().await.task_status.as_str() {
+            "running" => self.send(json!({"type": "pause_task"})).await,
+            "paused" => self.resume(app).await,
+            _ => Ok(()),
+        }
     }
 
     pub async fn stop(&self) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock().await;
         let running = self.inner.lock().await.process.is_some();
         if !running {
+            let mut state = self.inner.lock().await;
+            state.pending_tasks.clear();
+            state.active_task_id = None;
+            state.task_status = "idle".into();
+            state.status = "stopped".into();
             return Ok(());
         }
         {
@@ -369,6 +502,8 @@ impl EngineSupervisor {
         state.task_status = "idle".into();
         state.last_heartbeat = None;
         state.last_error = None;
+        state.pending_tasks.clear();
+        state.active_task_id = None;
         Ok(())
     }
 
@@ -411,7 +546,7 @@ impl EngineSupervisor {
                 {
                     let state = self.inner.lock().await;
                     match state.status.as_str() {
-                        "idle" | "running" => return Ok(()),
+                        "idle" | "running" | "paused" => return Ok(()),
                         "error" | "stopped" => {
                             return Err(state.last_error.clone().unwrap_or_else(|| {
                                 "Automation service stopped before it was ready".into()
@@ -439,6 +574,31 @@ impl EngineSupervisor {
             let _ = process.child.kill().await;
             let _ = process.child.wait().await;
         }
+    }
+}
+
+fn task_queue_from_command(command: &Value) -> Option<Vec<String>> {
+    match command.get("type").and_then(Value::as_str) {
+        Some("start_task") => command
+            .get("task")
+            .and_then(Value::as_str)
+            .map(|task| vec![task.to_string()])
+            .or_else(|| Some(Vec::new())),
+        Some("start_tasks") => Some(
+            command
+                .get("tasks")
+                .and_then(Value::as_array)
+                .filter(|tasks| tasks.iter().all(Value::is_string))
+                .map(|tasks| {
+                    tasks
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        ),
+        _ => None,
     }
 }
 
@@ -489,4 +649,76 @@ fn protocol_error(code: &str, message: &str) -> Value {
         "recoverable": false,
         "details": {}
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{task_queue_from_command, EngineSupervisor};
+    use serde_json::json;
+
+    #[test]
+    fn extracts_single_task_for_crash_recovery() {
+        assert_eq!(
+            task_queue_from_command(&json!({"type": "start_task", "task": "hide_seek"})),
+            Some(vec!["hide_seek".to_string()])
+        );
+    }
+
+    #[test]
+    fn preserves_ordered_task_queue_for_crash_recovery() {
+        assert_eq!(
+            task_queue_from_command(&json!({
+                "type": "start_tasks",
+                "tasks": ["login_lobby", "hide_seek"]
+            })),
+            Some(vec!["login_lobby".to_string(), "hide_seek".to_string()])
+        );
+    }
+
+    #[test]
+    fn ignores_non_start_commands() {
+        assert_eq!(
+            task_queue_from_command(&json!({"type": "pause_task"})),
+            None
+        );
+    }
+
+    #[test]
+    fn invalid_task_array_is_not_partially_queued() {
+        assert_eq!(
+            task_queue_from_command(&json!({"type": "start_tasks", "tasks": ["login_lobby", 1]})),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn paused_task_keeps_order_and_stopping_clears_crash_queue() {
+        tauri::async_runtime::block_on(async {
+            let supervisor = EngineSupervisor::default();
+            supervisor.inner.lock().await.pending_tasks =
+                vec!["blackjack".into(), "hide_seek".into()];
+            supervisor
+                .apply_event(&json!({"type": "task_started", "task_id": "blackjack"}))
+                .await;
+            supervisor
+                .apply_event(&json!({"type": "task_paused", "message": "window_lost"}))
+                .await;
+            assert_eq!(supervisor.snapshot().await.task_status, "paused");
+            assert_eq!(
+                supervisor.inner.lock().await.pending_tasks,
+                ["blackjack", "hide_seek"]
+            );
+            supervisor
+                .apply_event(&json!({"type": "task_resumed"}))
+                .await;
+            assert_eq!(supervisor.snapshot().await.task_status, "running");
+            supervisor
+                .apply_event(&json!({"type": "task_finished", "reason": "completed"}))
+                .await;
+            assert_eq!(supervisor.inner.lock().await.pending_tasks, ["hide_seek"]);
+            supervisor.stop().await.unwrap();
+            assert!(supervisor.inner.lock().await.pending_tasks.is_empty());
+            assert_eq!(supervisor.snapshot().await.task_status, "idle");
+        });
+    }
 }
