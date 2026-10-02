@@ -27,6 +27,7 @@ from tasks.base import AutomationTask, TaskControl
 from tasks.blackjack_task import BlackjackTask
 from tasks.login_lobby_task import LoginLobbyTask
 from tasks.hunter_match_task import HunterMatchTask, HunterRankTask
+from tasks.hide_seek_task import HideSeekTask
 from window.base import WindowInfo
 from window.windows import WindowsWindowManager
 
@@ -87,7 +88,7 @@ class AutomationEngine:
         finally:
             self.status = EngineStatus.STOPPING
             await self._stop_task(TaskFinishReason.USER_STOPPED)
-            self.context.input.release_all()
+            await self._release_inputs()
             await self._restore_window_style()
             heartbeat.cancel()
             with suppress(asyncio.CancelledError):
@@ -191,8 +192,9 @@ class AutomationEngine:
         elif command_type == "pause_task" and self._task_control:
             self._task_control.pause()
             self.status, self.task_status = EngineStatus.PAUSED, "paused"
-            self.context.input.release_all()
-            await self.emit("task_paused", task_id=self._active_task_id, reason="user_paused")
+            message = await self._release_inputs()
+            await self.emit("task_paused", task_id=self._active_task_id,
+                            reason="input_failed" if message else "user_paused", message=message)
         elif command_type == "resume_task" and self._task_control:
             self._task_control.resume()
             self.status, self.task_status = EngineStatus.RUNNING, "running"
@@ -471,6 +473,7 @@ class AutomationEngine:
             "blackjack": BlackjackTask,
             "hunter_match": HunterMatchTask,
             "hunter_rank": HunterRankTask,
+            "hide_seek": HideSeekTask,
         }
 
     async def _start_task(self, task_name: str, preserve_queue: bool = False) -> None:
@@ -501,12 +504,9 @@ class AutomationEngine:
                                              message=message, recoverable=False, details={}))
                 reason = TaskFinishReason.ENGINE_ERROR
             finally:
-                try:
-                    self.context.input.release_all()
-                except Exception as error:
-                    message = f"Could not release task inputs: {error}"
-                    await self.writer.send(event("error", code=ErrorCode.INPUT_FAILED.value,
-                                                 message=message, recoverable=False, details={}))
+                release_error = await self._release_inputs()
+                if release_error:
+                    message = release_error
                     reason = TaskFinishReason.ENGINE_ERROR
             if control.cancelled.is_set():
                 reason = TaskFinishReason.USER_STOPPED
@@ -539,6 +539,16 @@ class AutomationEngine:
             self._task_control = None
             self._active_task_id = None
 
+    async def _release_inputs(self) -> str | None:
+        try:
+            self.context.input.release_all()
+        except Exception as error:
+            message = f"Could not release task inputs: {error}"
+            await self.writer.send(event("error", code=ErrorCode.INPUT_FAILED.value,
+                                         message=message, recoverable=False, details={}))
+            return message
+        return None
+
     async def _stop_task(self, reason: TaskFinishReason) -> None:
         self._task_queue.clear()
         if not self._task_runner or self._task_runner.done():
@@ -547,5 +557,5 @@ class AutomationEngine:
             self._task_control.cancel()
         with suppress(asyncio.CancelledError):
             await self._task_runner
-        self.context.input.release_all()
+        await self._release_inputs()
         self.status, self.task_status = EngineStatus.IDLE, "idle"

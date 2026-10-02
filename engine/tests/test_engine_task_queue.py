@@ -98,3 +98,26 @@ def test_stop_paused_error_does_not_start_next_task():
         assert engine.writer.events[-1]["reason"] == "user_stopped"
 
     asyncio.run(exercise())
+
+
+def test_pause_command_reports_release_failure_without_crashing_engine():
+    from tasks.base import TaskControl
+
+    async def exercise():
+        engine = AutomationEngine(EngineConfig())
+        engine.writer = Writer()
+        engine._task_control = TaskControl()
+        engine._active_task_id = "blackjack"
+        engine._task_queue = ["hunter_match"]
+
+        def fail():
+            raise RuntimeError("release failed")
+
+        engine.context.input.release_all = fail
+        await engine._handle_command({"type": "pause_task"})
+        assert engine.task_status == "paused"
+        assert engine._task_queue == ["hunter_match"]
+        assert engine.writer.events[-1]["type"] == "task_paused"
+        assert engine.writer.events[-1]["reason"] == "input_failed"
+
+    asyncio.run(exercise())

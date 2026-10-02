@@ -1,5 +1,7 @@
 import random
 
+import pytest
+
 from core.models import Point
 from input.base import InputBackend
 from input.controller import InputController
@@ -25,6 +27,30 @@ def test_release_all_releases_held_input() -> None:
     controller.mouse_down()
     controller.release_all()
     assert backend.calls == ["key_down:A", "down", "key_up:A", "up"]
+
+
+def test_failed_key_release_still_releases_other_input_and_can_retry() -> None:
+    class FailingBackend(RecordingBackend):
+        fail = True
+
+        def key_up(self, key):
+            if key == "A" and self.fail:
+                raise RuntimeError("release failed")
+            super().key_up(key)
+
+    backend = FailingBackend()
+    controller = InputController(backend)
+    controller.key_down("A")
+    controller.key_down("D")
+    controller.mouse_down()
+    with pytest.raises(RuntimeError, match="release failed"):
+        controller.release_all()
+    assert "key_up:D" in backend.calls and "up" in backend.calls
+    assert controller.pressed_keys == {"A"}
+    assert not controller.mouse_buttons_down
+    backend.fail = False
+    controller.release_all()
+    assert not controller.pressed_keys
 
 
 def test_window_message_point_uses_client_coordinates() -> None:

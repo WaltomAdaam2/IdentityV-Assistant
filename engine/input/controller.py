@@ -81,10 +81,19 @@ class InputController:
         self.backend.mouse_up(button)
 
     def release_all(self) -> None:
+        first_error = None
         for key in tuple(self.pressed_keys):
-            self.backend.key_up(key)
+            try:
+                self.backend.key_up(key)
+                self.pressed_keys.discard(key)
+            except Exception as error:
+                first_error = first_error or error
         for button in tuple(self.mouse_buttons_down):
-            self.backend.mouse_up(button)
-        self.pressed_keys.clear()
-        self.mouse_buttons_down.clear()
+            try:
+                self.backend.mouse_up(button)
+                self.mouse_buttons_down.discard(button)
+            except Exception as error:
+                first_error = first_error or error
         self._record("release_all", input="cleanup")
+        if first_error:
+            raise first_error

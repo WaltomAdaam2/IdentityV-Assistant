@@ -53,6 +53,7 @@ class AutomationConfig(_ConfigModel):
     blackjack_infinite_loop: StrictBool = False
     hunter_match_infinite_loop: StrictBool = False
     hunter_rank_infinite_loop: StrictBool = False
+    hide_seek_infinite_loop: StrictBool = False
     camera_turn_scale_percent: Annotated[StrictInt, Field(ge=20, le=300)] = 100
 
 
