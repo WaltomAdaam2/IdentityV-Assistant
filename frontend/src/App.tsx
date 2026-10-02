@@ -32,9 +32,14 @@ interface LogEntry {
 interface TaskProgress {
   taskId: string;
   stage: string;
-  role: "hunter" | "survivor" | null;
+  role: "hunter" | "survivor" | "bad_child" | null;
   completedCycles: number;
   result?: string;
+}
+interface TaskControlEvent {
+  revision: number;
+  type: "task_started" | "task_paused" | "task_resumed" | "task_finished";
+  taskId?: string;
 }
 
 const translations = {
@@ -63,6 +68,7 @@ const translations = {
       starting: "启动中",
       idle: "就绪",
       running: "运行中",
+      paused: "已暂停",
       stopping: "停止中",
       error: "异常",
     },
@@ -81,6 +87,7 @@ const translations = {
       blackjack: ["黑杰克", "自动匹配、游玩并返回归宿"],
       hunter_match: ["自动监管者匹配", "自动进入普通匹配、游玩并返回归宿"],
       hunter_rank: ["自动监管者排位", "自动进入传统排位、游玩并返回归宿"],
+      hide_seek: ["捉迷藏", "自动匹配坏孩子、完成对局并返回归宿"],
     },
     dashboard: {
       eyebrow: "自动化服务状态",
@@ -115,6 +122,7 @@ const translations = {
       startTask: "启动任务",
       pauseTask: "暂停任务",
       resumeTask: "恢复任务",
+      stopTask: "停止任务",
       edit: "编辑",
       closeEdit: "收起",
       infiniteLoop: "无限循环",
@@ -127,6 +135,7 @@ const translations = {
       role: "角色",
       hunter: "监管者",
       survivor: "求生者",
+      bad_child: "坏孩子",
       unknown: "待确认",
       results: { completed: "已完成", user_stopped: "已停止", timeout: "等待超时", window_lost: "窗口已关闭", engine_error: "执行失败" },
       stages: {
@@ -146,6 +155,15 @@ const translations = {
         queue_warning: "阵营队列人数过多", result_first: "首个结算页",
         result_second: "第二个结算页", surrendering: "等待投降", surrender: "投降菜单",
         loading: "加载中", running: "运行中",
+        waiting_hide_seek: "等待捉迷藏", hide_seek: "捉迷藏",
+        waiting_bad_child: "等待坏孩子", bad_child: "选择坏孩子",
+        waiting_start_game: "等待开始游戏", start_game: "开始游戏",
+        hide_seek_matching: "捉迷藏匹配中", waiting_f: "等待进入对局",
+        disguise: "寻找伪装", waiting_r_blocked: "确认伪装状态",
+        moving_to_fix: "寻找固定位置", waiting_v_fixed: "等待固定完成",
+        fixed: "已固定", eliminated: "已淘汰", hide_seek_results: "对局结算",
+        f_initial: "寻找伪装", r_blocked: "已伪装", v_ready: "寻找固定位置",
+        v_fixed: "已固定", death_f: "已淘汰",
       },
     },
     runtime: {
@@ -327,6 +345,7 @@ const translations = {
       starting: "Starting",
       idle: "Ready",
       running: "Running",
+      paused: "Paused",
       stopping: "Stopping",
       error: "Error",
     },
@@ -350,6 +369,7 @@ const translations = {
       blackjack: ["Blackjack", "Match, play and return to the home lobby"],
       hunter_match: ["Automatic Hunter Match", "Join a normal hunter match, play and return home"],
       hunter_rank: ["Automatic Hunter Rank", "Join traditional hunter rank, play and return home"],
+      hide_seek: ["Hide and Seek", "Match as a Bad Child, finish the round, and return home"],
     },
     dashboard: {
       eyebrow: "AUTOMATION SERVICE",
@@ -384,6 +404,7 @@ const translations = {
       startTask: "Start task",
       pauseTask: "Pause task",
       resumeTask: "Resume task",
+      stopTask: "Stop task",
       edit: "Edit",
       closeEdit: "Collapse",
       infiniteLoop: "Loop indefinitely",
@@ -396,6 +417,7 @@ const translations = {
       role: "Role",
       hunter: "Hunter",
       survivor: "Survivor",
+      bad_child: "Bad Child",
       unknown: "Unconfirmed",
       results: { completed: "Completed", user_stopped: "Stopped", timeout: "Timed out", window_lost: "Game window lost", engine_error: "Failed" },
       stages: {
@@ -415,6 +437,15 @@ const translations = {
         queue_warning: "Hunter queue is full", result_first: "First result page",
         result_second: "Second result page", surrendering: "Waiting to surrender", surrender: "Surrender menu",
         loading: "Loading", running: "Running",
+        waiting_hide_seek: "Waiting for Hide and Seek", hide_seek: "Hide and Seek",
+        waiting_bad_child: "Waiting for Bad Child", bad_child: "Choosing Bad Child",
+        waiting_start_game: "Waiting to start game", start_game: "Starting game",
+        hide_seek_matching: "Hide and Seek matching", waiting_f: "Waiting for the round",
+        disguise: "Finding a disguise", waiting_r_blocked: "Confirming disguise state",
+        moving_to_fix: "Moving before fixing", waiting_v_fixed: "Waiting for fixed state",
+        fixed: "Fixed in place", eliminated: "Eliminated", hide_seek_results: "Round results",
+        f_initial: "Finding a disguise", r_blocked: "Disguised", v_ready: "Moving before fixing",
+        v_fixed: "Fixed in place", death_f: "Eliminated",
       },
     },
     runtime: {
@@ -619,6 +650,13 @@ const initialTasks: TaskItem[] = [
     enabled: false,
     status: "idle",
   },
+  {
+    id: "hide_seek",
+    name: "hide_seek",
+    description: "",
+    enabled: false,
+    status: "idle",
+  },
 ];
 const defaults: Settings = {
   tasks: { enabled: ["login_lobby"] },
@@ -652,6 +690,7 @@ const defaults: Settings = {
     blackjack_infinite_loop: false,
     hunter_match_infinite_loop: false,
     hunter_rank_infinite_loop: false,
+    hide_seek_infinite_loop: false,
     camera_turn_scale_percent: 100,
   },
   debug: { save_debug_screenshots: false, verbose_logs: false },
@@ -749,6 +788,12 @@ export default function App() {
   const engineStatusRef = useRef("stopped");
   engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
+  const requestedTaskQueueRef = useRef<string[]>([]);
+  const activeTaskIdRef = useRef<string | null>(null);
+  const [taskControlEvent, setTaskControlEvent] = useState<TaskControlEvent>({
+    revision: 0,
+    type: "task_finished",
+  });
   const [progress, setProgress] = useState<TaskProgress | null>(null);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -830,13 +875,32 @@ export default function App() {
         await action();
         appendLog("info", current.actionSent(label), "ui");
         setNotice(current.actionNotice(label));
+        return true;
       } catch (error) {
         const message = current.actionFailed(label, asMessage(error));
         appendLog("error", message, "ui");
         setNotice(message);
+        return false;
       }
     },
     [appendLog],
+  );
+  const sendEngineCommand = useCallback(
+    async (label: string, command: Record<string, unknown>) => {
+      const previousQueue = requestedTaskQueueRef.current;
+      const type = command.type;
+      if (type === "start_task" && typeof command.task === "string")
+        requestedTaskQueueRef.current = [command.task];
+      else if (type === "start_tasks" && Array.isArray(command.tasks))
+        requestedTaskQueueRef.current = command.tasks.filter(
+          (task): task is string => typeof task === "string",
+        );
+      const sent = await run(label, () => bridge.sendEngineCommand(command));
+      if (!sent && (type === "start_task" || type === "start_tasks"))
+        requestedTaskQueueRef.current = previousQueue;
+      return sent;
+    },
+    [run],
   );
   const refreshSnapshot = useCallback(async () => {
     try {
@@ -893,12 +957,17 @@ export default function App() {
             ? current.taskEvent(event.state ?? "?")
             : event.type === "state_transition"
               ? current.transitionEvent(event.from ?? "?", event.to ?? "?")
+              : event.type === "task_paused"
+                ? current.taskEvent(current.taskStates.paused)
+                : event.type === "task_resumed"
+                  ? current.taskEvent(current.taskStates.running)
               : event.type === "task_finished"
                 ? current.finishedEvent(event.reason ?? "?")
                 : (event.type ?? current.receivedEvent));
         const important =
           event.data?.important === true ||
           event.type === "ready" ||
+          event.type === "task_paused" ||
           event.type === "task_finished";
         appendLog(level, eventMessage, event.source ?? event.type ?? "engine", important, false);
         if (event.type === "heartbeat") {
@@ -966,8 +1035,21 @@ export default function App() {
             setDeveloperInputEnabled(Boolean(event.enabled));
         }
         if (
+          event.type === "task_started" ||
+          event.type === "task_paused" ||
+          event.type === "task_resumed" ||
+          event.type === "task_finished"
+        )
+          setTaskControlEvent((previous) => ({
+            revision: previous.revision + 1,
+            type: event.type as TaskControlEvent["type"],
+            taskId: event.task_id,
+          }));
+        if (
           event.type === "task_state" ||
           event.type === "state_transition" ||
+          event.type === "task_paused" ||
+          event.type === "task_resumed" ||
           event.type === "task_finished"
         )
           setRuntimeEvent(event);
@@ -975,12 +1057,54 @@ export default function App() {
           setTasks((current) =>
             current.map((task) =>
               task.status === "running" || task.status === "paused"
+                ? { ...task, status: event.state === "paused" ? "paused" : "running" }
+                : task,
+            ),
+          );
+        if (event.type === "task_paused") {
+          setTasks((current) =>
+            current.map((task) =>
+              task.id === event.task_id ||
+              (!event.task_id && (task.status === "running" || task.status === "paused"))
+                ? { ...task, status: "paused" }
+                : task,
+            ),
+          );
+          setSnapshot((current) => ({
+            ...current,
+            status: "paused",
+            taskStatus: "paused",
+            lastError: event.message ?? event.reason ?? current.lastError,
+          }));
+          setNotice(
+            event.message ??
+            (event.reason === "user_paused"
+              ? current.taskEvent(current.taskStates.paused)
+              : event.reason ?? current.receivedEvent),
+          );
+        }
+        if (event.type === "task_resumed") {
+          setTasks((current) =>
+            current.map((task) =>
+              task.id === event.task_id ||
+              (!event.task_id && task.status === "paused")
                 ? { ...task, status: "running" }
                 : task,
             ),
           );
-        if (event.type === "task_started" && event.task_id)
+          setSnapshot((current) => ({
+            ...current,
+            status: "running",
+            taskStatus: "running",
+            lastError: null,
+          }));
+        }
+        if (event.type === "task_started" && event.task_id) {
+          activeTaskIdRef.current = event.task_id;
+          if (!requestedTaskQueueRef.current.includes(event.task_id))
+            requestedTaskQueueRef.current = [event.task_id];
           setProgress({ taskId: event.task_id, stage: "running", role: null, completedCycles: 0 });
+        }
         if (event.type === "task_progress" && event.task_id)
           setProgress({
             taskId: event.task_id,
@@ -990,17 +1114,50 @@ export default function App() {
           });
         if (event.type === "task_started" && event.task_id)
           setTasks((current) =>
-            current.map((task) => ({ ...task, status: task.id === event.task_id ? "running" : "idle" })),
+            {
+              const activeIndex = requestedTaskQueueRef.current.indexOf(event.task_id ?? "");
+              const queuedIds = new Set(
+                activeIndex >= 0
+                  ? requestedTaskQueueRef.current.slice(activeIndex + 1)
+                  : [],
+              );
+              return current.map((task) => ({
+                ...task,
+                status: task.id === event.task_id
+                  ? "running"
+                  : queuedIds.has(task.id)
+                    ? "queued"
+                    : "idle",
+              }));
+            },
           );
         if (event.type === "task_finished") {
+          const finishedTaskId = activeTaskIdRef.current;
+          const finishedIndex = finishedTaskId
+            ? requestedTaskQueueRef.current.indexOf(finishedTaskId)
+            : -1;
+          requestedTaskQueueRef.current = event.reason === "completed" && finishedIndex >= 0
+            ? requestedTaskQueueRef.current.slice(finishedIndex + 1)
+            : [];
+          activeTaskIdRef.current = null;
           setProgress((current) => current && { ...current, result: event.reason ?? "finished" });
           setTasks((current) =>
-            current.map((task) => ({ ...task, status: "idle" })),
+            {
+              const queuedIds = new Set(requestedTaskQueueRef.current);
+              return current.map((task) => ({
+                ...task,
+                status: queuedIds.has(task.id) ? "queued" : "idle",
+              }));
+            },
           );
           setSnapshot((current) => ({ ...current, taskStatus: "idle" }));
         }
         if (event.type === "error" && !event.recoverable)
-          setSnapshot((current) => ({ ...current, status: "error" }));
+          setSnapshot((current) =>
+            current.taskStatus === "running" || current.taskStatus === "paused"
+              ? { ...current, status: "paused", taskStatus: "paused", lastError: event.message ?? current.lastError }
+              : { ...current, status: "error", lastError: event.message ?? current.lastError },
+          );
       })
       .then((unlisten) => {
         if (disposed) void unlisten();
@@ -1130,9 +1287,8 @@ export default function App() {
         onChange={setTasks}
         settings={settings}
         setSettings={setSettings}
-        onCommand={(label, command) =>
-          run(label, () => bridge.sendEngineCommand(command))
-        }
+        taskControlEvent={taskControlEvent}
+        onCommand={sendEngineCommand}
       />
     ),
     runtime: (
@@ -1141,9 +1297,7 @@ export default function App() {
         snapshot={snapshot}
         runtimeEvent={runtimeEvent}
         onRefresh={refreshSnapshot}
-        onCommand={(label, command) =>
-          run(label, () => bridge.sendEngineCommand(command))
-        }
+        onCommand={sendEngineCommand}
       />
     ),
     debug: (
@@ -1360,18 +1514,24 @@ function Tasks({
   onChange,
   settings,
   setSettings,
+  taskControlEvent,
   onCommand,
 }: {
   language: Language;
   tasks: TaskItem[];
-  onChange: (tasks: TaskItem[]) => void;
+  onChange: (value: TaskItem[] | ((current: TaskItem[]) => TaskItem[])) => void;
   settings: Settings;
   setSettings: (value: Settings) => void;
-  onCommand: (label: string, command: Record<string, unknown>) => void;
+  taskControlEvent: TaskControlEvent;
+  onCommand: (label: string, command: Record<string, unknown>) => Promise<boolean>;
 }) {
   const t = translations[language].tasks;
   const labels = translations[language].settings;
   const [editingTask, setEditingTask] = useState<string | null>(null);
+  const [pendingCommand, setPendingCommand] = useState<{
+    type: "start" | "pause" | "resume" | "stop";
+    afterRevision: number;
+  } | null>(null);
   const updateAutomation = (patch: Partial<Settings["automation"]>) =>
     setSettings({ ...settings, automation: { ...settings.automation, ...patch } });
   const timingFields = [
@@ -1382,14 +1542,35 @@ function Tasks({
     ["click_duration_jitter_ms", labels.durationJitter, 1, 2000],
   ] as const;
   const update = (id: string, patch: Partial<TaskItem>) =>
-    onChange(
-      tasks.map((task) => (task.id === id ? { ...task, ...patch } : task)),
+    onChange((current) =>
+      current.map((task) => (task.id === id ? { ...task, ...patch } : task)),
     );
   const enabledTasks = tasks.filter((task) => task.enabled);
-  const startFirst = () => {
-    if (!enabledTasks.length) return;
-    update(enabledTasks[0].id, { status: "running" });
-    onCommand(t.startEnabled, { type: "start_tasks", tasks: enabledTasks.map((task) => task.id) });
+  const hasActiveTask = tasks.some((task) => task.status !== "idle");
+  const commandPending = pendingCommand !== null;
+  useEffect(() => {
+    if (!pendingCommand || taskControlEvent.revision <= pendingCommand.afterRevision)
+      return;
+    if (
+      (pendingCommand.type === "start" && ["task_started", "task_paused", "task_finished"].includes(taskControlEvent.type)) ||
+      (pendingCommand.type === "pause" && ["task_paused", "task_finished"].includes(taskControlEvent.type)) ||
+      (pendingCommand.type === "resume" && ["task_resumed", "task_paused", "task_finished"].includes(taskControlEvent.type)) ||
+      (pendingCommand.type === "stop" && taskControlEvent.type === "task_finished")
+    )
+      setPendingCommand(null);
+  }, [pendingCommand, taskControlEvent]);
+  const startFirst = async () => {
+    if (!enabledTasks.length || hasActiveTask || commandPending) return;
+    setPendingCommand({ type: "start", afterRevision: taskControlEvent.revision });
+    try {
+      const sent = await onCommand(t.startEnabled, {
+        type: "start_tasks",
+        tasks: enabledTasks.map((task) => task.id),
+      });
+      if (!sent) setPendingCommand(null);
+    } catch {
+      setPendingCommand(null);
+    }
   };
   return (
     <>
@@ -1400,8 +1581,8 @@ function Tasks({
         </div>
         <button
           className="primary"
-          disabled={!enabledTasks.length}
-          onClick={startFirst}
+          disabled={!enabledTasks.length || hasActiveTask || commandPending}
+          onClick={() => void startFirst()}
         >
           {t.startEnabled}
         </button>
@@ -1412,8 +1593,10 @@ function Tasks({
             ? "blackjack_infinite_loop"
             : task.id === "hunter_rank"
               ? "hunter_rank_infinite_loop"
-              : "hunter_match_infinite_loop";
-          const action =
+              : task.id === "hide_seek"
+                ? "hide_seek_infinite_loop"
+                : "hunter_match_infinite_loop";
+          const action: "start" | "pause" | "resume" =
             task.status === "running"
               ? "pause"
               : task.status === "paused"
@@ -1444,19 +1627,23 @@ function Tasks({
                 <p>{description}</p>
               </div>
               <button
-                onClick={() => {
-                  update(task.id, {
-                    status: action === "pause" ? "paused" : "running",
-                  });
-                  onCommand(
-                    label,
-                    action === "pause"
-                      ? { type: "pause_task" }
-                      : action === "resume"
-                        ? { type: "resume_task" }
-                        : { type: "start_task", task: task.id },
-                  );
-                }}
+                disabled={commandPending || (action === "start" && hasActiveTask)}
+                onClick={() => void (async () => {
+                  setPendingCommand({ type: action, afterRevision: taskControlEvent.revision });
+                  try {
+                    const sent = await onCommand(
+                      label,
+                      action === "pause"
+                        ? { type: "pause_task" }
+                        : action === "resume"
+                          ? { type: "resume_task" }
+                          : { type: "start_task", task: task.id },
+                    );
+                    if (!sent) setPendingCommand(null);
+                  } catch {
+                    setPendingCommand(null);
+                  }
+                })()}
               >
                 {action === "pause"
                   ? t.pause
@@ -1466,6 +1653,21 @@ function Tasks({
               </button>
               <button className="task-edit-button" onClick={() => setEditingTask(editingTask === task.id ? null : task.id)}>
                 {editingTask === task.id ? t.closeEdit : t.edit}
+              </button>
+              <button
+                className="task-stop-button"
+                disabled={task.status === "idle" || commandPending}
+                onClick={() => void (async () => {
+                  setPendingCommand({ type: "stop", afterRevision: taskControlEvent.revision });
+                  try {
+                    const sent = await onCommand(t.stopTask, { type: "stop_task" });
+                    if (!sent) setPendingCommand(null);
+                  } catch {
+                    setPendingCommand(null);
+                  }
+                })()}
+              >
+                {translations[language].dashboard.stop}
               </button>
               <span className={`tag ${task.status}`}>{statusLabel(task.status, language)}</span>
             </article>
@@ -1481,6 +1683,9 @@ function Tasks({
                 <label>{labels.loginTimeout}
                   <input type="number" min="30" max="900" value={settings.automation.login_timeout_seconds} onChange={(event) => updateAutomation({ login_timeout_seconds: Math.max(30, Math.min(900, Number(event.target.value))) })} />
                 </label>
+                {timingFields.map(([key, label, min, max]) => <label key={key}>{label}
+                  <input type="number" min={min} max={max} value={settings.automation[key]} onChange={(event) => updateAutomation({ [key]: Math.max(min, Math.min(max, Number(event.target.value))) })} />
+                </label>)}
               </> : <>
                 <label className="check-label"><input type="checkbox" checked={settings.automation[loopKey]} onChange={(event) => updateAutomation({ [loopKey]: event.target.checked })} />{t.infiniteLoop}</label>
                 {task.id === "blackjack" && <label>{t.cameraScale}
@@ -1952,11 +2157,6 @@ function SettingsPage({
     });
   const updateCapture = (patch: Partial<Settings["capture"]>) =>
     setSettings({ ...settings, capture: { ...settings.capture, ...patch } });
-  const updateAutomation = (patch: Partial<Settings["automation"]>) =>
-    setSettings({
-      ...settings,
-      automation: { ...settings.automation, ...patch },
-    });
   const updateVision = (patch: Partial<Settings["vision"]>) =>
     setSettings({ ...settings, vision: { ...settings.vision, ...patch } });
   const updateDebug = (patch: Partial<Settings["debug"]>) =>
@@ -2040,98 +2240,6 @@ function SettingsPage({
             {t.developerMode}
             <small>{t.developerModeHint}</small>
           </span>
-        </label>
-      </section>
-      <section className="panel developer-panel">
-        <h2>{t.loginAutomation}</h2>
-        <p>{t.loginAutomationHint}</p>
-        <label>
-          {t.loginPlatform}
-          <select
-            value={settings.automation.login_platform}
-            onChange={(event) =>
-              updateAutomation({
-                login_platform: event.target.value as Settings["automation"]["login_platform"],
-              })
-            }
-          >
-            <option value="android">{t.android}</option>
-            <option value="ios">{t.ios}</option>
-          </select>
-        </label>
-        <label>
-          {t.loginTimeout}
-          <input
-            type="number"
-            min="30"
-            max="900"
-            value={settings.automation.login_timeout_seconds}
-            onChange={(event) =>
-              updateAutomation({ login_timeout_seconds: Number(event.target.value) })
-            }
-          />
-        </label>
-        <label>
-          {t.screenshotDelay}
-          <input
-            type="number"
-            min="0"
-            max="10000"
-            step="50"
-            value={settings.automation.screenshot_after_click_ms}
-            onChange={(event) =>
-              updateAutomation({ screenshot_after_click_ms: Number(event.target.value) })
-            }
-          />
-        </label>
-        <label>
-          {t.clickDelay}
-          <input
-            type="number"
-            min="0"
-            max="10000"
-            step="50"
-            value={settings.automation.click_after_detection_ms}
-            onChange={(event) =>
-              updateAutomation({ click_after_detection_ms: Number(event.target.value) })
-            }
-          />
-        </label>
-        <label>
-          {t.positionJitter}
-          <input
-            type="number"
-            min="1"
-            max="50"
-            value={settings.automation.click_position_jitter_px}
-            onChange={(event) =>
-              updateAutomation({ click_position_jitter_px: Number(event.target.value) })
-            }
-          />
-        </label>
-        <label>
-          {t.intervalJitter}
-          <input
-            type="number"
-            min="1"
-            max="2000"
-            value={settings.automation.click_interval_jitter_ms}
-            onChange={(event) =>
-              updateAutomation({ click_interval_jitter_ms: Number(event.target.value) })
-            }
-          />
-        </label>
-        <label>
-          {t.durationJitter}
-          <input
-            type="number"
-            min="1"
-            max="2000"
-            value={settings.automation.click_duration_jitter_ms}
-            onChange={(event) =>
-              updateAutomation({ click_duration_jitter_ms: Number(event.target.value) })
-            }
-          />
         </label>
       </section>
       <section className="panel developer-panel">
@@ -2285,7 +2393,7 @@ function About({ language }: { language: Language }) {
         </div>
         <div>
           <span>{t.license}</span>
-          <strong>GPL-3.0-only</strong>
+          <strong>AGPL-3.0-or-later</strong>
         </div>
         <div>
           <span>{t.stack}</span>

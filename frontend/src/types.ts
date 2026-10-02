@@ -1,4 +1,4 @@
-export type EngineState = "stopped" | "starting" | "idle" | "running" | "stopping" | "error";
+export type EngineState = "stopped" | "starting" | "idle" | "running" | "paused" | "stopping" | "error";
 
 export interface EngineSnapshot {
   status?: EngineState | string;
@@ -18,7 +18,7 @@ export interface EngineEvent {
   timestamp?: string;
   task_id?: string;
   stage?: string;
-  role?: "hunter" | "survivor" | null;
+  role?: "hunter" | "survivor" | "bad_child" | null;
   completed_cycles?: number;
   infinite_loop?: boolean;
   engine_status?: string;
@@ -157,6 +157,7 @@ export interface Settings {
     blackjack_infinite_loop: boolean;
     hunter_match_infinite_loop: boolean;
     hunter_rank_infinite_loop: boolean;
+    hide_seek_infinite_loop: boolean;
     camera_turn_scale_percent: number;
   };
   debug: { save_debug_screenshots: boolean; verbose_logs: boolean };
