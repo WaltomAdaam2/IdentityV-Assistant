@@ -31,7 +31,8 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 * Independent options prevent system sleep and display sleep; the display option also keeps the session active to reduce idle locking
 * Task card editors for login platform, login timeout, click delays and variation, camera turn scale, and looping; login settings are in the Enter the home lobby task editor and changes save automatically
 * Enabled task selection survives restarts; multiple enabled tasks run in list order, and starting a task starts a stopped automation service automatically
-* F3 globally pauses or resumes the active task; pausing releases held inputs and freezes task timers
+* F3 globally starts or stops the engine; stopping releases input and clears the task queue
+* Engine startup sets the game client to 1600×900, moves it to the current monitor work area's bottom right, and pins it on top
 * A nonrecoverable task error pauses the active task and retains its queue for manual rerouting; every active task row has Stop, which cancels the active task and clears the remaining queue
 * Optional memory protection that collects unused objects above 90% system memory use
 * Capture diagnostics, concise logs, and window settings available to regular users; logs support search, filtering, pagination, and page jumping
@@ -61,10 +62,12 @@ Automatic capture uses Windows Graphics Capture by default to read the game wind
 1. Open Identity V and this app.
 2. On Tasks, use the matching card's Edit control. The Enter the home lobby editor contains platform, maximum wait, and click controls; game-task editors contain looping and shared input controls.
 3. Enable the tasks you want and select Start enabled tasks. This starts the automation service when it is stopped; multiple tasks run in list order.
-4. Press F3 to pause or resume the active task. Pausing releases held input and freezes task timers; resuming rechecks the current screen before continuing.
+4. Press F3 to start or stop the engine. Start tasks from the task page; use the task row controls to pause or resume a task.
 5. Stop on the active task row stops that task and clears the remaining queue. A nonrecoverable error retains the active task and remaining queue in a paused state until manual resume.
 
 The left sidebar shows the current stage, role, and completed cycle count. Indefinite looping is off by default. On start or resume, a task identifies the current screen and continues from a known stage. Recognized matching, ready, elimination, and result screens wait without a timeout; unknown screens, continuous loading, or unavailable usable window frames still have a 300-second limit. See the [state-machine guide](docs/state-machine.md) for the Hide and Seek stages and actions.
+
+Hunter match and rank randomly move, turn the camera, and use F, R, T, Space, Q, E, and both mouse buttons. Both Blackjack roles include Space, Q, and E. Hide and Seek starts small random camera turns immediately after confirming the fixed state; movement still waits 5 seconds. If V subsequently disappears while the living HUD is confirmed, the task quickly presses F, T, G and then Alt+1 every 7–13 seconds until leaving play. Menu and camera movement ease in and out; login clicks leave the cursor at the clicked position instead of snapping it back.
 
 Prevent display sleep and idle lock keeps the display on and periodically sends F15 to refresh Windows' user-idle timer while the app is open. Turning the option off or closing the app stops this. Manual Win+L still locks the session, and device management policy can enforce a lock. A Windows [power request](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest) only keeps the display on; [idle-lock policy](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/interactive-logon-machine-inactivity-limit) follows user-input inactivity.
 

@@ -21,8 +21,18 @@ HOME -> BOOK -> CHAOS -> HIDE_AND_SEEK -> BAD_CHILD + START_GAME
      -> DEATH_F -> CONTINUE -> RETURN_LOBBY -> HOME
 ```
 
-`F_INITIAL` moves for 1–3 seconds and presses F. At `V_READY`, the task confirms the R icon with a red X, moves for 5–8 seconds, and presses V. At `V_FIXED`, it waits 5 seconds, then runs independent randomized movement and camera-turn loops. Movement holds one WASD key for 13–17 seconds, followed by a 1–5 second gap. Small camera turns last 2.5–3.5 seconds with a 2.5–3.5 second cooldown. A stage change, pause, stop, or exit from a recognized in-round stage releases held input; resume checks the current screen before sending more input.
+`F_INITIAL` moves for 1–3 seconds and presses F. At `V_READY`, the task confirms the R icon with a red X, moves for 5–8 seconds, and presses V. At `V_FIXED`, camera turns begin immediately, while movement starts after 5 seconds. Movement holds one WASD key for 13–17 seconds, followed by a 1–5 second gap. Small camera turns last 2.5–3.5 seconds with a 2.5–3.5 second cooldown. Living HUD transitions retain these loops. Pause, stop, and unknown or non-playing screens release held input; resume checks the current screen before sending more input.
+
+After a confirmed `V_FIXED`, `LIVING_NO_V` requires the V icons to be absent and both the living controls and transform icon to match. It triggers F, T, G once per round (40 ms taps), followed by Alt+1 every 7–13 seconds for the rest of recognized play. Unknown screens suspend input without repeating the trigger; confirmed round exits reset it. Death, loading, and result recognition take priority.
 
 `MATCHING`, `READY_CASE`, `READY_START`, `DEATH_F`, `CONTINUE`, and `RETURN_LOBBY` are known waits and may remain on screen indefinitely. Unknown frames and continuous loading still time out after 300 active seconds. Active time excludes paused time: pause releases held input and freezes every task deadline; resume captures and reroutes the screen before more input is sent.
 
 Template regions are defined under `assets/templates/hide_seek`; the detector normalizes frames to 1920 × 1080 and confirms recognized stages with a second observation. The supplied reference frames and unit tests cover detector routing and stage transitions. No live Identity V game session was used to validate these actions.
+
+## Combat action schedules
+
+Hunter match and rank share randomized movement, left/right clicks, and keyboard actions. F, R, and camera turns run every 10–15 seconds; right click every 25–35 seconds, left click every 5–30 seconds followed by E after 0.3–3 seconds, T every 40–50 seconds, Space every 5–30 seconds, and Q every 5–60 seconds. Three consecutive missing combat observations end the action worker; brief HUD misses preserve its timers and surrender clock.
+
+Blackjack survivors add Space every 5–10 seconds to the existing Q/E/click/double-R/camera schedule. Blackjack hunters run Q and Space every 5–10 seconds alongside the existing right/T/left/E/camera combo. Scheduler deadlines use active time so sending actions does not accumulate countdown drift.
+
+Menu cursor paths take 120–450 ms based on distance, with eased speed and exact endpoints. Combat turns use eased relative movement without zero-distance events. Login clicks no longer restore the old cursor position. Input still uses the normal Windows input APIs; these changes improve motion continuity and do not provide an undetectability guarantee.

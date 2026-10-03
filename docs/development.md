@@ -35,7 +35,7 @@ Each stdout line is NDJSON. Enter a command such as `{"version":1,"type":"ping",
 
 ## Task lifecycle checks
 
-Use `start_task` or `start_tasks` through the Tauri command bridge when exercising the desktop application. Those commands start the Python service automatically if it is stopped. `start_tasks` retains the supplied ordering. F3 is a global pause/resume shortcut for an active task; pausing releases held input and freezes task timers.
+Use `start_task` or `start_tasks` through the Tauri command bridge when exercising the desktop application. Those commands start the Python service automatically if it is stopped. `start_tasks` retains the supplied ordering. F3 globally toggles engine startup/shutdown, serialized with the normal lifecycle commands. Startup sets the game client to 1600×900 at the current monitor work area's bottom right. Task pause/resume remains available through task controls; pausing releases input and freezes task timers.
 
 For a nonrecoverable task failure, confirm that the active task and pending queue move to paused status, then resume manually. Resume reconstructs the task and routes from a fresh capture. Stop clears the active task and all pending entries.
 

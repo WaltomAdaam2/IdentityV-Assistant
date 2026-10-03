@@ -48,6 +48,6 @@ When a Tauri `start_task` or `start_tasks` command is issued while the automatio
 
 The queue preserves the order supplied in `start_tasks`. A task that completes normally starts the next queued task. `stop_task` clears both the active task and every remaining queued task.
 
-Timeouts, window loss, engine task errors, and a nonrecoverable error event pause the active task instead of silently advancing the queue. The active task and remaining entries are retained. `resume_task` starts the service again if it crashed, then re-enters the active task's screen router; it does not resume blind input from the old stage. The F3 shortcut invokes this same pause/resume behavior outside the IPC transport.
+Timeouts, window loss, engine task errors, and a nonrecoverable error event pause the active task instead of silently advancing the queue. The active task and remaining entries are retained. `resume_task` starts the service again if it crashed, then re-enters the active task's screen router; it does not resume blind input from the old stage. F3 toggles engine startup/shutdown outside the IPC transport. Shutdown releases input and clears the task queue; it emits `task_finished` with `user_stopped`. Shortcut lifecycle logs use source `engine.lifecycle` and carry `engine_status` so the interface updates immediately.
 
 The frontend saves UI events through the Tauri `append_ui_log` command. Engine and UI events are appended to `%LOCALAPPDATA%\IdentityV-Assistant\logs\YYYY-MM-DD.jsonl`.
