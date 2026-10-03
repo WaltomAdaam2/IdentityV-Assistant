@@ -28,6 +28,7 @@ class FakeWin32Con:
     SWP_NOZORDER = 0x0004
     SWP_NOACTIVATE = 0x0010
     SWP_FRAMECHANGED = 0x0020
+    MONITOR_DEFAULTTONEAREST = 2
 
 
 class FakeWin32Gui:
@@ -36,6 +37,8 @@ class FakeWin32Gui:
         self.ex_style = ex_style
         self.window_rect = (100, 200, 1400, 950)
         self.client_rect = (0, 0, 1280, 720)
+        self.work_area = (0, 0, 1920, 1040)
+        self.remaining_frame = (0, 0)
         self.calls: list[tuple] = []
 
     def GetWindowLong(self, hwnd: int, index: int) -> int:
@@ -55,8 +58,22 @@ class FakeWin32Gui:
         if not self.style & (
             FakeWin32Con.WS_THICKFRAME | FakeWin32Con.WS_CAPTION | FakeWin32Con.WS_BORDER
         ):
-            return (0, 0, self.window_rect[2] - self.window_rect[0], self.window_rect[3] - self.window_rect[1])
+            return (
+                0,
+                0,
+                self.window_rect[2] - self.window_rect[0] - self.remaining_frame[0],
+                self.window_rect[3] - self.window_rect[1] - self.remaining_frame[1],
+            )
         return self.client_rect
+
+    def MonitorFromWindow(self, hwnd: int, flags: int) -> int:
+        assert hwnd == 42
+        assert flags == FakeWin32Con.MONITOR_DEFAULTTONEAREST
+        return 1
+
+    def GetMonitorInfo(self, monitor: int) -> dict:
+        assert monitor == 1
+        return {"Work": self.work_area}
 
     def IsIconic(self, hwnd: int) -> bool:
         return True
@@ -75,6 +92,12 @@ class FakeWin32Gui:
 
     def SetWindowPos(self, hwnd: int, insert_after, x: int, y: int, width: int, height: int, flags: int) -> None:
         self.calls.append(("SetWindowPos", hwnd, insert_after, x, y, width, height, flags))
+        left, top, right, bottom = self.window_rect
+        if flags & FakeWin32Con.SWP_NOMOVE:
+            x, y = left, top
+        if flags & FakeWin32Con.SWP_NOSIZE:
+            width, height = right - left, bottom - top
+        self.window_rect = (x, y, x + width, y + height)
 
 
 def _manager(gui: FakeWin32Gui) -> WindowsWindowManager:
@@ -85,7 +108,7 @@ def _manager(gui: FakeWin32Gui) -> WindowsWindowManager:
     manager._style_snapshot = None
     manager._automation_style_applied = False
     manager.current_hwnd = lambda: 42  # type: ignore[method-assign]
-    manager._load_pywin32 = lambda: (FakeWin32Con, gui)  # type: ignore[method-assign]
+    manager._load_pywin32 = lambda: (FakeWin32Con, gui, gui)  # type: ignore[method-assign]
     return manager
 
 
@@ -113,7 +136,21 @@ def test_apply_style_uses_aalc_sequence_and_is_idempotent(monkeypatch) -> None:
     assert first_calls[4][0:3] == ("SetWindowLong", 42, FakeWin32Con.GWL_STYLE)
     assert gui.style == 0x10000000
     assert first_calls[5][-1] & FakeWin32Con.SWP_FRAMECHANGED
-    assert first_calls[6][5:7] == (1280, 720)
+    assert first_calls[6][3:7] == (320, 140, 1600, 900)
+    assert gui.GetClientRect(42) == (0, 0, 1600, 900)
+
+
+def test_apply_style_uses_monitor_work_area_and_remaining_frame(monkeypatch) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    gui = FakeWin32Gui(FakeWin32Con.WS_CAPTION | FakeWin32Con.WS_THICKFRAME)
+    gui.work_area = (-1920, -200, 0, 840)
+    gui.remaining_frame = (8, 12)
+    manager = _manager(gui)
+
+    assert manager.apply_automation_style()
+
+    assert gui.GetClientRect(42) == (0, 0, 1600, 900)
+    assert gui.window_rect == (-1608, -72, 0, 840)
 
 
 def test_restore_style_restores_exact_original_state(monkeypatch) -> None:

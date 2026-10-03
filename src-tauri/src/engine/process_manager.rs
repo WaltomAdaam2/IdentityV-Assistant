@@ -36,6 +36,7 @@ struct EngineProcess {
 
 struct EngineState {
     process: Option<EngineProcess>,
+    process_generation: u64,
     status: String,
     engine_version: Option<String>,
     task_status: String,
@@ -58,6 +59,7 @@ impl Default for EngineSupervisor {
             lifecycle: Arc::new(Mutex::new(())),
             inner: Arc::new(Mutex::new(EngineState {
                 process: None,
+                process_generation: 0,
                 status: "stopped".into(),
                 engine_version: None,
                 task_status: "idle".into(),
@@ -74,6 +76,10 @@ impl Default for EngineSupervisor {
 impl EngineSupervisor {
     pub async fn start(&self, app: AppHandle) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock().await;
+        self.start_locked(app).await
+    }
+
+    async fn start_locked(&self, app: AppHandle) -> Result<(), String> {
         let wait_for_existing_start = {
             let mut state = self.inner.lock().await;
             if let Some(process) = state.process.as_mut() {
@@ -100,11 +106,14 @@ impl EngineSupervisor {
             return self.wait_until_ready().await;
         }
 
-        {
+        let process_generation = {
             let mut state = self.inner.lock().await;
             state.status = "starting".into();
             state.last_error = None;
-        }
+            state.last_heartbeat = None;
+            state.process_generation += 1;
+            state.process_generation
+        };
 
         let engine_path = match locate_engine() {
             Ok(path) => path,
@@ -114,10 +123,17 @@ impl EngineSupervisor {
             }
         };
         let python = locate_python(&engine_path);
+        let config_path = match crate::config::active_path() {
+            Ok(path) => path,
+            Err(error) => {
+                self.fail_start(&error).await;
+                return Err(error);
+            }
+        };
         let mut child = match Command::new(&python)
             .arg(&engine_path)
             .arg("--config")
-            .arg(crate::config::active_path()?)
+            .arg(config_path)
             .current_dir(engine_path.parent().unwrap_or_else(|| Path::new(".")))
             .env("PYTHONIOENCODING", "utf-8")
             .stdin(Stdio::piped())
@@ -158,8 +174,8 @@ impl EngineSupervisor {
         }
 
         let (ready_sender, ready_receiver) = oneshot::channel();
-        self.spawn_stdout_reader(app.clone(), stdout, ready_sender);
-        self.spawn_stderr_reader(app.clone(), stderr);
+        self.spawn_stdout_reader(app.clone(), stdout, ready_sender, process_generation);
+        self.spawn_stderr_reader(app.clone(), stderr, process_generation);
         self.spawn_exit_monitor(app, pid);
         match tokio::time::timeout(Duration::from_secs(8), ready_receiver).await {
             Ok(Ok(Ok(()))) => Ok(()),
@@ -188,6 +204,7 @@ impl EngineSupervisor {
         app: AppHandle,
         stdout: tokio::process::ChildStdout,
         ready_sender: oneshot::Sender<Result<(), String>>,
+        process_generation: u64,
     ) {
         let supervisor = self.clone();
         tauri::async_runtime::spawn(async move {
@@ -206,7 +223,13 @@ impl EngineSupervisor {
                             continue;
                         }
                         let is_ready = message.get("type").and_then(Value::as_str) == Some("ready");
-                        supervisor.apply_event(&message).await;
+                        if !supervisor.apply_event(&message, process_generation).await {
+                            // Preserve shutdown diagnostics without reviving the stopped UI state.
+                            if let Err(error) = crate::logs::append(&message) {
+                                eprintln!("Unable to save stopped engine log: {error}");
+                            }
+                            continue;
+                        }
                         crate::logs::emit(&app, message);
                         if is_ready {
                             if let Some(sender) = ready_sender.take() {
@@ -229,14 +252,21 @@ impl EngineSupervisor {
         });
     }
 
-    fn spawn_stderr_reader(&self, app: AppHandle, stderr: tokio::process::ChildStderr) {
+    fn spawn_stderr_reader(
+        &self,
+        app: AppHandle,
+        stderr: tokio::process::ChildStderr,
+        process_generation: u64,
+    ) {
         let supervisor = self.clone();
         tauri::async_runtime::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 {
                     let mut state = supervisor.inner.lock().await;
-                    state.last_error = Some(line.clone());
+                    if state.process_generation == process_generation {
+                        state.last_error = Some(line.clone());
+                    }
                 }
                 crate::logs::emit(
                     &app,
@@ -309,8 +339,11 @@ impl EngineSupervisor {
         });
     }
 
-    async fn apply_event(&self, message: &Value) {
+    async fn apply_event(&self, message: &Value, process_generation: u64) -> bool {
         let mut state = self.inner.lock().await;
+        if state.process_generation != process_generation {
+            return false;
+        }
         match message.get("type").and_then(Value::as_str) {
             Some("ready") => {
                 state.status = "idle".into();
@@ -384,6 +417,7 @@ impl EngineSupervisor {
             }
             _ => {}
         }
+        true
     }
 
     pub async fn send(&self, command: Value) -> Result<(), String> {
@@ -456,28 +490,83 @@ impl EngineSupervisor {
         }
     }
 
-    pub async fn toggle_pause(&self, app: AppHandle) -> Result<(), String> {
-        match self.snapshot().await.task_status.as_str() {
-            "running" => self.send(json!({"type": "pause_task"})).await,
-            "paused" => self.resume(app).await,
-            _ => Ok(()),
-        }
+    pub async fn toggle_engine(&self, app: AppHandle) -> Result<(), String> {
+        // Decide under the same lock as start/stop so rapid F3 presses toggle in order.
+        let _lifecycle = self.lifecycle.lock().await;
+        let stopping = self.has_process().await;
+        let emit_status = |status: &str| {
+            crate::logs::emit(
+                &app,
+                json!({
+                    "version": 1, "type": "log",
+                    "timestamp": Utc::now().to_rfc3339(),
+                    "level": "info", "source": "engine.lifecycle",
+                    "message": format!("F3: automation service {status}"),
+                    "engine_status": status, "data": {"important": true}
+                }),
+            );
+        };
+        emit_status(if stopping { "stopping" } else { "starting" });
+        let result = if stopping {
+            self.stop_locked_and_notify(&app).await
+        } else {
+            self.start_locked(app.clone()).await
+        };
+        emit_status(&self.snapshot().await.status);
+        result
+    }
+
+    pub async fn stop_and_notify(&self, app: &AppHandle) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock().await;
+        self.stop_locked_and_notify(app).await
+    }
+
+    async fn stop_locked_and_notify(&self, app: &AppHandle) -> Result<(), String> {
+        let task_id = {
+            let state = self.inner.lock().await;
+            state
+                .active_task_id
+                .as_ref()
+                .or(state.pending_tasks.first())
+                .cloned()
+        };
+        self.stop_locked().await?;
+        crate::logs::emit(
+            app,
+            json!({
+                "version": 1, "type": "task_finished",
+                "timestamp": Utc::now().to_rfc3339(),
+                "task_id": task_id, "reason": "user_stopped", "stats": {}
+            }),
+        );
+        Ok(())
     }
 
     pub async fn stop(&self) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock().await;
-        let running = self.inner.lock().await.process.is_some();
+        self.stop_locked().await
+    }
+
+    async fn stop_locked(&self) -> Result<(), String> {
+        let running = {
+            let mut state = self.inner.lock().await;
+            // Discard buffered events from the process being stopped, including after restart.
+            state.process_generation += 1;
+            let running = state.process.is_some();
+            if running {
+                state.status = "stopping".into();
+            }
+            running
+        };
         if !running {
             let mut state = self.inner.lock().await;
             state.pending_tasks.clear();
             state.active_task_id = None;
             state.task_status = "idle".into();
             state.status = "stopped".into();
+            state.last_heartbeat = None;
+            state.last_error = None;
             return Ok(());
-        }
-        {
-            let mut state = self.inner.lock().await;
-            state.status = "stopping".into();
         }
         let _ = self.send(json!({"type": "shutdown"})).await;
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -568,6 +657,7 @@ impl EngineSupervisor {
             let mut state = self.inner.lock().await;
             state.status = "error".into();
             state.last_error = Some(message.to_string());
+            state.process_generation += 1;
             state.process.take()
         };
         if let Some(mut process) = process {
@@ -698,10 +788,10 @@ mod tests {
             supervisor.inner.lock().await.pending_tasks =
                 vec!["blackjack".into(), "hide_seek".into()];
             supervisor
-                .apply_event(&json!({"type": "task_started", "task_id": "blackjack"}))
+                .apply_event(&json!({"type": "task_started", "task_id": "blackjack"}), 0)
                 .await;
             supervisor
-                .apply_event(&json!({"type": "task_paused", "message": "window_lost"}))
+                .apply_event(&json!({"type": "task_paused", "message": "window_lost"}), 0)
                 .await;
             assert_eq!(supervisor.snapshot().await.task_status, "paused");
             assert_eq!(
@@ -709,16 +799,63 @@ mod tests {
                 ["blackjack", "hide_seek"]
             );
             supervisor
-                .apply_event(&json!({"type": "task_resumed"}))
+                .apply_event(&json!({"type": "task_resumed"}), 0)
                 .await;
             assert_eq!(supervisor.snapshot().await.task_status, "running");
             supervisor
-                .apply_event(&json!({"type": "task_finished", "reason": "completed"}))
+                .apply_event(&json!({"type": "task_finished", "reason": "completed"}), 0)
                 .await;
             assert_eq!(supervisor.inner.lock().await.pending_tasks, ["hide_seek"]);
             supervisor.stop().await.unwrap();
             assert!(supervisor.inner.lock().await.pending_tasks.is_empty());
             assert_eq!(supervisor.snapshot().await.task_status, "idle");
+        });
+    }
+
+    #[test]
+    fn stopped_process_events_cannot_restart_the_displayed_state() {
+        tauri::async_runtime::block_on(async {
+            let supervisor = EngineSupervisor::default();
+            supervisor.stop().await.unwrap();
+            assert!(!supervisor.apply_event(&json!({"type": "ready"}), 0).await);
+            assert!(
+                !supervisor
+                    .apply_event(&json!({"type": "heartbeat", "engine_status": "running"}), 0)
+                    .await
+            );
+            assert_eq!(supervisor.snapshot().await.status, "stopped");
+
+            // A new process has its own generation; the old reader cannot overwrite it.
+            supervisor.inner.lock().await.process_generation = 2;
+            assert!(
+                supervisor
+                    .apply_event(&json!({"type": "ready", "engine_version": "new"}), 2)
+                    .await
+            );
+            assert!(
+                !supervisor
+                    .apply_event(&json!({"type": "task_paused"}), 0)
+                    .await
+            );
+            assert_eq!(supervisor.snapshot().await.status, "idle");
+        });
+    }
+
+    #[test]
+    fn stop_waits_for_in_progress_lifecycle_operation() {
+        tauri::async_runtime::block_on(async {
+            let supervisor = EngineSupervisor::default();
+            let lifecycle = supervisor.lifecycle.lock().await;
+            supervisor.inner.lock().await.status = "starting".into();
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(20), supervisor.stop())
+                    .await
+                    .is_err()
+            );
+            assert_eq!(supervisor.snapshot().await.status, "starting");
+            drop(lifecycle);
+            supervisor.stop().await.unwrap();
+            assert_eq!(supervisor.snapshot().await.status, "stopped");
         });
     }
 }

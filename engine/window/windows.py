@@ -27,7 +27,6 @@ class _WindowStyleSnapshot:
     style: int
     ex_style: int
     window_rect: tuple[int, int, int, int]
-    client_size: tuple[int, int]
 
 
 class WindowsWindowManager(WindowManager):
@@ -273,10 +272,14 @@ class WindowsWindowManager(WindowManager):
             self._user32.SetForegroundWindow(self._window.hwnd)
 
     @staticmethod
-    def _load_pywin32() -> tuple[Any, Any]:
+    def _load_pywin32() -> tuple[Any, Any, Any]:
         """Load the Win32 modules only when window styling is requested."""
 
-        return importlib.import_module("win32con"), importlib.import_module("win32gui")
+        return (
+            importlib.import_module("win32con"),
+            importlib.import_module("win32gui"),
+            importlib.import_module("win32api"),
+        )
 
     def apply_automation_style(self) -> bool:
         """Restore, foreground, crop, and pin the current game window.
@@ -289,22 +292,23 @@ class WindowsWindowManager(WindowManager):
         if not hwnd:
             return False
 
-        win32con, win32gui = self._load_pywin32()
+        win32con, win32gui, win32api = self._load_pywin32()
         if self._style_snapshot and self._style_snapshot.hwnd != hwnd:
             self.restore_automation_style()
 
         if self._style_snapshot is None:
-            client_rect = win32gui.GetClientRect(hwnd)
             self._style_snapshot = _WindowStyleSnapshot(
                 hwnd=hwnd,
                 style=win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE),
                 ex_style=win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE),
                 window_rect=tuple(win32gui.GetWindowRect(hwnd)),
-                client_size=(client_rect[2] - client_rect[0], client_rect[3] - client_rect[1]),
             )
 
         if self._automation_style_applied:
             return True
+
+        monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
+        work_area = win32api.GetMonitorInfo(monitor)["Work"]
 
         # AALC: restore the window before changing its frame and foreground state.
         if win32gui.IsIconic(hwnd):
@@ -347,9 +351,8 @@ class WindowsWindowManager(WindowManager):
         )
         sleep(0.1)
 
-        # AALC Screen.adjust_win_size: retain the original client dimensions after
-        # removing the non-client frame instead of changing the game's render size.
-        client_width, client_height = self._style_snapshot.client_size
+        # Account for any remaining non-client area so the game renders at 1600x900.
+        client_width, client_height = 1600, 900
         window_rect = win32gui.GetWindowRect(hwnd)
         client_rect = win32gui.GetClientRect(hwnd)
         window_width = window_rect[2] - window_rect[0]
@@ -361,11 +364,11 @@ class WindowsWindowManager(WindowManager):
         win32gui.SetWindowPos(
             hwnd,
             None,
-            0,
-            0,
+            work_area[2] - required_window_width,
+            work_area[3] - required_window_height,
             required_window_width,
             required_window_height,
-            win32con.SWP_NOZORDER | win32con.SWP_NOMOVE,
+            win32con.SWP_NOZORDER,
         )
         self._automation_style_applied = True
         return True
@@ -377,7 +380,7 @@ class WindowsWindowManager(WindowManager):
         if snapshot is None:
             return True
 
-        win32con, win32gui = self._load_pywin32()
+        win32con, win32gui, _ = self._load_pywin32()
         if not win32gui.IsWindow(snapshot.hwnd):
             self._style_snapshot = None
             self._automation_style_applied = False

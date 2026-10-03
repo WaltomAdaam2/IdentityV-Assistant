@@ -12,8 +12,11 @@ pub async fn start_engine(
 }
 
 #[tauri::command]
-pub async fn stop_engine(supervisor: State<'_, EngineSupervisor>) -> Result<(), String> {
-    supervisor.stop().await
+pub async fn stop_engine(
+    app: AppHandle,
+    supervisor: State<'_, EngineSupervisor>,
+) -> Result<(), String> {
+    supervisor.stop_and_notify(&app).await
 }
 
 #[tauri::command]
@@ -21,7 +24,7 @@ pub async fn restart_engine(
     app: AppHandle,
     supervisor: State<'_, EngineSupervisor>,
 ) -> Result<(), String> {
-    supervisor.stop().await?;
+    supervisor.stop_and_notify(&app).await?;
     supervisor.start(app).await
 }
 
@@ -37,16 +40,7 @@ pub async fn send_engine_command(
             return supervisor.resume(app).await;
         }
         Some("stop_task") if !supervisor.has_process().await => {
-            supervisor.stop().await?;
-            crate::logs::emit(
-                &app,
-                serde_json::json!({
-                    "version": 1, "type": "task_finished",
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                    "reason": "user_stopped", "stats": {}
-                }),
-            );
-            return Ok(());
+            return supervisor.stop_and_notify(&app).await;
         }
         _ => {}
     }

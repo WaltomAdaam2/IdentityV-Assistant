@@ -21,7 +21,7 @@ pub fn run() {
                     let app = app.clone();
                     let supervisor = app.state::<EngineSupervisor>().inner().clone();
                     tauri::async_runtime::spawn(async move {
-                        if let Err(error) = supervisor.toggle_pause(app.clone()).await {
+                        if let Err(error) = supervisor.toggle_engine(app.clone()).await {
                             logs::emit(
                                 &app,
                                 json!({
