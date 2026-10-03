@@ -4,7 +4,7 @@ import pytest
 
 from app.engine import AutomationEngine
 from config.schema import EngineConfig
-from core.enums import TaskFinishReason
+from core.enums import EngineStatus, TaskFinishReason
 
 
 class Writer:
@@ -119,5 +119,54 @@ def test_pause_command_reports_release_failure_without_crashing_engine():
         assert engine._task_queue == ["hunter_match"]
         assert engine.writer.events[-1]["type"] == "task_paused"
         assert engine.writer.events[-1]["reason"] == "input_failed"
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("release_fails", [False, True])
+def test_window_recovery_timeout_stops_queue_but_keeps_engine_available(release_fails):
+    async def exercise():
+        engine = AutomationEngine(EngineConfig())
+        engine.writer = Writer()
+        releases = []
+
+        def release_all():
+            releases.append(True)
+            if release_fails:
+                raise RuntimeError("key release failed")
+
+        engine.context.input.release_all = release_all
+        runs = []
+
+        class TimedOut:
+            async def run(self, ctx, control):
+                runs.append("first")
+                return TaskFinishReason.WINDOW_RECOVERY_TIMEOUT
+
+        class Next:
+            async def run(self, ctx, control):
+                runs.append("second")
+                return TaskFinishReason.COMPLETED
+
+        engine._task_factories = lambda: {"first": TimedOut, "second": Next}
+        await engine._handle_command({"type": "start_tasks", "tasks": ["first", "second"]})
+        await asyncio.wait_for(engine._task_runner, 1)
+
+        assert runs == ["first"]
+        assert releases
+        assert engine.status == EngineStatus.IDLE
+        assert engine.task_status == "idle"
+        assert not engine._shutdown.is_set()
+        assert engine._task_queue == []
+        assert engine._task_control is None
+        assert engine._active_task_id is None
+        assert not any(event["type"] == "task_paused" for event in engine.writer.events)
+        assert engine.writer.events[-1]["type"] == "task_finished"
+        assert engine.writer.events[-1]["reason"] == "window_recovery_timeout"
+
+        engine.context.input.release_all = lambda: None
+        await engine._handle_command({"type": "start_task", "task": "second"})
+        await asyncio.wait_for(engine._task_runner, 1)
+        assert runs == ["first", "second"]
 
     asyncio.run(exercise())

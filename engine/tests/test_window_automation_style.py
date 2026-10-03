@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 from app.engine import AutomationEngine
 from config.schema import EngineConfig
 from core.models import Rect
@@ -215,3 +217,27 @@ def test_engine_applies_and_restores_style_during_lifecycle() -> None:
 
     assert window.applied >= 1
     assert window.restored == 1
+
+
+def test_partial_restore_keeps_original_snapshot_for_retry(monkeypatch) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    original_style = FakeWin32Con.WS_CAPTION | FakeWin32Con.WS_THICKFRAME | 0x10000000
+    gui = FakeWin32Gui(original_style)
+    manager = _manager(gui)
+    manager.apply_automation_style()
+    original_snapshot = manager._style_snapshot
+    set_window_pos = gui.SetWindowPos
+
+    def fail_position_once(*args) -> None:
+        gui.SetWindowPos = set_window_pos
+        raise OSError("temporary frame refresh failure")
+
+    gui.SetWindowPos = fail_position_once
+    with pytest.raises(OSError, match="temporary frame refresh"):
+        manager.restore_automation_style()
+    assert manager._style_snapshot is original_snapshot
+
+    assert manager.restore_automation_style()
+    assert gui.style == original_style
+    assert gui.window_rect == (100, 200, 1400, 950)
+    assert manager._style_snapshot is None

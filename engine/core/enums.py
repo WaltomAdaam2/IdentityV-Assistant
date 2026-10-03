@@ -17,6 +17,7 @@ class TaskFinishReason(str, Enum):
     TIMEOUT = "timeout"
     ENGINE_ERROR = "engine_error"
     WINDOW_LOST = "window_lost"
+    WINDOW_RECOVERY_TIMEOUT = "window_recovery_timeout"
 
 
 class ErrorCode(str, Enum):

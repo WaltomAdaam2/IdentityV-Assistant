@@ -72,28 +72,42 @@ class AutomationEngine:
             raise RuntimeError(str(payload.get("message", "Task failed")))
 
     async def run(self) -> None:
-        self.status = EngineStatus.IDLE
-        await self._ensure_window_style(self.context.window.find_window())
-        await self.emit(
-            "ready",
-            engine_version=ENGINE_VERSION,
-            heartbeat_interval_seconds=self.config.heartbeat_interval_seconds,
-        )
-        heartbeat = asyncio.create_task(self._heartbeat_loop())
+        heartbeat: asyncio.Task[None] | None = None
         try:
+            self.status = EngineStatus.IDLE
+            await self._ensure_window_style(self.context.window.find_window())
+            await self.emit(
+                "ready",
+                engine_version=ENGINE_VERSION,
+                heartbeat_interval_seconds=self.config.heartbeat_interval_seconds,
+            )
+            heartbeat = asyncio.create_task(self._heartbeat_loop())
             async for command in self.reader.messages():
                 await self._handle_command(command)
                 if self._shutdown.is_set():
                     break
         finally:
+            self._shutdown.set()
             self.status = EngineStatus.STOPPING
-            await self._stop_task(TaskFinishReason.USER_STOPPED)
-            await self._release_inputs()
-            await self._restore_window_style()
-            heartbeat.cancel()
-            with suppress(asyncio.CancelledError):
-                await heartbeat
-            self.status = EngineStatus.STOPPED
+            if heartbeat is not None:
+                heartbeat.cancel()
+            if self._task_control:
+                self._task_control.cancel()
+            if self._task_runner and not self._task_runner.done():
+                self._task_runner.cancel()
+            try:
+                await self._stop_task(TaskFinishReason.USER_STOPPED)
+            finally:
+                try:
+                    await self._release_inputs()
+                finally:
+                    try:
+                        await self._restore_window_style()
+                    finally:
+                        if heartbeat is not None:
+                            with suppress(asyncio.CancelledError, Exception):
+                                await heartbeat
+                        self.status = EngineStatus.STOPPED
 
     async def _heartbeat_loop(self) -> None:
         while not self._shutdown.is_set():
@@ -154,16 +168,21 @@ class AutomationEngine:
         restore_style = getattr(self.context.window, "restore_automation_style", None)
         if not callable(restore_style):
             return
-        try:
-            restore_style()
-        except Exception as error:
-            await self.emit(
-                "log",
-                level="error",
-                source="window",
-                message=f"Could not restore game window style: {error}",
-                data={"important": True},
-            )
+        for attempt in range(2):
+            try:
+                restore_style()
+                return
+            except Exception as error:
+                if attempt == 0:
+                    await asyncio.sleep(0.1)
+                    continue
+                await self.emit(
+                    "log",
+                    level="error",
+                    source="window",
+                    message=f"Could not restore game window style: {error}",
+                    data={"important": True},
+                )
 
     async def _handle_command(self, command: dict) -> None:
         command_type = command["type"]
@@ -496,6 +515,7 @@ class AutomationEngine:
         control = self._task_control or TaskControl()
         while True:
             message = None
+            reason = TaskFinishReason.ENGINE_ERROR
             try:
                 reason = await task.run(self.context, control)
             except Exception as error:
@@ -507,10 +527,15 @@ class AutomationEngine:
                 release_error = await self._release_inputs()
                 if release_error:
                     message = release_error
-                    reason = TaskFinishReason.ENGINE_ERROR
+                    if reason != TaskFinishReason.WINDOW_RECOVERY_TIMEOUT:
+                        reason = TaskFinishReason.ENGINE_ERROR
             if control.cancelled.is_set():
                 reason = TaskFinishReason.USER_STOPPED
-            if reason in (TaskFinishReason.COMPLETED, TaskFinishReason.USER_STOPPED):
+            if reason in (
+                TaskFinishReason.COMPLETED,
+                TaskFinishReason.USER_STOPPED,
+                TaskFinishReason.WINDOW_RECOVERY_TIMEOUT,
+            ):
                 break
             control.pause()
             self.status, self.task_status = EngineStatus.PAUSED, "paused"

@@ -569,7 +569,26 @@ impl EngineSupervisor {
             return Ok(());
         }
         let _ = self.send(json!({"type": "shutdown"})).await;
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Give Python time to cancel tasks, release held inputs and restore the window.
+        // Return as soon as it exits instead of killing it after a fixed two-second sleep.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let exited = {
+                let mut state = self.inner.lock().await;
+                match state.process.as_mut() {
+                    Some(process) => process
+                        .child
+                        .try_wait()
+                        .map_err(|error| error.to_string())?
+                        .is_some(),
+                    None => true,
+                }
+            };
+            if exited || tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
 
         let mut state = self.inner.lock().await;
         if let Some(mut process) = state.process.take() {
@@ -743,7 +762,7 @@ fn protocol_error(code: &str, message: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{task_queue_from_command, EngineSupervisor};
+    use super::{task_queue_from_command, EngineProcess, EngineSupervisor};
     use serde_json::json;
 
     #[test]
@@ -855,6 +874,48 @@ mod tests {
             assert_eq!(supervisor.snapshot().await.status, "starting");
             drop(lifecycle);
             supervisor.stop().await.unwrap();
+            assert_eq!(supervisor.snapshot().await.status, "stopped");
+        });
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture for graceful shutdown"]
+    fn delayed_shutdown_fixture() {
+        let marker = std::env::var_os("IDENTITYV_SHUTDOWN_TEST_MARKER")
+            .expect("only run as the graceful shutdown test subprocess");
+        let mut command = String::new();
+        std::io::stdin().read_line(&mut command).unwrap();
+        assert!(command.contains("shutdown"));
+        std::thread::sleep(std::time::Duration::from_millis(2300));
+        std::fs::write(marker, "restored").unwrap();
+    }
+
+    #[test]
+    fn stop_allows_cleanup_longer_than_two_seconds() {
+        tauri::async_runtime::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            let marker = directory.path().join("restored.txt");
+            let mut child = tokio::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "engine::process_manager::tests::delayed_shutdown_fixture",
+                ])
+                .env("IDENTITYV_SHUTDOWN_TEST_MARKER", &marker)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap();
+            let stdin = child.stdin.take().unwrap();
+            let supervisor = EngineSupervisor::default();
+            {
+                let mut state = supervisor.inner.lock().await;
+                state.process = Some(EngineProcess { child, stdin });
+                state.status = "running".into();
+            }
+            supervisor.stop().await.unwrap();
+            assert_eq!(std::fs::read_to_string(marker).unwrap(), "restored");
             assert_eq!(supervisor.snapshot().await.status, "stopped");
         });
     }
