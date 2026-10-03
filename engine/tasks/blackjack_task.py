@@ -28,6 +28,7 @@ SURVIVOR_INTERVALS = {
     "left": (5.0, 10.0),
     "e": (1.0, 6.0),
     "q": (5.0, 10.0),
+    "space": (5.0, 10.0),
     "r_double": (10.0, 15.0),
     "turn": (10.0, 15.0),
 }
@@ -334,18 +335,24 @@ class BlackjackTask(AutomationTask):
         start = backend.cursor_position()
         dx, dy = target.x - start.x, target.y - start.y
         distance = math.hypot(dx, dy)
+        if distance == 0:
+            return
         bend = self.rng.uniform(-0.11, 0.11) * distance
-        steps = self.rng.randint(6, 11)
+        duration = min(0.45, max(0.12, distance / 2400))
+        steps = math.ceil(duration / 0.008)
+        previous = start
         for index in range(1, steps + 1):
             await self._check(ctx, control)
             if self._resume_recheck:
                 return
             t = index / steps
             eased = t * t * (3 - 2 * t)
-            arc = 4 * t * (1 - t) * bend / max(distance, 1)
+            arc = 4 * eased * (1 - eased) * bend / distance
             point = Point(round(start.x + dx * eased - dy * arc), round(start.y + dy * eased + dx * arc))
-            backend.move_mouse(point)
-            await self._sleep(ctx, control, self.rng.uniform(0.004, 0.012))
+            if point != previous:
+                backend.move_mouse(point)
+                previous = point
+            await self._sleep(ctx, control, duration / steps)
 
     async def _wait_for_role(self, ctx: AutomationContext, control: TaskControl) -> str | None:
         await self._progress(ctx, "waiting_role")
@@ -415,15 +422,19 @@ class BlackjackTask(AutomationTask):
         angle = self.rng.uniform(60, 150)
         direction = self.rng.choice((-1, 1))
         pixels = max(1, round(width * angle / 360 * ctx.config.automation.camera_turn_scale_percent / 100)) * direction
-        steps = self.rng.randint(9, 18)
+        duration = angle / 600
+        steps = math.ceil(duration / 0.008)
         sent = 0
         for index in range(1, steps + 1):
             await self._check(ctx, control)
+            if self._resume_recheck:
+                return
             t = index / steps
             target = round(pixels * (t * t * (3 - 2 * t)))
-            backend.move_relative(target - sent, 0)
+            if target != sent:
+                backend.move_relative(target - sent, 0)
             sent = target
-            await self._sleep(ctx, control, self.rng.uniform(0.005, 0.016))
+            await self._sleep(ctx, control, duration / steps)
         await ctx.emit("planned_action", action="turn_camera", input="relative_mouse", degrees=round(angle, 1), direction=direction)
 
     async def _movement(self, ctx: AutomationContext, control: TaskControl) -> None:
@@ -438,13 +449,11 @@ class BlackjackTask(AutomationTask):
             await self._sleep(ctx, control, self.rng.uniform(0.1, 0.6))
 
     async def _survivor(self, ctx: AutomationContext, control: TaskControl) -> None:
-        timers = {name: self.rng.uniform(*bounds) for name, bounds in SURVIVOR_INTERVALS.items()}
+        timers = {name: self._now(control) + self.rng.uniform(*bounds) for name, bounds in SURVIVOR_INTERVALS.items()}
         while True:
-            delay = min(timers.values())
+            delay = max(0.0, min(timers.values()) - self._now(control))
             await self._sleep(ctx, control, delay)
-            for name in timers:
-                timers[name] -= delay
-            due = [name for name, remaining in timers.items() if remaining <= 0.0001]
+            due = [name for name, deadline in timers.items() if deadline <= self._now(control) + 0.0001]
             for name in due:
                 if name in ("right", "left"):
                     await self._mouse_click(ctx, control, name)
@@ -456,9 +465,28 @@ class BlackjackTask(AutomationTask):
                     await self._turn(ctx, control)
                 else:
                     await self._key(ctx, control, name)
-                timers[name] = self.rng.uniform(*SURVIVOR_INTERVALS[name])
+                timers[name] = self._now(control) + self.rng.uniform(*SURVIVOR_INTERVALS[name])
 
     async def _hunter(self, ctx: AutomationContext, control: TaskControl) -> None:
+        async def skills() -> None:
+            timers = {key: self._now(control) + self.rng.uniform(5, 10) for key in ("q", "space")}
+            while True:
+                delay = max(0.0, min(timers.values()) - self._now(control))
+                await self._sleep(ctx, control, delay)
+                for key in [key for key, deadline in timers.items() if deadline <= self._now(control) + 0.0001]:
+                    await self._key(ctx, control, key)
+                    timers[key] = self._now(control) + self.rng.uniform(5, 10)
+
+        combo = asyncio.create_task(self._hunter_combo(ctx, control))
+        extra_keys = asyncio.create_task(skills())
+        try:
+            await asyncio.gather(combo, extra_keys)
+        finally:
+            combo.cancel()
+            extra_keys.cancel()
+            await asyncio.gather(combo, extra_keys, return_exceptions=True)
+
+    async def _hunter_combo(self, ctx: AutomationContext, control: TaskControl) -> None:
         last_t = -30.0
         active = 0.0
         while True:

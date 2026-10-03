@@ -15,7 +15,7 @@ from vision.hide_seek_detector import HideSeekDetector
 from vision.home_detector import detect_home_book
 
 
-GAME_STAGES = {"f_initial", "r_blocked", "v_ready", "v_fixed", "death_f"}
+GAME_STAGES = {"f_initial", "r_blocked", "v_ready", "v_fixed", "living_no_v", "death_f"}
 
 
 def movement_timing(rng: random.Random) -> tuple[float, float]:
@@ -35,6 +35,13 @@ class HideSeekTask(BlackjackTask):
         self.shared_detector = BlackjackDetector()
         self.role = "bad_child"
         self._clock = clock
+        self._reset_round()
+
+    def _reset_round(self) -> None:
+        self._fixed_seen = False
+        self._escape_active = False
+        self._escape_step = 0
+        self._next_alt_at = None
 
     def _now(self, control: TaskControl | None) -> float:
         return self._clock() - (control.paused_seconds if control is not None else 0.0)
@@ -109,15 +116,18 @@ class HideSeekTask(BlackjackTask):
 
     async def _detect_stage(self, ctx: AutomationContext, control: TaskControl, image) -> str | None:
         for name in (
-            "return_lobby", "continue", "death_f", "ready_case", "ready_start",
-            "v_fixed", "v_ready", "r_blocked", "f_initial", "start_game",
-            "bad_child", "hide_seek", "chaos", "matching", "home", "loading",
+            "return_lobby", "continue", "death_f", "ready_case", "ready_start", "loading",
+            "v_fixed", "v_ready", "living_no_v", "r_blocked", "f_initial", "start_game",
+            "bad_child", "hide_seek", "chaos", "matching", "home",
         ):
+            if name == "living_no_v" and not self._fixed_seen:
+                continue
             if await self._confirmed(ctx, control, image, name):
                 return name
         return None
 
     async def _cycle(self, ctx: AutomationContext, control: TaskControl) -> None:
+        self._reset_round()
         actions = {
             "home": "open_book", "chaos": "choose_chaos", "hide_seek": "choose_hide_seek",
             "ready_case": "accept_match", "ready_start": "ready_to_start",
@@ -140,6 +150,12 @@ class HideSeekTask(BlackjackTask):
                 await self._sleep(ctx, control, 0.25)
                 continue
             unknown_since = None
+            if stage == "v_fixed":
+                self._fixed_seen = True
+            elif stage == "living_no_v" and self._fixed_seen:
+                self._escape_active = True
+            elif stage not in GAME_STAGES or stage == "death_f":
+                self._reset_round()
             if stage == "loading":
                 if loading_since is None:
                     loading_since = self._now(control)
@@ -214,6 +230,8 @@ class HideSeekTask(BlackjackTask):
 
     async def _camera(self, ctx: AutomationContext, control: TaskControl) -> None:
         while True:
+            if not await self._before_game_input(ctx, control):
+                return
             duration, cooldown = camera_timing(self.rng)
             direction = self.rng.choice((-1, 1))
             steps = max(1, round(duration / 0.05))
@@ -222,17 +240,23 @@ class HideSeekTask(BlackjackTask):
             total = direction * max(1, round(window.client_rect.width * 0.025 * scale))
             sent = 0
             for index in range(1, steps + 1):
-                if not await self._before_game_input(ctx, control):
+                await self._check(ctx, control)
+                if self._resume_recheck:
                     return
-                target = round(total * index / steps)
-                ctx.input.backend.move_relative(target - sent, 0)
+                progress = index / steps
+                target = round(total * progress * progress * (3 - 2 * progress))
+                if target != sent:
+                    ctx.input.backend.move_relative(target - sent, 0)
                 sent = target
                 await self._sleep(ctx, control, duration / steps)
             await self._sleep(ctx, control, cooldown)
 
     async def _fixed_actions(self, ctx: AutomationContext, control: TaskControl) -> None:
-        await self._sleep(ctx, control, 5)
-        movement = asyncio.create_task(self._movement(ctx, control))
+        async def delayed_movement() -> None:
+            await self._sleep(ctx, control, 5)
+            await self._movement(ctx, control)
+
+        movement = asyncio.create_task(delayed_movement())
         camera = asyncio.create_task(self._camera(ctx, control))
         try:
             await asyncio.gather(movement, camera)
@@ -242,36 +266,82 @@ class HideSeekTask(BlackjackTask):
             await asyncio.gather(movement, camera, return_exceptions=True)
             ctx.input.release_all()
 
+    async def _escape_actions(self, ctx: AutomationContext, control: TaskControl) -> None:
+        while self._escape_step < 3:
+            if not await self._before_game_input(ctx, control):
+                return
+            key = ("f", "t", "g")[self._escape_step]
+            ctx.input.key_down(key)
+            self._escape_step += 1
+            try:
+                await self._sleep(ctx, control, 0.04)
+            finally:
+                ctx.input.key_up(key)
+        while True:
+            if self._next_alt_at is None:
+                self._next_alt_at = self._now(control) + self.rng.uniform(7, 13)
+            await self._sleep(ctx, control, max(0, self._next_alt_at - self._now(control)))
+            if not await self._before_game_input(ctx, control):
+                return
+            ctx.input.key_down("alt")
+            try:
+                ctx.input.key_down("1")
+                try:
+                    await self._sleep(ctx, control, 0.04)
+                finally:
+                    ctx.input.key_up("1")
+            finally:
+                ctx.input.key_up("alt")
+            self._next_alt_at = None
+
     async def _play(self, ctx: AutomationContext, control: TaskControl) -> None:
         action = None
+        escape = None
         last_stage = None
+        action_stage = None
         try:
             while True:
                 image = await self._capture(ctx, control)
                 stage = await self._detect_stage(ctx, control, image)
                 if stage not in GAME_STAGES:
+                    if stage is not None:
+                        self._reset_round()
                     return
-                if stage != last_stage or self._resume_recheck:
-                    if action is not None:
-                        action.cancel()
-                        await asyncio.gather(action, return_exceptions=True)
-                    ctx.input.release_all()
+                if stage == "death_f":
+                    self._reset_round()
+                    return
+                if stage == "v_fixed":
+                    self._fixed_seen = True
+                if stage == "living_no_v" and self._fixed_seen:
+                    self._escape_active = True
+                next_action_stage = "v_fixed" if self._fixed_seen else stage
+                if stage != last_stage:
                     await self._progress(ctx, stage)
-                    self._resume_recheck = False
                     last_stage = stage
-                    if stage == "death_f":
-                        return
-                    if stage == "v_fixed":
+                if next_action_stage != action_stage or self._resume_recheck:
+                    pending_actions = [pending for pending in (action, escape) if pending is not None]
+                    for pending in pending_actions:
+                        pending.cancel()
+                    await asyncio.gather(*pending_actions, return_exceptions=True)
+                    escape = None
+                    ctx.input.release_all()
+                    self._resume_recheck = False
+                    action_stage = next_action_stage
+                    if self._fixed_seen:
                         action = asyncio.create_task(self._fixed_actions(ctx, control))
                     else:
                         action = asyncio.create_task(self._prepare_hiding(ctx, control, stage))
-                if action is not None and action.done() and not action.cancelled():
-                    error = action.exception()
-                    if error:
-                        raise error
+                if self._escape_active and escape is None:
+                    escape = asyncio.create_task(self._escape_actions(ctx, control))
+                for pending in (action, escape):
+                    if pending is not None and pending.done() and not pending.cancelled():
+                        error = pending.exception()
+                        if error:
+                            raise error
                 await self._sleep(ctx, control, 0.25)
         finally:
-            if action is not None:
-                action.cancel()
-                await asyncio.gather(action, return_exceptions=True)
+            pending_actions = [pending for pending in (action, escape) if pending is not None]
+            for pending in pending_actions:
+                pending.cancel()
+            await asyncio.gather(*pending_actions, return_exceptions=True)
             ctx.input.release_all()

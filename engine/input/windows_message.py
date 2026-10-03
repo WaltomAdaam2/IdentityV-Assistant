@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable
-from math import hypot
+from math import ceil, hypot
 from time import sleep
 
 from core.models import Point
@@ -25,17 +25,17 @@ class WindowsMessageInput(InputBackend):
     def __init__(self, hwnd_provider: Callable[[], int | None]) -> None:
         self._hwnd_provider = hwnd_provider
         self._point = Point(0, 0)
-        self._saved_cursor: tuple[int, int] | None = None
 
     def move_mouse(self, point: Point) -> None:
         win32api, win32con, win32gui, hwnd = self._target()
         self._point = point
-        if self._saved_cursor is None:
-            self._saved_cursor = win32api.GetCursorPos()
+        start = win32api.GetCursorPos()
         screen_point = win32gui.ClientToScreen(hwnd, (point.x, point.y))
-        for route_point in _curved_route(self._saved_cursor, screen_point):
+        route = _curved_route(start, screen_point)
+        duration = min(0.45, max(0.12, hypot(screen_point[0] - start[0], screen_point[1] - start[1]) / 2400))
+        for route_point in route:
             win32api.SetCursorPos(route_point)
-            sleep(random.uniform(0.001, 0.003))
+            sleep(duration / len(route))
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
         win32api.PostMessage(hwnd, win32con.WM_ACTIVATE, win32con.WA_ACTIVE, 0)
@@ -43,23 +43,16 @@ class WindowsMessageInput(InputBackend):
     def mouse_down(self, button: str = "left") -> None:
         import win32api
 
-        try:
-            _, _, _, hwnd = self._target()
-            message, state = self._mouse_message(button, True)
-            win32api.PostMessage(hwnd, message, state, _point_lparam(self._point))
-        except Exception:
-            self._restore_cursor(win32api)
-            raise
+        _, _, _, hwnd = self._target()
+        message, state = self._mouse_message(button, True)
+        win32api.PostMessage(hwnd, message, state, _point_lparam(self._point))
 
     def mouse_up(self, button: str = "left") -> None:
         import win32api
 
-        try:
-            _, _, _, hwnd = self._target()
-            message, _ = self._mouse_message(button, False)
-            win32api.PostMessage(hwnd, message, 0, _point_lparam(self._point))
-        finally:
-            self._restore_cursor(win32api)
+        _, _, _, hwnd = self._target()
+        message, _ = self._mouse_message(button, False)
+        win32api.PostMessage(hwnd, message, 0, _point_lparam(self._point))
 
     def key_down(self, key: str) -> None:
         self._key(key, False)
@@ -88,11 +81,6 @@ class WindowsMessageInput(InputBackend):
         if not hwnd or not win32gui.IsWindow(hwnd):
             raise RuntimeError("configured game window is not available")
         return win32api, win32con, win32gui, hwnd
-
-    def _restore_cursor(self, win32api) -> None:
-        if self._saved_cursor is not None:
-            win32api.SetCursorPos(self._saved_cursor)
-            self._saved_cursor = None
 
     @staticmethod
     def _mouse_message(button: str, down: bool) -> tuple[int, int]:
@@ -133,11 +121,12 @@ def _curved_route(
         start[0] + dx * 0.76 - normal_x * bend * 0.35,
         start[1] + dy * 0.76 - normal_y * bend * 0.35,
     )
-    steps = min(12, max(5, round(distance / 180)))
-    exponent = randomizer.uniform(0.72, 1.28)
+    duration = min(0.45, max(0.12, distance / 2400))
+    steps = ceil(duration / 0.008)
     route: list[tuple[int, int]] = []
     for index in range(1, steps + 1):
-        t = (index / steps) ** exponent
+        progress = index / steps
+        t = progress * progress * (3 - 2 * progress)
         inverse = 1.0 - t
         x = (
             inverse**3 * start[0]

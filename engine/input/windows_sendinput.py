@@ -108,7 +108,7 @@ class WindowsSendInput(InputBackend):
 
 def _virtual_key(key: str) -> int:
     normalized = key.upper()
-    named = {"ENTER": 0x0D, "ESC": 0x1B, "SPACE": 0x20, "TAB": 0x09}
+    named = {"ENTER": 0x0D, "ESC": 0x1B, "SPACE": 0x20, "TAB": 0x09, "ALT": 0x12}
     if normalized in named:
         return named[normalized]
     if len(normalized) == 1 and normalized.isalnum():

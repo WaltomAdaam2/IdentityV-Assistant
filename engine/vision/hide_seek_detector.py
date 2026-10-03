@@ -21,6 +21,8 @@ MARKS = {
     "v_ready": ScreenMark("v_ready", (70, 905, 330, 1080), threshold=0.74),
     "v_fixed": ScreenMark("v_fixed", (70, 905, 330, 1080), threshold=0.74),
     "death_f": ScreenMark("death_f", (1760, 895, 1920, 1080), threshold=0.74),
+    "living_controls": ScreenMark("living_controls", (0, 1010, 260, 1080), threshold=0.85),
+    "living_transform": ScreenMark("living_transform", (1760, 900, 1920, 1080), threshold=0.80),
     "continue": ScreenMark("continue", (760, 890, 1190, 1060), (960, 985), threshold=0.94),
     "return_lobby": ScreenMark("return_lobby", (760, 890, 1190, 1060), (960, 985), threshold=0.94),
 }
@@ -47,6 +49,13 @@ class HideSeekDetector:
     def detect(self, image: Any, name: str) -> Detection:
         import cv2
 
+        if name == "living_no_v":
+            frame = self.normalize(image)
+            if any(self.detect(frame, mark).found for mark in ("v_ready", "v_fixed", "death_f", "continue", "return_lobby")):
+                return Detection(False, 0.0, None)
+            controls = self.detect(frame, "living_controls")
+            transform = self.detect(frame, "living_transform")
+            return Detection(controls.found and transform.found, min(controls.confidence, transform.confidence), transform.bbox)
         mark = MARKS[name]
         frame = self.normalize(image)
         if name == "matching" and self.detect(frame, "ready_case").found:

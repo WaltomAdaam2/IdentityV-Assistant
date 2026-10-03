@@ -38,6 +38,7 @@ def test_survivor_intervals_and_hunter_combo_with_virtual_time() -> None:
             survivor_events.append((current[0], "turn"))
 
         survivor._sleep = sleep
+        survivor._now = lambda _control: current[0]
         survivor._mouse_click = survivor_mouse
         survivor._key = survivor_key
         survivor._turn = survivor_turn
@@ -62,7 +63,7 @@ def test_survivor_intervals_and_hunter_combo_with_virtual_time() -> None:
         hunter._key = hunter_key
         hunter._turn = hunter_turn
         try:
-            await hunter._hunter(None, None)
+            await hunter._hunter_combo(None, None)
         except _Stopped:
             pass
         return survivor_events, hunter_events

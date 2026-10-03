@@ -172,6 +172,7 @@ def test_leaving_play_releases_all_keys() -> None:
 
         task._movement = idle
         task._combat = idle
+        task._displayed_seconds = lambda _image: None
         task._capture = capture
         task._confirmed = confirmed
         task._sleep = pause
@@ -203,9 +204,14 @@ def test_hunter_action_intervals_and_left_followed_by_e() -> None:
         async def click(_ctx, _control, name):
             events.append((name, elapsed))
 
+        async def turn(_ctx, _control):
+            events.append(("turn", elapsed))
+
         task._sleep = sleep
+        task._now = lambda _control: elapsed
         task._key = key
         task._mouse_click = click
+        task._turn = turn
         try:
             await task._combat(None, None)
         except Done:

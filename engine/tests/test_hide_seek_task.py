@@ -227,13 +227,22 @@ def test_pause_releases_input_and_resume_requests_screen_recheck():
         control = TaskControl()
         control.pause()
         released = []
-        ctx = SimpleNamespace(
-            cancellation=SimpleNamespace(cancelled=False),
-            input=SimpleNamespace(release_all=lambda: released.append(True)),
-        )
+        ctx, events = input_context()
+        ctx.cancellation = SimpleNamespace(cancelled=False)
+        ctx.input.key_down("alt")
+        ctx.input.key_down("1")
+        release_all = ctx.input.release_all
+
+        def release():
+            released.append(True)
+            release_all()
+
+        ctx.input.release_all = release
         pending = asyncio.create_task(task._check(ctx, control))
         await asyncio.sleep(0)
         assert released == [True] and not pending.done()
+        assert not ctx.input.pressed_keys
+        assert ("up", "alt") in events and ("up", "1") in events
         control.resume()
         await pending
         assert task._resume_recheck
@@ -245,8 +254,9 @@ def test_supplied_game_frames_route_to_fixed_and_transformed_stages():
     import cv2
     from vision.hide_seek_detector import ROOT
 
-    async def scenario(screen):
+    async def scenario(screen, fixed_seen=False):
         task = HideSeekTask()
+        task._fixed_seen = fixed_seen
         image = cv2.imread(str(ROOT / "reference" / f"{screen}.png"))[45:1125, 2:1922]
 
         async def capture(*_):
@@ -263,3 +273,249 @@ def test_supplied_game_frames_route_to_fixed_and_transformed_stages():
     assert asyncio.run(scenario("eliminated")) == "death_f"
     assert asyncio.run(scenario("result-continue")) == "continue"
     assert asyncio.run(scenario("return-lobby")) == "return_lobby"
+    assert asyncio.run(scenario("f-initial")) == "f_initial"
+    assert asyncio.run(scenario("living-no-v", True)) == "living_no_v"
+    assert asyncio.run(scenario("living-no-v")) == "f_initial"
+
+
+def input_context():
+    from input.controller import InputController
+
+    events = []
+    backend = SimpleNamespace(
+        key_down=lambda key: events.append(("down", key)),
+        key_up=lambda key: events.append(("up", key)),
+        move_relative=lambda x, y: events.append(("move", x, y)),
+    )
+    return SimpleNamespace(
+        input=InputController(backend),
+        config=SimpleNamespace(automation=SimpleNamespace(camera_turn_scale_percent=100)),
+    ), events
+
+
+def test_camera_emits_relative_motion_before_movement_wait_finishes():
+    async def scenario():
+        task = HideSeekTask(random.Random(12))
+        ctx, events = input_context()
+        camera_moved = asyncio.Event()
+
+        async def allowed(*_):
+            return True
+
+        async def check(*_):
+            pass
+
+        async def window(*_):
+            return SimpleNamespace(client_rect=SimpleNamespace(width=1920))
+
+        async def sleep(_ctx, _control, seconds):
+            if seconds < 1 and any(event[0] == "move" for event in events):
+                camera_moved.set()
+            if seconds >= 1 or camera_moved.is_set():
+                await asyncio.Event().wait()
+            await asyncio.sleep(0)
+
+        task._before_game_input, task._input_window, task._sleep = allowed, window, sleep
+        task._check = check
+        pending = asyncio.create_task(task._fixed_actions(ctx, None))
+        await asyncio.wait_for(camera_moved.wait(), 1)
+        pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
+        assert any(event[0] == "move" and event[1] != 0 for event in events)
+        assert not any(event[0] == "down" for event in events)
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("direction", [-1, 1])
+def test_camera_eases_each_sweep_without_zero_moves_or_changing_distance_and_timing(direction):
+    async def scenario():
+        task = HideSeekTask(SimpleNamespace(uniform=lambda *_: 3.0, choice=lambda _: direction))
+        ctx, _ = input_context()
+        elapsed = [0.0]
+        moves = []
+        delays = []
+        finished_sweep = asyncio.Event()
+        gates, windows, checks = [], [], []
+        ctx.input.backend.move_relative = lambda x, y: moves.append((elapsed[0], x, y))
+
+        async def allowed(*_):
+            gates.append(True)
+            return True
+
+        async def check(*_):
+            checks.append(True)
+
+        async def window(*_):
+            windows.append(True)
+            return SimpleNamespace(client_rect=SimpleNamespace(width=1920))
+
+        async def sleep(_ctx, _control, seconds):
+            delays.append(seconds)
+            if seconds >= 1:
+                finished_sweep.set()
+                await asyncio.Event().wait()
+            elapsed[0] += seconds
+            await asyncio.sleep(0)
+
+        task._before_game_input, task._input_window, task._sleep = allowed, window, sleep
+        task._check = check
+        pending = asyncio.create_task(task._camera(ctx, None))
+        await asyncio.wait_for(finished_sweep.wait(), 1)
+        pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
+        assert sum(x for _, x, _ in moves) == direction * 48
+        assert all(0 < x * direction <= 2 and y == 0 for _, x, y in moves)
+        early = sum(abs(x) for time, x, _ in moves if time < 0.75)
+        middle = sum(abs(x) for time, x, _ in moves if 0.75 <= time < 1.5)
+        late = sum(abs(x) for time, x, _ in moves if time >= 2.25)
+        assert early < middle and late < middle
+        assert sum(delays[:-1]) == pytest.approx(3.0)
+        assert delays[-1] == 3.0
+        assert len(gates) == len(windows) == 1
+        assert len(checks) == len(delays) - 1
+
+    asyncio.run(scenario())
+
+
+def test_camera_aborts_sweep_after_pause_requires_screen_recheck():
+    async def scenario():
+        task = HideSeekTask(SimpleNamespace(uniform=lambda *_: 3.0, choice=lambda _: 1))
+        ctx, events = input_context()
+        checks = []
+
+        async def allowed(*_):
+            return True
+
+        async def window(*_):
+            return SimpleNamespace(client_rect=SimpleNamespace(width=1920))
+
+        async def check(*_):
+            checks.append(True)
+            if len(checks) == 20:
+                task._resume_recheck = True
+
+        async def sleep(*_):
+            await asyncio.sleep(0)
+
+        task._before_game_input, task._input_window = allowed, window
+        task._check, task._sleep = check, sleep
+        await asyncio.wait_for(task._camera(ctx, None), 1)
+        assert len(checks) == 20
+        assert 0 < sum(event[1] for event in events if event[0] == "move") < 48
+
+    asyncio.run(scenario())
+
+
+def test_escape_emits_ftg_once_and_repeated_alt_one_with_interval_and_cleanup():
+    async def scenario():
+        now = [0.0]
+        task = HideSeekTask(random.Random(12), clock=lambda: now[0])
+        ctx, events = input_context()
+        delays = []
+        second_alt = asyncio.Event()
+
+        async def allowed(*_):
+            return True
+
+        async def sleep(_ctx, _control, seconds):
+            now[0] += seconds
+            if seconds > 1:
+                delays.append(seconds)
+            if events.count(("down", "1")) == 2:
+                second_alt.set()
+                await asyncio.Event().wait()
+            await asyncio.sleep(0)
+
+        task._before_game_input, task._sleep = allowed, sleep
+        pending = asyncio.create_task(task._escape_actions(ctx, None))
+        await asyncio.wait_for(second_alt.wait(), 1)
+        pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)
+        assert events == [(action, key) for key in ("f", "t", "g") for action in ("down", "up")] + [
+            ("down", "alt"), ("down", "1"), ("up", "1"), ("up", "alt"),
+            ("down", "alt"), ("down", "1"), ("up", "1"), ("up", "alt"),
+        ]
+        assert len(delays) == 2 and all(7 <= delay <= 13 for delay in delays)
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("ending", ["death_f", "loading", "continue", "return_lobby", None])
+def test_post_fixed_stage_changes_keep_camera_running_and_only_living_no_v_triggers_escape(ending):
+    async def scenario(stages):
+        task = HideSeekTask()
+        values = iter(stages)
+        started = []
+        cancelled = []
+
+        async def capture(*_):
+            return object()
+
+        async def detect(*_):
+            return next(values)
+
+        async def action(name):
+            started.append(name)
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.append(name)
+
+        async def fixed(*_):
+            await action("fixed")
+
+        async def escape(*_):
+            await action("escape")
+
+        async def sleep(*_):
+            await asyncio.sleep(0)
+
+        async def progress(_ctx, stage):
+            task.stage = stage
+
+        task._capture, task._detect_stage = capture, detect
+        task._fixed_actions, task._escape_actions = fixed, escape
+        task._sleep, task._progress = sleep, progress
+        ctx, _ = input_context()
+        await task._play(ctx, None)
+        assert sorted(started) == sorted(cancelled)
+        assert not ctx.input.pressed_keys
+        return started, task._fixed_seen
+
+    started, fixed_seen = asyncio.run(scenario(["v_fixed", "r_blocked", "v_ready", "living_no_v", "living_no_v", ending]))
+    assert started == ["fixed", "escape"]
+    assert fixed_seen == (ending is None)
+    started, _ = asyncio.run(scenario(["v_fixed", ending]))
+    assert started == ["fixed"]
+    started, _ = asyncio.run(scenario(["living_no_v", ending]))
+    assert started == []
+
+
+def test_resume_escape_after_unknown_does_not_repeat_ftg():
+    async def scenario():
+        task = HideSeekTask(random.Random(12), clock=lambda: 0)
+        ctx, events = input_context()
+        waiting = asyncio.Event()
+
+        async def allowed(*_):
+            return True
+
+        async def sleep(_ctx, _control, seconds):
+            if seconds > 1:
+                waiting.set()
+                await asyncio.Event().wait()
+
+        task._before_game_input, task._sleep = allowed, sleep
+        for _ in range(2):
+            waiting.clear()
+            pending = asyncio.create_task(task._escape_actions(ctx, None))
+            await asyncio.wait_for(waiting.wait(), 1)
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        assert events == [(action, key) for key in ("f", "t", "g") for action in ("down", "up")]
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())

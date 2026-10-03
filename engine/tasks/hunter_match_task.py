@@ -22,6 +22,9 @@ ACTION_INTERVALS = {
     "t": (40.0, 50.0),
     "space": (5.0, 30.0),
     "q": (5.0, 60.0),
+    "f": (10.0, 15.0),
+    "r": (10.0, 15.0),
+    "turn": (10.0, 15.0),
 }
 
 
@@ -229,24 +232,29 @@ class HunterMatchTask(BlackjackTask):
             await self._sleep(ctx, control, self.rng.uniform(0.1, 0.6))
 
     async def _combat(self, ctx: AutomationContext, control: TaskControl) -> None:
-        timers = {name: self.rng.uniform(*bounds) for name, bounds in ACTION_INTERVALS.items()}
+        timers = {name: self._now(control) + self.rng.uniform(*bounds) for name, bounds in ACTION_INTERVALS.items()}
         while True:
-            delay = min(timers.values())
+            delay = max(0.0, min(timers.values()) - self._now(control))
             await self._sleep(ctx, control, delay)
-            for name in timers:
-                timers[name] -= delay
-            due = [name for name, remaining in timers.items() if remaining <= 0.0001]
+            due = [name for name, deadline in timers.items() if deadline <= self._now(control) + 0.0001]
             for name in sorted(due, key=lambda item: item != "e"):
+                # A camera turn lasts at most 250 ms. Let the follow-up E
+                # happen first if another input could cross its deadline.
+                if name != "e" and "e" in timers and timers["e"] <= self._now(control) + 0.25:
+                    timers[name] = timers["e"]
+                    continue
                 if name in ("right", "left"):
                     await self._mouse_click(ctx, control, name)
                     if name == "left":
-                        timers["e"] = self.rng.uniform(0.3, 3.0)
+                        timers["e"] = self._now(control) + self.rng.uniform(0.3, 3.0)
+                elif name == "turn":
+                    await self._turn(ctx, control)
                 else:
                     await self._key(ctx, control, name)
                 if name == "e":
                     del timers[name]
                 else:
-                    timers[name] = self.rng.uniform(*ACTION_INTERVALS[name])
+                    timers[name] = self._now(control) + self.rng.uniform(*ACTION_INTERVALS[name])
 
     def _displayed_seconds(self, image) -> int | None:
         import cv2
@@ -267,6 +275,7 @@ class HunterMatchTask(BlackjackTask):
         surrendering = False
         retry_at = 0.0
         next_clock_check = 0.0
+        missing_playing = 0
         try:
             while True:
                 await self._sleep(ctx, control, 1)
@@ -280,8 +289,14 @@ class HunterMatchTask(BlackjackTask):
                         return
                 if await self._confirmed(ctx, control, image, "loading"):
                     return
-                if not surrendering and not await self._confirmed(ctx, control, image, "playing"):
-                    return
+                if not surrendering:
+                    if await self._confirmed(ctx, control, image, "playing"):
+                        missing_playing = 0
+                    else:
+                        missing_playing += 1
+                        # Brief HUD occlusion must not restart every action timer.
+                        if missing_playing >= 3:
+                            return
                 if not surrendering:
                     displayed = None
                     if self._now(control) >= next_clock_check:
