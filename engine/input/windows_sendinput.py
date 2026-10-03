@@ -16,6 +16,11 @@ _MOUSE_RIGHT_UP = 0x0010
 _MOUSE_ABSOLUTE = 0x8000
 _MOUSE_VIRTUAL_DESKTOP = 0x4000
 _KEY_UP = 0x0002
+_KEY_SCANCODE = 0x0008
+
+
+class ForegroundLostError(RuntimeError):
+    """Foreground changed between task validation and an input event."""
 
 
 class _MouseInput(ctypes.Structure):
@@ -62,7 +67,7 @@ class WindowsSendInput(InputBackend):
     def _send(self, item: _Input, require_foreground: bool = True) -> None:
         if require_foreground and self._expected_hwnd is not None:
             if self._user32.GetForegroundWindow() != self._expected_hwnd:
-                raise RuntimeError("Game window lost foreground before input")
+                raise ForegroundLostError("Game window lost foreground before input")
         if self._user32.SendInput(1, ctypes.byref(item), ctypes.sizeof(_Input)) != 1:
             raise OSError(ctypes.get_last_error(), "SendInput failed")
 
@@ -100,10 +105,19 @@ class WindowsSendInput(InputBackend):
         self._mouse(flags[button], require_foreground=False)
 
     def key_down(self, key: str) -> None:
-        self._send(_Input(1, _InputUnion(ki=_KeyboardInput(_virtual_key(key), 0, 0, 0, 0))))
+        self._send(self._keyboard_event(key, up=False))
 
     def key_up(self, key: str) -> None:
-        self._send(_Input(1, _InputUnion(ki=_KeyboardInput(_virtual_key(key), 0, _KEY_UP, 0, 0))), False)
+        self._send(self._keyboard_event(key, up=True), False)
+
+    @staticmethod
+    def _keyboard_event(key: str, up: bool) -> _Input:
+        # Physical left Alt and the top-row 1 key for the in-game shortcut.
+        scan = {"ALT": 0x38, "1": 0x02}.get(key.upper())
+        flags = _KEY_UP if up else 0
+        if scan is not None:
+            return _Input(1, _InputUnion(ki=_KeyboardInput(0, scan, flags | _KEY_SCANCODE, 0, 0)))
+        return _Input(1, _InputUnion(ki=_KeyboardInput(_virtual_key(key), 0, flags, 0, 0)))
 
 
 def _virtual_key(key: str) -> int:

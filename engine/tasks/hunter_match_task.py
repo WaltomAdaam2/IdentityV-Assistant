@@ -7,9 +7,9 @@ from dataclasses import dataclass
 
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
-from input.windows_sendinput import WindowsSendInput
+from input.windows_sendinput import ForegroundLostError, WindowsSendInput
 from tasks.base import TaskControl
-from tasks.blackjack_task import BlackjackTask, _Stopped, _WindowLost
+from tasks.blackjack_task import BlackjackTask, _Stopped, _WindowLost, _WindowRecoveryTimeout
 from vision.blackjack_detector import BlackjackDetector
 from vision.home_detector import detect_home_book
 from vision.hunter_detector import HunterDetector
@@ -70,13 +70,19 @@ class HunterMatchTask(BlackjackTask):
             await self._capture(ctx, control)
             ctx.input.backend = WindowsSendInput((await self._input_window(ctx, control)).hwnd)
             while True:
-                await self._cycle(ctx, control)
+                try:
+                    await self._cycle(ctx, control)
+                except ForegroundLostError:
+                    await self._recover_foreground(ctx, control)
+                    continue
                 self.cycles += 1
                 await self._progress(ctx, "cycle_complete")
                 if not self._infinite(ctx):
                     return TaskFinishReason.COMPLETED
         except _Stopped:
             return TaskFinishReason.USER_STOPPED
+        except _WindowRecoveryTimeout:
+            return TaskFinishReason.WINDOW_RECOVERY_TIMEOUT
         except _WindowLost as error:
             await self._log(ctx, "error", f"{self.task_id} stopped: {error}")
             return TaskFinishReason.WINDOW_LOST

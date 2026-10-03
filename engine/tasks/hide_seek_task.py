@@ -7,9 +7,9 @@ from time import monotonic
 
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
-from input.windows_sendinput import WindowsSendInput
+from input.windows_sendinput import ForegroundLostError, WindowsSendInput
 from tasks.base import TaskControl
-from tasks.blackjack_task import BlackjackTask, _Stopped, _WindowLost
+from tasks.blackjack_task import BlackjackTask, _Stopped, _WindowLost, _WindowRecoveryTimeout
 from vision.blackjack_detector import BlackjackDetector
 from vision.hide_seek_detector import HideSeekDetector
 from vision.home_detector import detect_home_book
@@ -55,13 +55,19 @@ class HideSeekTask(BlackjackTask):
             await self._capture(ctx, control)
             ctx.input.backend = WindowsSendInput((await self._input_window(ctx, control)).hwnd)
             while True:
-                await self._cycle(ctx, control)
+                try:
+                    await self._cycle(ctx, control)
+                except ForegroundLostError:
+                    await self._recover_foreground(ctx, control)
+                    continue
                 self.cycles += 1
                 await self._progress(ctx, "cycle_complete")
                 if not self._infinite(ctx):
                     return TaskFinishReason.COMPLETED
         except _Stopped:
             return TaskFinishReason.USER_STOPPED
+        except _WindowRecoveryTimeout:
+            return TaskFinishReason.WINDOW_RECOVERY_TIMEOUT
         except _WindowLost as error:
             await self._log(ctx, "error", f"Hide and Seek stopped: {error}")
             return TaskFinishReason.WINDOW_LOST
@@ -127,7 +133,6 @@ class HideSeekTask(BlackjackTask):
         return None
 
     async def _cycle(self, ctx: AutomationContext, control: TaskControl) -> None:
-        self._reset_round()
         actions = {
             "home": "open_book", "chaos": "choose_chaos", "hide_seek": "choose_hide_seek",
             "ready_case": "accept_match", "ready_start": "ready_to_start",
@@ -237,7 +242,8 @@ class HideSeekTask(BlackjackTask):
             steps = max(1, round(duration / 0.05))
             window = await self._input_window(ctx, control)
             scale = getattr(ctx.config.automation, "camera_turn_scale_percent", 100) / 100
-            total = direction * max(1, round(window.client_rect.width * 0.025 * scale))
+            angle = self.rng.uniform(60.1, 199.9)
+            total = direction * max(1, round(window.client_rect.width * angle / 360 * scale))
             sent = 0
             for index in range(1, steps + 1):
                 await self._check(ctx, control)
@@ -277,6 +283,8 @@ class HideSeekTask(BlackjackTask):
                 await self._sleep(ctx, control, 0.04)
             finally:
                 ctx.input.key_up(key)
+            if self._escape_step < 3:
+                await self._sleep(ctx, control, self.rng.uniform(0.3, 0.7))
         while True:
             if self._next_alt_at is None:
                 self._next_alt_at = self._now(control) + self.rng.uniform(7, 13)
@@ -285,11 +293,16 @@ class HideSeekTask(BlackjackTask):
                 return
             ctx.input.key_down("alt")
             try:
+                # Give the game a frame to observe the modifier before 1.
+                await self._sleep(ctx, control, 0.08)
+                if self._resume_recheck or "alt" not in ctx.input.pressed_keys:
+                    continue
                 ctx.input.key_down("1")
                 try:
-                    await self._sleep(ctx, control, 0.04)
+                    await self._sleep(ctx, control, 0.10)
                 finally:
                     ctx.input.key_up("1")
+                await self._sleep(ctx, control, 0.06)
             finally:
                 ctx.input.key_up("alt")
             self._next_alt_at = None

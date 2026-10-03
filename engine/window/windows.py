@@ -3,10 +3,10 @@ from __future__ import annotations
 import ctypes
 import importlib
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from ctypes import wintypes
 from pathlib import Path
-from time import sleep
+from time import monotonic, sleep
 from typing import Any
 
 from config.schema import WindowConfig
@@ -39,6 +39,9 @@ class WindowsWindowManager(WindowManager):
         self._kernel32: Any | None = None
         self._style_snapshot: _WindowStyleSnapshot | None = None
         self._automation_style_applied = False
+        self._last_scan_at = float("-inf")
+        self._scan_config = None
+        self._response_cache: dict[int, tuple[int, float, bool]] = {}
         if sys.platform == "win32":
             self._configure_winapi()
 
@@ -111,6 +114,33 @@ class WindowsWindowManager(WindowManager):
         if sys.platform != "win32" or self._user32 is None:
             return None
         user32 = self._user32
+        now = monotonic()
+        configured = (tuple(self.config.title_contains), tuple(self.config.class_names), tuple(self.config.process_names))
+        if configured == self._scan_config and now - self._last_scan_at < 1:
+            cached = self._window
+            if cached is None:
+                return None
+            if user32.IsWindow(cached.hwnd) and user32.IsWindowVisible(cached.hwnd):
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(cached.hwnd, ctypes.byref(pid))
+                if pid.value == cached.process_id:
+                    rect = self._client_rect(cached.hwnd)
+                    if rect is not None and rect.width > 0 and rect.height > 0:
+                        self._window = replace(
+                            cached,
+                            client_rect=rect,
+                            dpi_scale=self._dpi_scale(cached.hwnd),
+                            is_minimized=bool(user32.IsIconic(cached.hwnd)),
+                            is_foreground=user32.GetForegroundWindow() == cached.hwnd,
+                            is_responding=self._is_responding(cached.hwnd, pid.value),
+                        )
+                        return self._window
+            self._response_cache.pop(cached.hwnd, None)
+        self._last_scan_at = now
+        self._scan_config = configured
+        self._response_cache = {
+            hwnd: observed for hwnd, observed in self._response_cache.items() if now - observed[1] < 1
+        }
         self._enable_dpi_awareness()
         matches: list[WindowInfo] = []
 
@@ -143,7 +173,7 @@ class WindowsWindowManager(WindowManager):
                         process_name=process_name,
                         is_minimized=bool(user32.IsIconic(hwnd)),
                         is_foreground=user32.GetForegroundWindow() == hwnd,
-                        is_responding=self._is_responding(hwnd),
+                        is_responding=self._is_responding(hwnd, pid.value),
                         match_reasons=reasons,
                     )
                 )
@@ -248,11 +278,19 @@ class WindowsWindowManager(WindowManager):
     def is_responding(self) -> bool:
         return bool(self._window and self._is_responding(self._window.hwnd))
 
-    def _is_responding(self, hwnd: int) -> bool:
+    def _is_responding(self, hwnd: int, process_id: int | None = None) -> bool:
         if self._user32 is None:
             return False
+        if process_id is None:
+            pid = wintypes.DWORD()
+            self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            process_id = pid.value
+        now = monotonic()
+        cached = self._response_cache.get(hwnd)
+        if cached is not None and cached[0] == process_id and now - cached[1] < 1:
+            return cached[2]
         result = ctypes.c_size_t()
-        return bool(
+        responding = bool(
             self._user32.SendMessageTimeoutW(
                 hwnd,
                 0,
@@ -263,6 +301,8 @@ class WindowsWindowManager(WindowManager):
                 ctypes.byref(result),
             )
         )
+        self._response_cache[hwnd] = (process_id, now, responding)
+        return responding
 
     def bring_to_front(self) -> None:
         if self._window and self._user32:

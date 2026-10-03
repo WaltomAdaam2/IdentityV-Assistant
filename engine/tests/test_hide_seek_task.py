@@ -329,9 +329,16 @@ def test_camera_emits_relative_motion_before_movement_wait_finishes():
 
 
 @pytest.mark.parametrize("direction", [-1, 1])
-def test_camera_eases_each_sweep_without_zero_moves_or_changing_distance_and_timing(direction):
+@pytest.mark.parametrize("angle", [60.1, 120.0, 199.9])
+def test_camera_eases_each_sweep_with_requested_amplitude_and_unchanged_timing(direction, angle):
     async def scenario():
-        task = HideSeekTask(SimpleNamespace(uniform=lambda *_: 3.0, choice=lambda _: direction))
+        ranges = []
+
+        def uniform(low, high):
+            ranges.append((low, high))
+            return 3.0 if (low, high) == (2.5, 3.5) else angle
+
+        task = HideSeekTask(SimpleNamespace(uniform=uniform, choice=lambda _: direction))
         ctx, _ = input_context()
         elapsed = [0.0]
         moves = []
@@ -365,8 +372,10 @@ def test_camera_eases_each_sweep_without_zero_moves_or_changing_distance_and_tim
         await asyncio.wait_for(finished_sweep.wait(), 1)
         pending.cancel()
         await asyncio.gather(pending, return_exceptions=True)
-        assert sum(x for _, x, _ in moves) == direction * 48
-        assert all(0 < x * direction <= 2 and y == 0 for _, x, y in moves)
+        distance = round(1920 * angle / 360)
+        assert sum(x for _, x, _ in moves) == direction * distance
+        assert all(0 < x * direction <= round(distance / 60 * 1.5) + 1 and y == 0 for _, x, y in moves)
+        assert 60 < ranges[-1][0] < ranges[-1][1] < 200
         early = sum(abs(x) for time, x, _ in moves if time < 0.75)
         middle = sum(abs(x) for time, x, _ in moves if 0.75 <= time < 1.5)
         late = sum(abs(x) for time, x, _ in moves if time >= 2.25)
@@ -381,7 +390,7 @@ def test_camera_eases_each_sweep_without_zero_moves_or_changing_distance_and_tim
 
 def test_camera_aborts_sweep_after_pause_requires_screen_recheck():
     async def scenario():
-        task = HideSeekTask(SimpleNamespace(uniform=lambda *_: 3.0, choice=lambda _: 1))
+        task = HideSeekTask(SimpleNamespace(uniform=lambda low, _: 3.0 if low == 2.5 else 120.0, choice=lambda _: 1))
         ctx, events = input_context()
         checks = []
 
@@ -403,7 +412,7 @@ def test_camera_aborts_sweep_after_pause_requires_screen_recheck():
         task._check, task._sleep = check, sleep
         await asyncio.wait_for(task._camera(ctx, None), 1)
         assert len(checks) == 20
-        assert 0 < sum(event[1] for event in events if event[0] == "move") < 48
+        assert 0 < sum(event[1] for event in events if event[0] == "move") < 640
 
     asyncio.run(scenario())
 
@@ -414,6 +423,7 @@ def test_escape_emits_ftg_once_and_repeated_alt_one_with_interval_and_cleanup():
         task = HideSeekTask(random.Random(12), clock=lambda: now[0])
         ctx, events = input_context()
         delays = []
+        gaps = []
         second_alt = asyncio.Event()
 
         async def allowed(*_):
@@ -423,6 +433,8 @@ def test_escape_emits_ftg_once_and_repeated_alt_one_with_interval_and_cleanup():
             now[0] += seconds
             if seconds > 1:
                 delays.append(seconds)
+            elif seconds > 0.1:
+                gaps.append(seconds)
             if events.count(("down", "1")) == 2:
                 second_alt.set()
                 await asyncio.Event().wait()
@@ -438,6 +450,70 @@ def test_escape_emits_ftg_once_and_repeated_alt_one_with_interval_and_cleanup():
             ("down", "alt"), ("down", "1"), ("up", "1"), ("up", "alt"),
         ]
         assert len(delays) == 2 and all(7 <= delay <= 13 for delay in delays)
+        assert len(gaps) == 2 and all(0.3 <= gap <= 0.7 for gap in gaps)
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+def test_alt_one_observes_modifier_lead_digit_hold_and_modifier_trail():
+    async def scenario():
+        now = [0.0]
+        task = HideSeekTask(random.Random(12), clock=lambda: now[0])
+        task._escape_step = 3
+        task._next_alt_at = 0.0
+        ctx, _ = input_context()
+        events = []
+        gates = []
+        ctx.input.backend.key_down = lambda key: events.append(("down", key, now[0]))
+        ctx.input.backend.key_up = lambda key: events.append(("up", key, now[0]))
+
+        async def allowed(*_):
+            gates.append(True)
+            return len(gates) == 1
+
+        async def sleep(_ctx, _control, seconds):
+            now[0] += seconds
+
+        task._before_game_input, task._sleep = allowed, sleep
+        await task._escape_actions(ctx, None)
+        assert [(action, key) for action, key, _ in events] == [
+            ("down", "alt"), ("down", "1"), ("up", "1"), ("up", "alt"),
+        ]
+        assert [time for _, _, time in events] == pytest.approx([0.0, 0.08, 0.18, 0.24])
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+def test_pause_during_alt_lead_releases_modifier_without_sending_unmodified_digit():
+    async def scenario():
+        task = HideSeekTask(clock=lambda: 0.0)
+        task._escape_step = 3
+        task._next_alt_at = 0.0
+        ctx, events = input_context()
+        ctx.cancellation = SimpleNamespace(cancelled=False)
+        control = TaskControl()
+
+        async def allowed(*_):
+            await task._check(ctx, control)
+            return not task._resume_recheck
+
+        async def sleep(_ctx, _control, seconds):
+            if seconds == 0.08:
+                assert ctx.input.pressed_keys == {"alt"}
+                control.pause()
+                check = asyncio.create_task(task._check(ctx, control))
+                await asyncio.sleep(0)
+                assert not ctx.input.pressed_keys and not check.done()
+                control.resume()
+                await check
+
+        task._before_game_input, task._sleep = allowed, sleep
+        await asyncio.wait_for(task._escape_actions(ctx, control), 1)
+        assert task._resume_recheck
+        assert ("down", "alt") in events and ("up", "alt") in events
+        assert ("down", "1") not in events
         assert not ctx.input.pressed_keys
 
     asyncio.run(scenario())
@@ -516,6 +592,65 @@ def test_resume_escape_after_unknown_does_not_repeat_ftg():
             pending.cancel()
             await asyncio.gather(pending, return_exceptions=True)
         assert events == [(action, key) for key in ("f", "t", "g") for action in ("down", "up")]
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+def test_v_disappearance_keeps_wasd_held_while_ftg_runs_then_releases_on_death():
+    async def scenario():
+        task = HideSeekTask(random.Random(12))
+        ctx, events = input_context()
+        movement_started = asyncio.Event()
+        combo_finished = asyncio.Event()
+        held_during_taps = []
+        fixed_starts = []
+        backend_key_down = ctx.input.backend.key_down
+
+        def key_down(key):
+            backend_key_down(key)
+            if key in "wasd":
+                movement_started.set()
+            elif key in ("f", "t", "g"):
+                held_during_taps.append((key, ctx.input.pressed_keys & set("wasd")))
+
+        ctx.input.backend.key_down = key_down
+
+        async def allowed(*_):
+            return True
+
+        async def capture(*_):
+            return object()
+
+        async def detect(*_):
+            if not fixed_starts:
+                return "v_fixed"
+            await movement_started.wait()
+            return "death_f" if combo_finished.is_set() else "living_no_v"
+
+        async def fixed(*_):
+            fixed_starts.append(True)
+            await task._hold(ctx, None, 15)
+
+        async def sleep(_ctx, _control, seconds):
+            if seconds >= 7:
+                if seconds < 15:
+                    combo_finished.set()
+                await asyncio.Event().wait()
+            await asyncio.sleep(0)
+
+        async def progress(_ctx, stage):
+            task.stage = stage
+
+        task._before_game_input, task._capture, task._detect_stage = allowed, capture, detect
+        task._fixed_actions, task._sleep, task._progress = fixed, sleep, progress
+        await asyncio.wait_for(task._play(ctx, None), 1)
+        assert len(fixed_starts) == 1
+        assert [key for key, _ in held_during_taps] == ["f", "t", "g"]
+        movement_key = next(key for action, key in events if action == "down" and key in "wasd")
+        assert all(held == {movement_key} for _, held in held_during_taps)
+        assert events.count(("down", movement_key)) == 1
+        assert events.index(("up", movement_key)) > events.index(("up", "g"))
         assert not ctx.input.pressed_keys
 
     asyncio.run(scenario())

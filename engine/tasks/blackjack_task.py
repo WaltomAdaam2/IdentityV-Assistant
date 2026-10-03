@@ -4,12 +4,12 @@ import asyncio
 import math
 import random
 from contextlib import suppress
-from time import monotonic, sleep
+from time import monotonic
 
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
 from core.models import CoordinateSpace, Point
-from input.windows_sendinput import WindowsSendInput
+from input.windows_sendinput import ForegroundLostError, WindowsSendInput
 from tasks.base import AutomationTask, TaskControl
 from vision.blackjack_detector import BlackjackDetector, MARKS
 from vision.home_detector import detect_home_book
@@ -20,6 +20,10 @@ class _Stopped(Exception):
 
 
 class _WindowLost(Exception):
+    pass
+
+
+class _WindowRecoveryTimeout(_WindowLost):
     pass
 
 
@@ -65,13 +69,19 @@ class BlackjackTask(AutomationTask):
             window = await self._input_window(ctx, control)
             ctx.input.backend = WindowsSendInput(window.hwnd)
             while True:
-                await self._cycle(ctx, control)
+                try:
+                    await self._cycle(ctx, control)
+                except ForegroundLostError:
+                    await self._recover_foreground(ctx, control)
+                    continue
                 self.cycles += 1
                 await self._progress(ctx, "cycle_complete")
                 if not ctx.config.automation.blackjack_infinite_loop:
                     return TaskFinishReason.COMPLETED
         except _Stopped:
             return TaskFinishReason.USER_STOPPED
+        except _WindowRecoveryTimeout:
+            return TaskFinishReason.WINDOW_RECOVERY_TIMEOUT
         except _WindowLost as error:
             await self._log(ctx, "error", f"Blackjack stopped: {error}")
             return TaskFinishReason.WINDOW_LOST
@@ -185,12 +195,8 @@ class BlackjackTask(AutomationTask):
         if window is None:
             raise _WindowLost("game window is closed")
         if window.is_minimized or not window.is_foreground:
-            for _ in range(3):
-                ctx.window.bring_to_front()
-                sleep(0.05)
-                window = ctx.window.find_window()
-                if window is not None and window.is_foreground and not window.is_minimized:
-                    break
+            ctx.window.bring_to_front()
+            window = ctx.window.find_window()
         if window is None or window.is_minimized or not window.is_foreground:
             raise _WindowLost("could not bring the game window to the foreground")
         return window
@@ -198,6 +204,7 @@ class BlackjackTask(AutomationTask):
     async def _input_window(self, ctx: AutomationContext, control: TaskControl):
         started = self._now(control)
         while True:
+            await self._check(ctx, control)
             try:
                 window = self._window(ctx)
                 backend = ctx.input.backend
@@ -205,10 +212,20 @@ class BlackjackTask(AutomationTask):
                     ctx.input.release_all()
                     ctx.input.backend = WindowsSendInput(window.hwnd)
                 return window
-            except _WindowLost:
+            except _WindowLost as error:
                 if self._now(control) - started >= 300:
-                    raise
-                await self._capture(ctx, control)
+                    await self._log(ctx, "error", "游戏窗口恢复超过 300 秒，已停止当前任务；引擎保持运行。")
+                    raise _WindowRecoveryTimeout("game window recovery timed out after 300 seconds") from error
+                await self._capture(ctx, control, deadline=started + 300)
+                await self._sleep(ctx, control, 0.25)
+
+    async def _recover_foreground(self, ctx: AutomationContext, control: TaskControl) -> None:
+        ctx.input.release_all()
+        if not self._recovering:
+            self._recovering = True
+            await self._log(ctx, "warning", "游戏窗口失去焦点，正在尝试恢复；可手动切回游戏，最多等待 300 秒。")
+        await self._capture(ctx, control)
+        self._resume_recheck = True
 
     def _capture_once(self, ctx: AutomationContext):
         window = self._window(ctx)
@@ -217,25 +234,27 @@ class BlackjackTask(AutomationTask):
         ctx.metrics.screenshots += 1
         return self.detector.normalize(frame.image)
 
-    async def _capture(self, ctx: AutomationContext, control: TaskControl):
+    async def _capture(self, ctx: AutomationContext, control: TaskControl, *, deadline: float | None = None):
         started: float | None = None
         while True:
             await self._check(ctx, control)
             try:
                 image = self._capture_once(ctx)
                 if self._recovering:
-                    await self._log(ctx, "info", "Game window capture recovered")
+                    await self._log(ctx, "info", "游戏窗口已恢复，正在重新识别当前画面。")
                     self._recovering = False
                     self._resume_recheck = True
                 return image
             except (_WindowLost, RuntimeError, OSError, ValueError) as error:
                 if started is None:
                     started = self._now(control)
-                    self._recovering = True
-                    await self._log(ctx, "warning", f"Waiting for game window capture: {error}")
-                if self._now(control) - started >= 300:
-                    await self._log(ctx, "error", "Game window capture unavailable for 300 seconds")
-                    raise _WindowLost("game window capture unavailable for 300 seconds") from error
+                    if not self._recovering:
+                        ctx.input.release_all()
+                        self._recovering = True
+                        await self._log(ctx, "warning", "暂时无法获取游戏画面，正在尝试恢复窗口；可手动切回游戏，最多等待 300 秒。")
+                if self._now(control) >= (deadline if deadline is not None else started + 300):
+                    await self._log(ctx, "error", "游戏窗口恢复超过 300 秒，已停止当前任务；引擎保持运行。")
+                    raise _WindowRecoveryTimeout("game window capture unavailable for 300 seconds") from error
                 await self._sleep(ctx, control, 0.25)
 
     async def _check(self, ctx: AutomationContext, control: TaskControl) -> None:

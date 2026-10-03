@@ -8,7 +8,7 @@ from core.models import Point
 from input.base import InputBackend
 from input.controller import InputController
 from input.windows_message import WindowsMessageInput, _curved_route, _point_lparam
-from input.windows_sendinput import _virtual_key
+from input.windows_sendinput import ForegroundLostError, WindowsSendInput, _virtual_key
 
 
 class RecordingBackend(InputBackend):
@@ -66,6 +66,61 @@ def test_window_message_supports_both_mouse_buttons() -> None:
 
 def test_task_shortcuts_have_virtual_keys() -> None:
     assert [_virtual_key(key) for key in ("Q", "F", "ESC", "ALT", "1")] == [0x51, 0x46, 0x1B, 0x12, 0x31]
+
+
+@pytest.mark.parametrize("key, scan", [("alt", 0x38), ("1", 0x02)])
+@pytest.mark.parametrize("up", [False, True])
+def test_alt_one_uses_physical_scan_codes_for_press_and_release(key, scan, up):
+    event = WindowsSendInput._keyboard_event(key, up)
+    assert event.type == 1
+    assert event.data.ki.wVk == 0
+    assert event.data.ki.wScan == scan
+    assert event.data.ki.dwFlags == (0x0008 | (0x0002 if up else 0))
+
+
+def test_sendinput_blocks_new_input_after_focus_loss_but_still_sends_releases():
+    foreground = [42]
+    sent = []
+
+    def send(count, pointer, size):
+        event = pointer._obj
+        assert count == 1 and size > 0
+        sent.append((event.type, event.data.ki.dwFlags if event.type == 1 else event.data.mi.dwFlags))
+        return 1
+
+    backend = object.__new__(WindowsSendInput)
+    backend._expected_hwnd = 42
+    backend._user32 = SimpleNamespace(GetForegroundWindow=lambda: foreground[0], SendInput=send)
+    backend.key_down("alt")
+    assert sent == [(1, 0x0008)]
+    foreground[0] = 99
+    for action in (lambda: backend.key_down("1"), lambda: backend.move_relative(10, 0), backend.mouse_down):
+        with pytest.raises(ForegroundLostError):
+            action()
+    assert len(sent) == 1
+    backend.key_up("1")
+    backend.key_up("alt")
+    backend.mouse_up()
+    assert sent == [(1, 0x0008), (1, 0x000A), (1, 0x000A), (0, 0x0004)]
+
+
+def test_direct_key_up_failure_remains_tracked_for_cleanup_retry():
+    backend = RecordingBackend()
+    controller = InputController(backend)
+    controller.key_down("alt")
+    key_up = backend.key_up
+
+    def fail_once(key):
+        backend.key_up = key_up
+        raise OSError("key release interrupted")
+
+    backend.key_up = fail_once
+    with pytest.raises(OSError, match="release interrupted"):
+        controller.key_up("alt")
+    assert controller.pressed_keys == {"alt"}
+    controller.release_all()
+    assert not controller.pressed_keys
+    assert backend.calls == ["key_down:alt", "key_up:alt"]
 
 
 def test_mouse_route_is_curved_and_ends_at_target() -> None:

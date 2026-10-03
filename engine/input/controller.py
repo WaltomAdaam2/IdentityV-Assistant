@@ -67,8 +67,8 @@ class InputController:
 
     def key_up(self, key: str) -> None:
         self._record("key_up", input="key", key=key)
-        self.pressed_keys.discard(key)
         self.backend.key_up(key)
+        self.pressed_keys.discard(key)
 
     def mouse_down(self, button: str = "left") -> None:
         self._record("mouse_down", input="mouse", button=button)
@@ -77,8 +77,8 @@ class InputController:
 
     def mouse_up(self, button: str = "left") -> None:
         self._record("mouse_up", input="mouse", button=button)
-        self.mouse_buttons_down.discard(button)
         self.backend.mouse_up(button)
+        self.mouse_buttons_down.discard(button)
 
     def release_all(self) -> None:
         first_error = None
