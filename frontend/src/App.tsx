@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
+import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog, type LogEntry, type LogLevel } from "./logs";
 import type {
   CaptureFrame,
   EngineEvent,
@@ -19,16 +20,7 @@ type Page =
   | "logs"
   | "settings"
   | "about";
-type LogLevel = "debug" | "info" | "warning" | "error";
 type Language = Settings["app"]["language"];
-interface LogEntry {
-  id: number;
-  at: string;
-  level: LogLevel;
-  message: string;
-  source: string;
-  important?: boolean;
-}
 interface TaskProgress {
   taskId: string;
   stage: string;
@@ -137,7 +129,7 @@ const translations = {
       survivor: "求生者",
       bad_child: "坏孩子",
       unknown: "待确认",
-      results: { completed: "已完成", user_stopped: "已停止", timeout: "等待超时", window_lost: "窗口已关闭", engine_error: "执行失败" },
+      results: { completed: "已完成", user_stopped: "已停止", timeout: "等待超时", window_lost: "窗口已关闭", window_recovery_timeout: "窗口恢复超时", engine_error: "执行失败" },
       stages: {
         starting: "正在启动", waiting_home: "等待归宿", home: "已到归宿",
         waiting_chaos: "等待混沌纷争", chaos: "混沌纷争",
@@ -148,22 +140,22 @@ const translations = {
         waiting_ready_start: "等待准备开始", ready_start: "准备开始",
         waiting_card_confirm: "等待卡牌", card_confirm: "收下卡牌",
         waiting_role: "等待对局角色", playing: "对局中",
-        continue: "对局结束", waiting_return_lobby: "等待返回大厅",
+        continue: "进入结算画面", waiting_return_lobby: "等待返回大厅",
         return_lobby: "返回大厅", cycle_complete: "本局完成",
         diary: "日记推理", rank_entry: "排位模式", traditional_rank: "传统排位",
         hunter_choice: "选择监管者", normal_matching: "普通匹配中", rank_matching: "排位匹配中",
-        queue_warning: "阵营队列人数过多", result_first: "首个结算页",
-        result_second: "第二个结算页", surrendering: "等待投降", surrender: "投降菜单",
+        queue_warning: "阵营队列人数过多", result_first: "进入结算画面",
+        result_second: "进入第二个结算画面", surrendering: "等待投降", surrender: "投降菜单",
         loading: "加载中", running: "运行中",
         waiting_hide_seek: "等待捉迷藏", hide_seek: "捉迷藏",
         waiting_bad_child: "等待坏孩子", bad_child: "选择坏孩子",
-        waiting_start_game: "等待开始游戏", start_game: "开始游戏",
+        waiting_start_game: "等待开始游戏", start_game: "准备匹配",
         hide_seek_matching: "捉迷藏匹配中", waiting_f: "等待进入对局",
         disguise: "寻找伪装", waiting_r_blocked: "确认伪装状态",
         moving_to_fix: "寻找固定位置", waiting_v_fixed: "等待固定完成",
-        fixed: "已固定", eliminated: "已淘汰", hide_seek_results: "对局结算",
+        fixed: "成功固定", eliminated: "已淘汰", hide_seek_results: "进入结算画面",
         f_initial: "寻找伪装", r_blocked: "已伪装", v_ready: "寻找固定位置",
-        v_fixed: "已固定", living_no_v: "固定失效，使用技能", death_f: "已淘汰",
+        v_fixed: "成功固定", living_no_v: "固定消失", death_f: "已淘汰",
       },
     },
     runtime: {
@@ -419,7 +411,7 @@ const translations = {
       survivor: "Survivor",
       bad_child: "Bad Child",
       unknown: "Unconfirmed",
-      results: { completed: "Completed", user_stopped: "Stopped", timeout: "Timed out", window_lost: "Game window lost", engine_error: "Failed" },
+      results: { completed: "Completed", user_stopped: "Stopped", timeout: "Timed out", window_lost: "Game window lost", window_recovery_timeout: "Window recovery timed out", engine_error: "Failed" },
       stages: {
         starting: "Starting", waiting_home: "Waiting for home", home: "At home",
         waiting_chaos: "Waiting for Chaos", chaos: "Chaos mode",
@@ -788,8 +780,10 @@ export default function App() {
   const engineStatusRef = useRef("stopped");
   engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
+  const enabledTaskIds = tasks.filter((task) => task.enabled).map((task) => task.id).join(",");
   const requestedTaskQueueRef = useRef<string[]>([]);
   const activeTaskIdRef = useRef<string | null>(null);
+  const progressStagesRef = useRef(new Map<string, string>());
   const [taskControlEvent, setTaskControlEvent] = useState<TaskControlEvent>({
     revision: 0,
     type: "task_finished",
@@ -801,7 +795,7 @@ export default function App() {
   const languageRef = useRef<Language>(language);
   languageRef.current = language;
   const t = translations[language];
-  const [logs, setLogs] = useState<LogEntry[]>([
+  const [logs, setLogs] = useState<LogEntry[]>(() => [
     {
       id: 1,
       at: now(defaults.app.language),
@@ -811,6 +805,10 @@ export default function App() {
       important: true,
     },
   ]);
+  const [normalLogs, setNormalLogs] = useState(logs);
+  const pendingLogsRef = useRef<LogEntry[]>([]);
+  const logFlushTimer = useRef<number | null>(null);
+  const nextLogId = useRef(2);
   const [notice, setNotice] = useState<string | null>(null);
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
   const [frame, setFrame] = useState<CaptureFrame | null>(null);
@@ -826,25 +824,41 @@ export default function App() {
   const [developerInputEnabled, setDeveloperInputEnabled] = useState(false);
   const [runtimeEvent, setRuntimeEvent] = useState<EngineEvent | null>(null);
   const appendLog = useCallback(
-    (level: LogLevel, message: string, source = "engine", important = false, persist = true) => {
+    (level: LogLevel, message: string, source = "engine", important = false, persist = true, detailedOnly = false) => {
       if (persist)
         void bridge.appendUiLog({ type: "ui_log", timestamp: new Date().toISOString(), level, source, message }).catch(console.error);
-      setLogs((current) =>
-        [
-          {
-            id: Date.now() + Math.random(),
-            at: now(languageRef.current),
-            level,
-            message,
-            source,
-            important,
-          },
-          ...current,
-        ].slice(0, 99_000),
-      );
+      pendingLogsRef.current.push({
+        id: nextLogId.current++,
+        at: now(languageRef.current),
+        level,
+        message,
+        source,
+        important,
+        detailedOnly,
+      });
+      if (logFlushTimer.current === null)
+        logFlushTimer.current = window.setTimeout(() => {
+          const pending = pendingLogsRef.current;
+          pendingLogsRef.current = [];
+          logFlushTimer.current = null;
+          setLogs((current) => appendLogBatch(current, pending));
+          // Reuse the normal view unless a visible entry is added or evicted.
+          setNormalLogs((current) => appendNormalLogBatch(current, pending));
+        }, 100);
     },
     [],
   );
+  const clearLogs = useCallback(() => {
+    if (logFlushTimer.current !== null) window.clearTimeout(logFlushTimer.current);
+    logFlushTimer.current = null;
+    pendingLogsRef.current = [];
+    setLogs([]);
+    setNormalLogs([]);
+  }, []);
+  useEffect(() => () => {
+    if (logFlushTimer.current !== null) window.clearTimeout(logFlushTimer.current);
+    logFlushTimer.current = null;
+  }, []);
   const updateFrame = useCallback(
     (nextFrame: CaptureFrame) => {
       const sequence = ++frameLoadSequence.current;
@@ -944,6 +958,9 @@ export default function App() {
     void bridge
       .onEngineEvent((event: EngineEvent) => {
         const current = translations[languageRef.current];
+        if (event.type === "task_started" && event.task_id)
+          progressStagesRef.current.delete(event.task_id);
+        const stageMessage = progressLog(event, current.progress.stages, progressStagesRef.current);
         if (event.source === "engine.lifecycle" && event.engine_status) {
           setSnapshot((previous) => ({ ...previous, status: event.engine_status }));
           if (event.engine_status !== "starting" && event.engine_status !== "stopping")
@@ -957,6 +974,9 @@ export default function App() {
               ? event.level
               : "info";
         const eventMessage =
+          stageMessage ??
+          (event.type === "ready" ? `${current.engine} ${current.states.idle}` : undefined) ??
+          (event.type === "task_finished" ? current.finishedEvent(current.progress.results[event.reason as keyof typeof current.progress.results] ?? event.reason ?? "?") : undefined) ??
           event.message ??
           (event.type === "task_state"
             ? current.taskEvent(event.state ?? "?")
@@ -966,29 +986,36 @@ export default function App() {
                 ? current.taskEvent(current.taskStates.paused)
                 : event.type === "task_resumed"
                   ? current.taskEvent(current.taskStates.running)
-              : event.type === "task_finished"
-                ? current.finishedEvent(event.reason ?? "?")
-                : (event.type ?? current.receivedEvent));
+                  : (event.type ?? current.receivedEvent));
         const important =
           event.data?.important === true ||
+          stageMessage !== null ||
           event.type === "ready" ||
           event.type === "task_paused" ||
+          event.type === "task_resumed" ||
           event.type === "task_finished";
-        appendLog(level, eventMessage, event.source ?? event.type ?? "engine", important, false);
+        appendLog(level, eventMessage, event.source ?? event.task_id ?? event.type ?? "engine", important, false, isWindowDiagnostic(event));
         if (event.type === "heartbeat") {
-          setSnapshot((current) => ({
-            ...current,
-            status: event.engine_status ?? current.status,
-            taskStatus: event.task_status ?? current.taskStatus,
-          }));
+          setSnapshot((current) =>
+            current.status === (event.engine_status ?? current.status) &&
+            current.taskStatus === (event.task_status ?? current.taskStatus)
+              ? current
+              : {
+                  ...current,
+                  status: event.engine_status ?? current.status,
+                  taskStatus: event.task_status ?? current.taskStatus,
+                },
+          );
           if (event.task_status === "paused" || event.task_status === "running")
-            setTasks((current) =>
-              current.map((task) =>
+            setTasks((current) => {
+              if (!current.some((task) => (task.status === "running" || task.status === "paused") && task.status !== event.task_status))
+                return current;
+              return current.map((task) =>
                 task.status === "running" || task.status === "paused"
                   ? { ...task, status: event.task_status as TaskItem["status"] }
                   : task,
-              ),
-            );
+              );
+            });
         }
         if (event.type === "window_diagnostics") {
           setWindowInfo(event);
@@ -1110,13 +1137,20 @@ export default function App() {
             requestedTaskQueueRef.current = [event.task_id];
           setProgress({ taskId: event.task_id, stage: "running", role: null, completedCycles: 0 });
         }
-        if (event.type === "task_progress" && event.task_id)
-          setProgress({
+        if (event.type === "task_progress" && event.task_id) {
+          const nextProgress: TaskProgress = {
             taskId: event.task_id,
             stage: event.stage ?? "running",
             role: event.role ?? null,
             completedCycles: event.completed_cycles ?? 0,
-          });
+          };
+          setProgress((previous) =>
+            previous && previous.taskId === nextProgress.taskId &&
+            previous.stage === nextProgress.stage && previous.role === nextProgress.role &&
+            previous.completedCycles === nextProgress.completedCycles
+              ? previous : nextProgress,
+          );
+        }
         if (event.type === "task_started" && event.task_id)
           setTasks((current) =>
             {
@@ -1197,7 +1231,8 @@ export default function App() {
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          await bridge.saveSettings({ ...settings, tasks: { enabled: tasks.filter((task) => task.enabled).map((task) => task.id) } });
+          const nextSettings = { ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } };
+          await bridge.saveSettings(nextSettings);
           if (
             !["stopped", "starting", "stopping", "error"].includes(
               engineStatusRef.current,
@@ -1205,7 +1240,7 @@ export default function App() {
           ) {
             await bridge.sendEngineCommand({
               type: "reload_settings",
-              settings,
+              settings: nextSettings,
             });
           }
         } catch (error) {
@@ -1217,9 +1252,9 @@ export default function App() {
           setNotice(message);
         }
       })();
-    }, 0);
+    }, 250);
     return () => window.clearTimeout(timer);
-  }, [appendLog, settings, settingsLoaded, tasks]);
+  }, [appendLog, settings, settingsLoaded, enabledTaskIds]);
   useEffect(() => {
     document.title = t.about.name;
   }, [t.about.name]);
@@ -1233,6 +1268,12 @@ export default function App() {
   const navigate = useCallback(
     (nextPage: Page) => {
       if (nextPage === page || pagePhase === "leave") return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setPage(nextPage);
+        setPagePhase("enter");
+        workspaceRef.current?.scrollTo({ top: 0 });
+        return;
+      }
       workspaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       setPagePhase("leave");
       pageTransitionTimer.current = window.setTimeout(() => {
@@ -1319,7 +1360,7 @@ export default function App() {
       />
     ),
     logs: (
-      <Logs language={language} entries={logs} verbose={settings.debug.verbose_logs} onClear={() => setLogs([])} />
+      <Logs language={language} entries={settings.debug.verbose_logs ? logs : normalLogs} verbose={settings.debug.verbose_logs} onClear={clearLogs} />
     ),
     settings: (
       <SettingsPage
@@ -1359,7 +1400,7 @@ export default function App() {
           <div className="sidebar-bottom">
             {progress && <div className="progress-card sidebar-card" title={`${taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]} · ${progress.stage}`}>
               <strong>{t.progress.title} · {taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]}</strong>
-              <small>{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
+              <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
               <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
             </div>}
             <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.0`}>
@@ -1674,7 +1715,7 @@ function Tasks({
               >
                 {translations[language].dashboard.stop}
               </button>
-              <span className={`tag ${task.status}`}>{statusLabel(task.status, language)}</span>
+              <span key={task.status} className={`tag task-status ${task.status}`}>{statusLabel(task.status, language)}</span>
             </article>
             {editingTask === task.id && <section className="task-editor panel">
               <h3>{name} · {t.edit}</h3>
@@ -2040,7 +2081,7 @@ function Debug({
     </div>
   );
 }
-function Logs({
+const Logs = memo(function Logs({
   language,
   entries,
   verbose,
@@ -2054,17 +2095,12 @@ function Logs({
   const t = translations[language].logs;
   const [level, setLevel] = useState<"all" | LogLevel>("all");
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [page, setPage] = useState(1);
   const [jump, setJump] = useState("");
   const shown = useMemo(
-    () =>
-      entries.filter(
-        (entry) =>
-          (verbose || entry.important || entry.level === "warning" || entry.level === "error") &&
-          (level === "all" || entry.level === level) &&
-          entry.message.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-      ),
-    [entries, level, query, verbose],
+    () => filterLogs(entries, level, deferredQuery, verbose),
+    [entries, level, deferredQuery, verbose],
   );
   const pageCount = Math.max(1, Math.min(99, Math.ceil(shown.length / 1000)));
   const currentPage = Math.min(page, pageCount);
@@ -2140,7 +2176,7 @@ function Logs({
       </div>
     </section>
   );
-}
+});
 function SettingsPage({
   language,
   settings,
