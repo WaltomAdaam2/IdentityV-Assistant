@@ -163,7 +163,7 @@ const translations = {
         moving_to_fix: "寻找固定位置", waiting_v_fixed: "等待固定完成",
         fixed: "已固定", eliminated: "已淘汰", hide_seek_results: "对局结算",
         f_initial: "寻找伪装", r_blocked: "已伪装", v_ready: "寻找固定位置",
-        v_fixed: "已固定", death_f: "已淘汰",
+        v_fixed: "已固定", living_no_v: "固定失效，使用技能", death_f: "已淘汰",
       },
     },
     runtime: {
@@ -445,7 +445,7 @@ const translations = {
         moving_to_fix: "Moving before fixing", waiting_v_fixed: "Waiting for fixed state",
         fixed: "Fixed in place", eliminated: "Eliminated", hide_seek_results: "Round results",
         f_initial: "Finding a disguise", r_blocked: "Disguised", v_ready: "Moving before fixing",
-        v_fixed: "Fixed in place", death_f: "Eliminated",
+        v_fixed: "Fixed in place", living_no_v: "Fixing lost, using skills", death_f: "Eliminated",
       },
     },
     runtime: {
@@ -944,6 +944,11 @@ export default function App() {
     void bridge
       .onEngineEvent((event: EngineEvent) => {
         const current = translations[languageRef.current];
+        if (event.source === "engine.lifecycle" && event.engine_status) {
+          setSnapshot((previous) => ({ ...previous, status: event.engine_status }));
+          if (event.engine_status !== "starting" && event.engine_status !== "stopping")
+            void refreshSnapshot();
+        }
         const level: LogLevel =
           event.type === "error"
             ? "error"
