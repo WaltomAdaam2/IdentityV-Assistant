@@ -61,13 +61,35 @@ fn migrate(settings: &mut Value) -> bool {
         .get_mut("game_window")
         .and_then(Value::as_object_mut)
     {
-        for key in [
-            "background_mode",
-            "resolution",
-            "position",
-            "restore_after_task",
-        ] {
+        for key in ["background_mode", "restore_after_task"] {
             window.remove(key);
+        }
+        for (key, allowed, default) in [
+            (
+                "resolution",
+                &["2560x1440", "1920x1080", "1600x900", "1280x720"][..],
+                "1600x900",
+            ),
+            (
+                "position",
+                &[
+                    "center",
+                    "unrestricted",
+                    "top_left",
+                    "top_right",
+                    "bottom_left",
+                    "bottom_right",
+                ][..],
+                "top_right",
+            ),
+        ] {
+            if !window
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|value| allowed.contains(&value))
+            {
+                window.insert(key.to_owned(), Value::from(default));
+            }
         }
     }
     if let Some(root) = settings.as_object_mut() {
@@ -127,6 +149,22 @@ mod tests {
         assert!(migrate(&mut settings));
         assert_eq!(settings["tasks"]["enabled"], json!(["blackjack"]));
         assert!(settings["engine"].get("dry_run").is_none());
-        assert!(settings["game_window"].get("resolution").is_none());
+        assert_eq!(settings["game_window"]["resolution"], "1600x900");
+        assert_eq!(settings["game_window"]["position"], "top_right");
+        assert!(!migrate(&mut settings));
+    }
+
+    #[test]
+    fn preserves_valid_window_preferences_and_replaces_obsolete_values() {
+        let mut settings =
+            json!({"game_window": {"resolution": "2560x1440", "position": "unrestricted"}});
+        migrate(&mut settings);
+        assert_eq!(settings["game_window"]["resolution"], "2560x1440");
+        assert_eq!(settings["game_window"]["position"], "unrestricted");
+        settings["game_window"]["resolution"] = json!("old");
+        settings["game_window"]["position"] = json!(null);
+        migrate(&mut settings);
+        assert_eq!(settings["game_window"]["resolution"], "1600x900");
+        assert_eq!(settings["game_window"]["position"], "top_right");
     }
 }

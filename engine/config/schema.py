@@ -19,6 +19,8 @@ TimeJitter = Annotated[StrictInt, Field(ge=1, le=2_000)]
 
 
 class WindowConfig(_ConfigModel):
+    resolution: Literal["2560x1440", "1920x1080", "1600x900", "1280x720"] = "1600x900"
+    position: Literal["center", "unrestricted", "top_left", "top_right", "bottom_left", "bottom_right"] = "top_right"
     process_names: tuple[NonEmptyString, ...] = ("dwrg.exe", "IdentityV.exe")
     title_contains: tuple[NonEmptyString, ...] = ("第五人格", "Identity V")
     class_names: tuple[NonEmptyString, ...] = ()

@@ -32,7 +32,7 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 * Task card editors for login platform, login timeout, click delays and variation, camera turn scale, and looping; login settings are in the Enter the home lobby task editor and changes save automatically
 * Enabled task selection survives restarts; multiple enabled tasks run in list order, and starting a task starts a stopped automation service automatically
 * F3 globally starts or stops the engine; stopping releases input and clears the task queue
-* Engine startup sets the game client to 1600×900, moves it to the current monitor work area's bottom right, and pins it on top
+* Game window settings support 2560×1440, 1920×1080, 1600×900, and 1280×720, with center, unrestricted, or any corner placement. Defaults are 1600×900 / top right. Changes apply while the engine runs; unrestricted keeps the current position and engine shutdown restores the original window. Oversized windows retain their selected size with the top-left corner visible
 * A nonrecoverable task error pauses the active task and retains its queue for manual rerouting; every active task row has Stop, which cancels the active task and clears the remaining queue
 * Optional memory protection that collects unused objects above 90% system memory use
 * Capture diagnostics, concise logs, and window settings available to regular users; logs support search, filtering, pagination, and page jumping

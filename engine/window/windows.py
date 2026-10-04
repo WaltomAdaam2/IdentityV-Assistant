@@ -39,6 +39,7 @@ class WindowsWindowManager(WindowManager):
         self._kernel32: Any | None = None
         self._style_snapshot: _WindowStyleSnapshot | None = None
         self._automation_style_applied = False
+        self._applied_window_settings: tuple[str, str] | None = None
         self._last_scan_at = float("-inf")
         self._scan_config = None
         self._response_cache: dict[int, tuple[int, float, bool]] = {}
@@ -344,55 +345,54 @@ class WindowsWindowManager(WindowManager):
                 window_rect=tuple(win32gui.GetWindowRect(hwnd)),
             )
 
-        if self._automation_style_applied:
+        settings = (self.config.resolution, self.config.position)
+        if self._automation_style_applied and self._applied_window_settings == settings:
             return True
 
-        monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
-        work_area = win32api.GetMonitorInfo(monitor)["Work"]
+        if not self._automation_style_applied:
+            # AALC: restore the window before changing its frame and foreground state.
+            if win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.BringWindowToTop(hwnd)
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                # Windows can deny foreground activation even for a valid window.
+                # Topmost/frame styling must still be applied in that case.
+                pass
 
-        # AALC: restore the window before changing its frame and foreground state.
-        if win32gui.IsIconic(hwnd):
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.BringWindowToTop(hwnd)
-        try:
-            win32gui.SetForegroundWindow(hwnd)
-        except Exception:
-            # Windows can deny foreground activation even for a valid window.
-            # Topmost/frame styling must still be applied in that case.
-            pass
+            # AALC Screen.reduce_miscontact: keep this call order and flag set intact.
+            win32gui.SetWindowPos(
+                hwnd,
+                win32con.HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
+            )
+            style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
+            style &= ~win32con.WS_THICKFRAME
+            style &= ~win32con.WS_CAPTION
+            style &= ~win32con.WS_BORDER
+            style &= ~(win32con.WS_SIZEBOX | win32con.WS_MAXIMIZEBOX)
+            win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
+            win32gui.SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                win32con.SWP_NOMOVE
+                | win32con.SWP_NOSIZE
+                | win32con.SWP_NOZORDER
+                | win32con.SWP_FRAMECHANGED,
+            )
+            sleep(0.1)
 
-        # AALC Screen.reduce_miscontact: keep this call order and flag set intact.
-        win32gui.SetWindowPos(
-            hwnd,
-            win32con.HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
-        )
-        style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
-        style &= ~win32con.WS_THICKFRAME
-        style &= ~win32con.WS_CAPTION
-        style &= ~win32con.WS_BORDER
-        style &= ~(win32con.WS_SIZEBOX | win32con.WS_MAXIMIZEBOX)
-        win32gui.SetWindowLong(hwnd, win32con.GWL_STYLE, style)
-        win32gui.SetWindowPos(
-            hwnd,
-            None,
-            0,
-            0,
-            0,
-            0,
-            win32con.SWP_NOMOVE
-            | win32con.SWP_NOSIZE
-            | win32con.SWP_NOZORDER
-            | win32con.SWP_FRAMECHANGED,
-        )
-        sleep(0.1)
-
-        # Account for any remaining non-client area so the game renders at 1600x900.
-        client_width, client_height = 1600, 900
+        # Account for any remaining non-client area at the selected resolution.
+        client_width, client_height = map(int, self.config.resolution.split("x"))
         window_rect = win32gui.GetWindowRect(hwnd)
         client_rect = win32gui.GetClientRect(hwnd)
         window_width = window_rect[2] - window_rect[0]
@@ -401,16 +401,32 @@ class WindowsWindowManager(WindowManager):
         current_client_height = client_rect[3] - client_rect[1]
         required_window_width = client_width + (window_width - current_client_width)
         required_window_height = client_height + (window_height - current_client_height)
+        flags = win32con.SWP_NOZORDER
+        left, top = window_rect[:2]
+        if self.config.position == "unrestricted":
+            flags |= win32con.SWP_NOMOVE
+        else:
+            monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
+            work_left, work_top, work_right, work_bottom = win32api.GetMonitorInfo(monitor)["Work"]
+            available_width = max(0, work_right - work_left - required_window_width)
+            available_height = max(0, work_bottom - work_top - required_window_height)
+            if self.config.position == "center":
+                left = work_left + available_width // 2
+                top = work_top + available_height // 2
+            else:
+                left = work_left + (available_width if self.config.position.endswith("right") else 0)
+                top = work_top + (available_height if self.config.position.startswith("bottom") else 0)
         win32gui.SetWindowPos(
             hwnd,
             None,
-            work_area[2] - required_window_width,
-            work_area[3] - required_window_height,
+            left,
+            top,
             required_window_width,
             required_window_height,
-            win32con.SWP_NOZORDER,
+            flags,
         )
         self._automation_style_applied = True
+        self._applied_window_settings = settings
         return True
 
     def restore_automation_style(self) -> bool:
@@ -424,6 +440,7 @@ class WindowsWindowManager(WindowManager):
         if not win32gui.IsWindow(snapshot.hwnd):
             self._style_snapshot = None
             self._automation_style_applied = False
+            self._applied_window_settings = None
             return False
 
         hwnd = snapshot.hwnd
@@ -466,6 +483,7 @@ class WindowsWindowManager(WindowManager):
         )
         self._style_snapshot = None
         self._automation_style_applied = False
+        self._applied_window_settings = None
         return True
 
     def get_dpi_scale(self) -> float:

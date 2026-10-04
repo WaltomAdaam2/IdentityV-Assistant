@@ -23,6 +23,8 @@ def parse_config(data: dict[str, Any]) -> EngineConfig:
             "memory_protection": engine_data.get("memory_protection", False),
             "heartbeat_interval_seconds": engine_data.get("heartbeat_interval_seconds", 2.0),
             "window": {
+                "resolution": window_data.get("resolution", "1600x900"),
+                "position": window_data.get("position", "top_right"),
                 "process_names": window_data.get("process_names", ["dwrg.exe", "IdentityV.exe"]),
                 "title_contains": window_data.get("title_contains", ["第五人格", "Identity V"]),
                 "class_names": window_data.get("class_names", []),

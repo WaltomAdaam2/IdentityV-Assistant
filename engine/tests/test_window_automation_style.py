@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.engine import AutomationEngine
-from config.schema import EngineConfig
+from config.schema import EngineConfig, WindowConfig
 from core.models import Rect
 from window.base import WindowInfo
 from window.windows import WindowsWindowManager
@@ -104,11 +104,13 @@ class FakeWin32Gui:
 
 def _manager(gui: FakeWin32Gui) -> WindowsWindowManager:
     manager = object.__new__(WindowsWindowManager)
+    manager.config = WindowConfig()
     manager._window = None
     manager._user32 = None
     manager._kernel32 = None
     manager._style_snapshot = None
     manager._automation_style_applied = False
+    manager._applied_window_settings = None
     manager.current_hwnd = lambda: 42  # type: ignore[method-assign]
     manager._load_pywin32 = lambda: (FakeWin32Con, gui, gui)  # type: ignore[method-assign]
     return manager
@@ -138,7 +140,7 @@ def test_apply_style_uses_aalc_sequence_and_is_idempotent(monkeypatch) -> None:
     assert first_calls[4][0:3] == ("SetWindowLong", 42, FakeWin32Con.GWL_STYLE)
     assert gui.style == 0x10000000
     assert first_calls[5][-1] & FakeWin32Con.SWP_FRAMECHANGED
-    assert first_calls[6][3:7] == (320, 140, 1600, 900)
+    assert first_calls[6][3:7] == (320, 0, 1600, 900)
     assert gui.GetClientRect(42) == (0, 0, 1600, 900)
 
 
@@ -152,7 +154,137 @@ def test_apply_style_uses_monitor_work_area_and_remaining_frame(monkeypatch) -> 
     assert manager.apply_automation_style()
 
     assert gui.GetClientRect(42) == (0, 0, 1600, 900)
-    assert gui.window_rect == (-1608, -72, 0, 840)
+    assert gui.window_rect == (-1608, -200, 0, 712)
+
+
+@pytest.mark.parametrize("resolution", ["2560x1440", "1920x1080", "1600x900", "1280x720"])
+@pytest.mark.parametrize(
+    ("position", "horizontal", "vertical"),
+    [
+        ("center", 0.5, 0.5),
+        ("top_left", 0, 0),
+        ("top_right", 1, 0),
+        ("bottom_left", 0, 1),
+        ("bottom_right", 1, 1),
+    ],
+)
+def test_configured_resolution_and_position(monkeypatch, resolution, position, horizontal, vertical) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    gui = FakeWin32Gui(FakeWin32Con.WS_CAPTION | FakeWin32Con.WS_THICKFRAME)
+    gui.work_area = (-3840, -1800, 0, 320)
+    gui.remaining_frame = (8, 12)
+    manager = _manager(gui)
+    manager.config = WindowConfig(resolution=resolution, position=position)
+    width, height = map(int, resolution.split("x"))
+
+    assert manager.apply_automation_style()
+
+    left = -3840 + int((3840 - width - 8) * horizontal)
+    top = -1800 + int((2120 - height - 12) * vertical)
+    assert gui.GetClientRect(42) == (0, 0, width, height)
+    assert gui.window_rect == (left, top, left + width + 8, top + height + 12)
+    first_calls = list(gui.calls)
+    assert manager.apply_automation_style()
+    assert gui.calls == first_calls
+
+
+@pytest.mark.parametrize("resolution", ["2560x1440", "1920x1080", "1600x900", "1280x720"])
+def test_unrestricted_resize_retains_current_position(monkeypatch, resolution) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    gui = FakeWin32Gui(FakeWin32Con.WS_CAPTION | FakeWin32Con.WS_THICKFRAME)
+    manager = _manager(gui)
+    manager.config = WindowConfig(resolution=resolution, position="unrestricted")
+    width, height = map(int, resolution.split("x"))
+
+    assert manager.apply_automation_style()
+
+    assert gui.window_rect == (100, 200, 100 + width, 200 + height)
+    assert gui.calls[-1][-1] & FakeWin32Con.SWP_NOMOVE
+    # A manual move remains unrestricted on later heartbeats.
+    gui.window_rect = (-250, 80, -250 + width, 80 + height)
+    first_calls = list(gui.calls)
+    assert manager.apply_automation_style()
+    assert gui.calls == first_calls
+    assert gui.window_rect == (-250, 80, -250 + width, 80 + height)
+
+
+@pytest.mark.parametrize("position", ["center", "top_left", "top_right", "bottom_left", "bottom_right"])
+def test_oversized_window_keeps_top_left_reachable(monkeypatch, position) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    gui = FakeWin32Gui(FakeWin32Con.WS_CAPTION)
+    gui.work_area = (-1920, -200, 0, 840)
+    manager = _manager(gui)
+    manager.config = WindowConfig(resolution="2560x1440", position=position)
+
+    assert manager.apply_automation_style()
+
+    assert gui.window_rect == (-1920, -200, 640, 1240)
+    assert gui.GetClientRect(42) == (0, 0, 2560, 1440)
+
+
+def test_setting_changes_apply_once_and_keep_original_snapshot(monkeypatch) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    original_style = FakeWin32Con.WS_CAPTION | FakeWin32Con.WS_THICKFRAME | 0x10000000
+    gui = FakeWin32Gui(original_style)
+    manager = _manager(gui)
+    assert manager.apply_automation_style()
+    original_snapshot = manager._style_snapshot
+
+    for resolution, position, expected in [
+        ("1280x720", "top_right", (640, 0, 1920, 720)),
+        ("1280x720", "bottom_left", (0, 320, 1280, 1040)),
+        ("1920x1080", "unrestricted", (0, 320, 1920, 1400)),
+    ]:
+        manager.config = WindowConfig(resolution=resolution, position=position)
+        previous_count = len(gui.calls)
+        assert manager.apply_automation_style()
+        assert len(gui.calls) == previous_count + 1
+        assert gui.window_rect == expected
+        assert manager._style_snapshot is original_snapshot
+        assert manager.apply_automation_style()
+        assert len(gui.calls) == previous_count + 1
+
+    assert manager.restore_automation_style()
+    assert gui.style == original_style
+    assert gui.window_rect == (100, 200, 1400, 950)
+    assert manager._applied_window_settings is None
+
+
+def test_changed_settings_use_current_monitor(monkeypatch) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    gui = FakeWin32Gui(FakeWin32Con.WS_CAPTION)
+    manager = _manager(gui)
+    assert manager.apply_automation_style()
+    gui.work_area = (-1920, -200, 0, 840)
+    manager.config = WindowConfig(position="bottom_right")
+
+    assert manager.apply_automation_style()
+
+    assert gui.window_rect == (-1600, -60, 0, 840)
+
+
+def test_failed_setting_change_retries_without_replacing_snapshot(monkeypatch) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+    gui = FakeWin32Gui(FakeWin32Con.WS_CAPTION)
+    manager = _manager(gui)
+    assert manager.apply_automation_style()
+    snapshot = manager._style_snapshot
+    manager.config = WindowConfig(resolution="1280x720", position="center")
+    set_window_pos = gui.SetWindowPos
+
+    def fail_position_once(*args) -> None:
+        gui.SetWindowPos = set_window_pos
+        raise OSError("temporary resize failure")
+
+    gui.SetWindowPos = fail_position_once
+    with pytest.raises(OSError, match="temporary resize"):
+        manager.apply_automation_style()
+    assert manager._style_snapshot is snapshot
+    assert manager._applied_window_settings == ("1600x900", "top_right")
+
+    assert manager.apply_automation_style()
+    assert gui.window_rect == (320, 160, 1600, 880)
+    assert manager._applied_window_settings == ("1280x720", "center")
 
 
 def test_restore_style_restores_exact_original_state(monkeypatch) -> None:
@@ -217,6 +349,39 @@ def test_engine_applies_and_restores_style_during_lifecycle() -> None:
 
     assert window.applied >= 1
     assert window.restored == 1
+
+
+def test_engine_reload_applies_window_options_on_next_style_check(monkeypatch) -> None:
+    monkeypatch.setattr("window.windows.sleep", lambda _: None)
+
+    class Writer:
+        async def send(self, message: dict) -> None:
+            pass
+
+    gui = FakeWin32Gui(FakeWin32Con.WS_CAPTION)
+    manager = _manager(gui)
+    engine = AutomationEngine(EngineConfig())
+    engine.writer = Writer()
+    engine.context.window = manager
+    engine.context.input = SimpleNamespace()
+    window = WindowInfo(42, "Game", "Class", 1, Rect(0, 0, 1920, 1080), 1.0)
+
+    async def reload_and_apply() -> None:
+        await engine._ensure_window_style(window)
+        snapshot = manager._style_snapshot
+        await engine._reload_settings({
+            "settings": {"game_window": {"resolution": "1280x720", "position": "bottom_left"}},
+        })
+        await engine._ensure_window_style(window)
+        assert gui.window_rect == (0, 320, 1280, 1040)
+        assert manager._style_snapshot is snapshot
+        call_count = len(gui.calls)
+        await engine._ensure_window_style(window)
+        assert len(gui.calls) == call_count
+        await engine._restore_window_style()
+        assert gui.window_rect == (100, 200, 1400, 950)
+
+    asyncio.run(reload_and_apply())
 
 
 def test_partial_restore_keeps_original_snapshot_for_retry(monkeypatch) -> None:

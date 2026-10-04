@@ -140,6 +140,8 @@ export interface Settings {
     heartbeat_interval_seconds: number;
   };
   game_window: {
+    resolution: "2560x1440" | "1920x1080" | "1600x900" | "1280x720";
+    position: "center" | "unrestricted" | "top_left" | "top_right" | "bottom_left" | "bottom_right";
     process_names: string[];
     title_contains: string[];
     class_names: string[];

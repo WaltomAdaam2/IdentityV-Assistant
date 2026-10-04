@@ -259,6 +259,10 @@ const translations = {
       preventDisplaySleep: "禁止自动熄屏和闲置锁屏",
       gameWindow: "游戏窗口",
       gameWindowHint: "通过进程名、标题关键词和窗口类名定位游戏窗口。",
+      windowResolution: "游戏分辨率",
+      windowPosition: "窗口位置",
+      windowLayoutHint: "引擎开启时应用。无限制保留当前位置；关闭引擎恢复原窗口。",
+      windowPositions: { center: "居中", unrestricted: "无限制", top_left: "左上", top_right: "右上", bottom_left: "左下", bottom_right: "右下" },
       titleKeywords: "窗口标题关键词",
       processNames: "进程名",
       classNames: "窗口类名",
@@ -544,6 +548,10 @@ const translations = {
       gameWindow: "Game window",
       gameWindowHint:
         "Find the game window by process name, title keywords, and window class.",
+      windowResolution: "Game resolution",
+      windowPosition: "Window position",
+      windowLayoutHint: "Applied while the engine runs. Unrestricted keeps the current position; shutdown restores the original window.",
+      windowPositions: { center: "Center", unrestricted: "Unrestricted", top_left: "Top left", top_right: "Top right", bottom_left: "Bottom left", bottom_right: "Bottom right" },
       titleKeywords: "Window title keywords",
       processNames: "Process names",
       classNames: "Window classes",
@@ -665,6 +673,8 @@ const defaults: Settings = {
     heartbeat_interval_seconds: 2,
   },
   game_window: {
+    resolution: "1600x900",
+    position: "top_right",
     process_names: ["dwrg.exe", "IdentityV.exe"],
     title_contains: ["第五人格", "Identity V"],
     class_names: [],
@@ -2286,6 +2296,19 @@ function SettingsPage({
       <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
+        <label>
+          {t.windowResolution}
+          <select value={settings.game_window.resolution} onChange={(event) => updateWindow({ resolution: event.target.value as Settings["game_window"]["resolution"] })}>
+            {["2560x1440", "1920x1080", "1600x900", "1280x720"].map((value) => <option key={value} value={value}>{value.replace("x", " × ")}</option>)}
+          </select>
+        </label>
+        <label>
+          {t.windowPosition}
+          <select value={settings.game_window.position} onChange={(event) => updateWindow({ position: event.target.value as Settings["game_window"]["position"] })}>
+            {Object.entries(t.windowPositions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <p>{t.windowLayoutHint}</p>
         <label>
           {t.titleKeywords}
           <input
