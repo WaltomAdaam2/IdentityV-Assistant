@@ -4,7 +4,7 @@ import random
 from collections.abc import Callable
 from time import sleep
 
-from core.models import Point
+from core.models import Point, Rect
 from input.base import InputBackend
 
 
@@ -27,8 +27,8 @@ class InputController:
         if self.on_action:
             self.on_action({"action": action, **details})
 
-    def click(self, point: Point, button: str = "left") -> None:
-        actual = self._jitter_point(point)
+    def click(self, point: Point, button: str = "left", bounds: Rect | None = None) -> None:
+        actual = self._jitter_point(point, bounds)
         duration_ms = max(
             10.0,
             35.0 + random.uniform(-self.click_duration_jitter_ms, self.click_duration_jitter_ms),
@@ -48,12 +48,20 @@ class InputController:
         finally:
             self.backend.mouse_up(button)
 
-    def _jitter_point(self, point: Point) -> Point:
+    def _jitter_point(self, point: Point, bounds: Rect | None = None) -> Point:
         if self.position_jitter_px <= 0:
             return point
+        # Sample inside the allowed rectangle, rather than accumulating points
+        # at its edges by clamping a larger random sample. Screen coordinates
+        # may be negative on monitors to the left/above the primary display.
+        left, right = point.x - self.position_jitter_px, point.x + self.position_jitter_px
+        top, bottom = point.y - self.position_jitter_px, point.y + self.position_jitter_px
+        if bounds is not None:
+            left, right = max(left, bounds.left), min(right, bounds.right - 1)
+            top, bottom = max(top, bounds.top), min(bottom, bounds.bottom - 1)
         return Point(
-            max(0, point.x + random.randint(-self.position_jitter_px, self.position_jitter_px)),
-            max(0, point.y + random.randint(-self.position_jitter_px, self.position_jitter_px)),
+            random.randint(left, right),
+            random.randint(top, bottom),
         )
 
     def press(self, key: str) -> None:

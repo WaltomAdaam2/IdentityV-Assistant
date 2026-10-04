@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.models import Point
+from core.models import Point, Rect
+from input.mouse_path import route_duration
 from input.base import InputBackend
 from input.controller import InputController
 from input.windows_message import WindowsMessageInput, _curved_route, _point_lparam
@@ -127,6 +128,27 @@ def test_mouse_route_is_curved_and_ends_at_target() -> None:
     route = _curved_route((0, 0), (1000, 500), random.Random(7))
     assert route[-1] == (1000, 500)
     assert any(y * 2 != x for x, y in route[:-1])
+
+
+def test_random_routes_include_reverse_motion_and_wider_arcs_without_jumps():
+    routes = [_curved_route((-1200, 100), (-200, 100), random.Random(seed)) for seed in range(30)]
+    assert len({tuple(route) for route in routes}) == 30
+    assert any(min(x for x, _ in route) < -1210 for route in routes)
+    assert any(max(abs(y - 100) for _, y in route) > 90 for route in routes)
+    for route in routes:
+        assert route[-1] == (-200, 100)
+        assert 0.18 <= route_duration((-1200, 100), route) <= 0.85
+        assert all(a != b and max(abs(a[0] - b[0]), abs(a[1] - b[1])) <= 54 for a, b in zip([(-1200, 100), *route[:-1]], route))
+
+
+def test_click_variation_supports_negative_monitors_and_stays_in_button(monkeypatch):
+    controller = InputController(RecordingBackend(), position_jitter_px=50)
+    monkeypatch.setattr("input.controller.random.randint", random.Random(123).randint)
+    bounds = Rect(-913, 187, 27, 27)  # 20 reference pixels at 1280x720.
+    points = [controller._jitter_point(Point(-900, 200), bounds) for _ in range(200)]
+    assert all(bounds.left <= p.x < bounds.right and bounds.top <= p.y < bounds.bottom for p in points)
+    assert any(abs(p.x + 900) > 6 for p in points)
+    assert len(set(points)) > 100
 
 
 def test_login_click_does_not_snap_cursor_back(monkeypatch) -> None:

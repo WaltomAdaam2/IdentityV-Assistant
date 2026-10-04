@@ -16,7 +16,7 @@ class _Input:
         self.clicks: list[Point] = []
         self.releases = 0
 
-    def click(self, point: Point) -> None:
+    def click(self, point: Point, bounds: Rect | None = None) -> None:
         self.clicks.append(point)
 
     def release_all(self) -> None:

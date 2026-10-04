@@ -8,7 +8,7 @@ from typing import Any
 
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
-from core.models import CoordinateSpace, Point
+from core.models import CoordinateSpace, Point, Rect
 from tasks.base import AutomationTask, TaskControl
 from vision.blackjack_detector import BlackjackDetector
 from vision.home_detector import detect_home_book
@@ -248,7 +248,9 @@ class LoginLobbyTask(AutomationTask):
             return False
         await self._check_control(ctx, control, deadline)
         point = CoordinateSpace().to_client(reference, window.client_rect)
-        ctx.input.click(point)
+        radius_x = max(1, round(20 * window.client_rect.width / 1920))
+        radius_y = max(1, round(20 * window.client_rect.height / 1080))
+        ctx.input.click(point, bounds=Rect(point.x - radius_x, point.y - radius_y, 2 * radius_x + 1, 2 * radius_y + 1))
         await ctx.emit(
             "planned_action",
             action=action,

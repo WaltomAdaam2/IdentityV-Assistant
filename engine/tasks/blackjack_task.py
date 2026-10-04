@@ -8,7 +8,8 @@ from time import monotonic
 
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
-from core.models import CoordinateSpace, Point
+from core.models import CoordinateSpace, Point, Rect
+from input.mouse_path import curved_route, route_duration
 from input.windows_sendinput import ForegroundLostError, WindowsSendInput
 from tasks.base import AutomationTask, TaskControl
 from vision.blackjack_detector import BlackjackDetector, MARKS
@@ -329,7 +330,10 @@ class BlackjackTask(AutomationTask):
             raise ValueError(f"no click target for {name}")
         client = CoordinateSpace().to_client(Point(*reference), window.client_rect)
         screen = Point(window.client_rect.left + client.x, window.client_rect.top + client.y)
-        actual = ctx.input._jitter_point(screen)
+        radius_x = max(1, round(20 * window.client_rect.width / 1920))
+        radius_y = max(1, round(20 * window.client_rect.height / 1080))
+        # Keep the randomized target near the known button center at every size.
+        actual = ctx.input._jitter_point(screen, Rect(screen.x - radius_x, screen.y - radius_y, 2 * radius_x + 1, 2 * radius_y + 1))
         await self._curved_move(ctx, control, actual)
         if self._resume_recheck:
             self._resume_recheck = False
@@ -352,26 +356,16 @@ class BlackjackTask(AutomationTask):
         if not isinstance(backend, WindowsSendInput):
             raise RuntimeError("foreground input is unavailable")
         start = backend.cursor_position()
-        dx, dy = target.x - start.x, target.y - start.y
-        distance = math.hypot(dx, dy)
-        if distance == 0:
+        if start == target:
             return
-        bend = self.rng.uniform(-0.11, 0.11) * distance
-        duration = min(0.45, max(0.12, distance / 2400))
-        steps = math.ceil(duration / 0.008)
-        previous = start
-        for index in range(1, steps + 1):
+        route = curved_route((start.x, start.y), (target.x, target.y), self.rng)
+        duration = route_duration((start.x, start.y), route)
+        for x, y in route:
             await self._check(ctx, control)
             if self._resume_recheck:
                 return
-            t = index / steps
-            eased = t * t * (3 - 2 * t)
-            arc = 4 * eased * (1 - eased) * bend / distance
-            point = Point(round(start.x + dx * eased - dy * arc), round(start.y + dy * eased + dx * arc))
-            if point != previous:
-                backend.move_mouse(point)
-                previous = point
-            await self._sleep(ctx, control, duration / steps)
+            backend.move_mouse(Point(x, y))
+            await self._sleep(ctx, control, duration / len(route))
 
     async def _wait_for_role(self, ctx: AutomationContext, control: TaskControl) -> str | None:
         await self._progress(ctx, "waiting_role")

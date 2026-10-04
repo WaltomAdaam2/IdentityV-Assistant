@@ -209,7 +209,7 @@ def test_menu_cursor_motion_has_small_even_steps_and_exact_endpoint():
         ctx, control, clock, backend = combat_context(task)
         await clock.run(task._curved_move(ctx, control, Point(1700, 900)), 1)
         assert backend.position == Point(1700, 900)
-        assert 0.12 <= clock.now <= 0.451
+        assert 0.18 <= clock.now <= 0.851
         events = list(backend.events)
         await clock.run(task._curved_move(ctx, control, Point(1700, 900)), 2)
         assert backend.events == events

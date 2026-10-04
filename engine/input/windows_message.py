@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import random
 from collections.abc import Callable
-from math import ceil, hypot
 from time import sleep
 
 from core.models import Point
 from input.base import InputBackend
+from input.mouse_path import curved_route as _curved_route, route_duration
 from input.windows_sendinput import _virtual_key
 
 _WM_KEYDOWN = 0x0100
@@ -32,7 +31,7 @@ class WindowsMessageInput(InputBackend):
         start = win32api.GetCursorPos()
         screen_point = win32gui.ClientToScreen(hwnd, (point.x, point.y))
         route = _curved_route(start, screen_point)
-        duration = min(0.45, max(0.12, hypot(screen_point[0] - start[0], screen_point[1] - start[1]) / 2400))
+        duration = route_duration(start, route)
         for route_point in route:
             win32api.SetCursorPos(route_point)
             sleep(duration / len(route))
@@ -98,50 +97,3 @@ class WindowsMessageInput(InputBackend):
 
 def _point_lparam(point: Point) -> int:
     return (point.x & 0xFFFF) | ((point.y & 0xFFFF) << 16)
-
-
-def _curved_route(
-    start: tuple[int, int],
-    end: tuple[int, int],
-    rng: random.Random | None = None,
-) -> list[tuple[int, int]]:
-    randomizer = rng or random
-    dx, dy = end[0] - start[0], end[1] - start[1]
-    distance = hypot(dx, dy)
-    if distance < 4:
-        return [end]
-
-    normal_x, normal_y = -dy / distance, dx / distance
-    bend = randomizer.choice((-1.0, 1.0)) * min(70.0, max(10.0, distance * 0.14))
-    control_1 = (
-        start[0] + dx * 0.32 + normal_x * bend,
-        start[1] + dy * 0.32 + normal_y * bend,
-    )
-    control_2 = (
-        start[0] + dx * 0.76 - normal_x * bend * 0.35,
-        start[1] + dy * 0.76 - normal_y * bend * 0.35,
-    )
-    duration = min(0.45, max(0.12, distance / 2400))
-    steps = ceil(duration / 0.008)
-    route: list[tuple[int, int]] = []
-    for index in range(1, steps + 1):
-        progress = index / steps
-        t = progress * progress * (3 - 2 * progress)
-        inverse = 1.0 - t
-        x = (
-            inverse**3 * start[0]
-            + 3 * inverse**2 * t * control_1[0]
-            + 3 * inverse * t**2 * control_2[0]
-            + t**3 * end[0]
-        )
-        y = (
-            inverse**3 * start[1]
-            + 3 * inverse**2 * t * control_1[1]
-            + 3 * inverse * t**2 * control_2[1]
-            + t**3 * end[1]
-        )
-        candidate = (round(x), round(y))
-        if not route or route[-1] != candidate:
-            route.append(candidate)
-    route[-1] = end
-    return route

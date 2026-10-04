@@ -43,7 +43,7 @@ def parse_config(data: dict[str, Any]) -> EngineConfig:
                 "login_timeout_seconds": automation_data.get("login_timeout_seconds", 300),
                 "screenshot_after_click_ms": automation_data.get("screenshot_after_click_ms", 500),
                 "click_after_detection_ms": automation_data.get("click_after_detection_ms", 500),
-                "click_position_jitter_px": automation_data.get("click_position_jitter_px", 6),
+                "click_position_jitter_px": automation_data.get("click_position_jitter_px", 14),
                 "click_interval_jitter_ms": automation_data.get("click_interval_jitter_ms", 120),
                 "click_duration_jitter_ms": automation_data.get("click_duration_jitter_ms", 15),
                 "blackjack_infinite_loop": automation_data.get("blackjack_infinite_loop", False),

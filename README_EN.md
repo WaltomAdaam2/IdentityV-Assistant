@@ -38,6 +38,8 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 * Capture diagnostics, concise logs, and window settings available to regular users; logs support search, filtering, pagination, and page jumping
 * Python and Rust core test foundations
 
+Menu clicks use wider randomized curves, sometimes starting away from the target before turning back, with smooth movement lasting about 0.18–0.85 seconds. New configurations default to ±14 pixels of click variation (previously ±6); existing values are retained and can be changed in task editors. Targets stay within a resolution-scaled area around the button center, including on monitors with negative coordinates.
+
 ## Architecture
 
 ```text

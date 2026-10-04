@@ -49,7 +49,7 @@ class AutomationConfig(_ConfigModel):
     login_timeout_seconds: TaskTimeout = 300
     screenshot_after_click_ms: DelayMilliseconds = 500
     click_after_detection_ms: DelayMilliseconds = 500
-    click_position_jitter_px: PositionJitter = 6
+    click_position_jitter_px: PositionJitter = 14
     click_interval_jitter_ms: TimeJitter = 120
     click_duration_jitter_ms: TimeJitter = 15
     blackjack_infinite_loop: StrictBool = False

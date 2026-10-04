@@ -65,7 +65,7 @@ def test_resume_during_click_route_discards_old_target():
         task._sleep, task._capture, task._confirmed = noop, capture, confirmed
         task._input_window, task._curved_move = window, paused_route
         ctx = SimpleNamespace(config=EngineConfig(), input=SimpleNamespace(
-            _jitter_point=lambda point: point, mouse_down=lambda _: clicks.append(True),
+            _jitter_point=lambda point, bounds=None: point, mouse_down=lambda _: clicks.append(True),
         ))
         assert not await task._click(ctx, TaskControl(), "home", "open_book")
         assert not clicks
