@@ -20,12 +20,12 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 * OpenCV template matching with configurable confidence
 * RapidOCR recognition of the game clock in a bounded screen area
 * State evidence, confirmation history, unknown-state, and recovery foundations
-* Window message input for login; foreground SendInput for game tasks after restoring and focusing the game window
+* Foreground-checked SendInput for both login and gameplay, with physical scan codes for all supported keys and tracked cleanup on failure
 * Ten fixed-pixel home-screen recognition with an eight-match book click
 * An “Enter the home lobby” task that resumes from any recognized login screen, confirms two frames, selects the platform, dismisses popups, and waits for home
 * Blackjack resumes from a known home, matching, ready, game, or result screen, acts according to the detected role, and returns home
 * Automatic hunter match enters through Diary Deduction; automatic hunter rank enters through Rank Mode and Traditional Rank. Both share hunter gameplay behavior and attempt surrender after the displayed game clock reaches six minutes
-* Hide and Seek can take over from home, Chaos, mode selection, matching, ready, any known in-round, elimination, or result stage; it selects Bad Child and runs independent movement and camera loops while fixed
+* Hide and Seek can take over from home, Chaos, mode selection, matching, ready, any known in-round, elimination, or result stage; it selects Bad Child and starts independent movement and camera loops as soon as the living HUD is confirmed
 * Each game task has its own indefinite-loop option; recognized matching, ready, elimination, and result waits have no timeout
 * Lost foreground, missing windows, or capture failures get a 300-second recovery period with manual refocusing allowed; expiry stops the task and clears its queue while leaving the engine running
 * Independent options prevent system sleep and display sleep; the display option also keeps the session active to reduce idle locking
@@ -57,7 +57,7 @@ Python visual automation engine
 window capture + Windows input
 ```
 
-Automatic capture uses Windows Graphics Capture by default to read the game window's complete client area. Login can use window messages. Game tasks bring the game to the foreground and check focus again before input. Templates and reference screenshots are under [`assets/templates/blackjack`](assets/templates/blackjack), [`assets/templates/hunter_match`](assets/templates/hunter_match), [`assets/templates/hunter_rank`](assets/templates/hunter_rank), and [`assets/templates/hide_seek`](assets/templates/hide_seek). Normal and ranked hunter tasks share the existing hunter HUD icon template.
+Automatic capture uses Windows Graphics Capture by default to read the game window's complete client area. Login and game tasks use foreground SendInput with physical keyboard scan codes. They check focus before input, track held keys through cleanup, and report failed sends instead of silently continuing. Templates and reference screenshots are under [`assets/templates/blackjack`](assets/templates/blackjack), [`assets/templates/hunter_match`](assets/templates/hunter_match), [`assets/templates/hunter_rank`](assets/templates/hunter_rank), and [`assets/templates/hide_seek`](assets/templates/hide_seek). Normal and ranked hunter tasks share the existing hunter HUD icon template.
 
 ## Run tasks
 
@@ -69,7 +69,7 @@ Automatic capture uses Windows Graphics Capture by default to read the game wind
 
 The left sidebar shows the current stage, role, and completed cycle count. Indefinite looping is off by default. On start or resume, a task identifies the current screen and continues from a known stage. Recognized matching, ready, elimination, and result screens wait without a timeout; unknown screens, continuous loading, or unavailable usable window frames still have a 300-second limit. See the [state-machine guide](docs/state-machine.md) for the Hide and Seek stages and actions.
 
-Hunter match and rank randomly move, turn the camera, and use F, R, T, Space, Q, E, and both mouse buttons. Both Blackjack roles include Space, Q, and E. Hide and Seek starts random camera turns immediately after confirming the fixed state, targeting 60.1–199.9° with the configured scale; actual angles depend on game sensitivity. Movement still waits 5 seconds. If V subsequently disappears while the living HUD is confirmed, the WASD loop continues while F, T, G start immediately with 0.3–0.7-second gaps, then Alt+1 repeats every 7–13 seconds until leaving play. The shortcut holds physical left Alt before pressing top-row 1, then releases 1 followed by Alt. Menu and camera movement ease in and out; login clicks leave the cursor at the clicked position instead of snapping it back.
+Hunter match and rank randomly move, turn the camera, and use F, R, T, Space, Q, E, and both mouse buttons. Both Blackjack roles include Space, Q, and E. Hide and Seek starts WASD and random camera turns together on the confirmed living HUD, targeting 60.1–199.9° with the configured scale; actual angles depend on game sensitivity. F retries every 1–3 seconds while both loops continue until V-ready or fixed is recognized. At V-ready, V retries every 5–8 seconds until fixing succeeds. If V subsequently disappears while the living HUD is confirmed, the WASD loop continues while F, T, G start immediately with 0.3–0.7-second gaps, then Alt+1 repeats every 7–13 seconds until leaving play. The shortcut holds physical left Alt before pressing top-row 1, then releases 1 followed by Alt. Menu and camera movement ease in and out; login clicks leave the cursor at the clicked position instead of snapping it back.
 
 Engine shutdown cancels tasks, releases inputs, and restores the game window; the supervisor allows up to 10 seconds for cleanup. Normal logs show readable task stages; routine window diagnostics appear only with detailed logs enabled. Log updates are batched, runtime state changes no longer repeatedly save settings, and cached window discovery still checks current handle validity, focus, and geometry. Short task, progress, and editor transitions respect reduced-motion preferences.
 

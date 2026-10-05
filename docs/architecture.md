@@ -19,4 +19,4 @@ React UI -> Tauri commands -> Rust supervisor -> NDJSON stdin -> Python engine
 React UI <- engine-event  <- Rust parser     <- NDJSON stdout <- Python engine
 ```
 
-The login task uses window messages. Blackjack requires the game to be in the foreground and uses SendInput. The Rust supervisor writes complete engine events to dated AppData logs; the frontend sends its own UI events to the same archive.
+Login and gameplay require the game to be in the foreground and use SendInput with physical keyboard scan codes. Input failures propagate to task supervision; held inputs remain tracked until their release succeeds. The Rust supervisor writes complete engine events to dated AppData logs; the frontend sends its own UI events to the same archive.

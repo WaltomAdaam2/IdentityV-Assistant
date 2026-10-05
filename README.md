@@ -20,7 +20,7 @@ Identity V Assistant 是 Windows 桌面端的《第五人格》外部视觉自�
 - OpenCV 模板匹配与可配置置信度
 - RapidOCR 限定区域识别对局计时
 - 状态证据、历史确认、未知状态和恢复框架
-- 登录任务使用窗口消息输入；对局任务恢复并置前游戏窗口，使用 SendInput 前台输入
+- 登录和对局任务统一使用经过前台验证的 SendInput，所有按键使用扫描码输入，失败会报错并暂停任务
 - 十个固定像素识别归宿界面，八点匹配后点击书本
 - “登录进大厅”任务可从任意已知登录画面继续，双帧确认后选择平台、关闭弹窗并等待归宿
 - 黑杰克可从归宿、匹配、准备、对局或结算等已知阶段接管，识别角色后执行对应动作，结果页返回归宿
@@ -57,7 +57,7 @@ Python visual automation engine
 window capture + Windows input
 ```
 
-自动捕捉默认通过 Windows Graphics Capture 按游戏窗口句柄读取完整客户区。登录任务可使用窗口消息输入；对局任务会把游戏置于前台，并在输入前重新检查窗口。识别素材和参考截图分别位于 [`assets/templates/blackjack`](assets/templates/blackjack)、[`assets/templates/hunter_match`](assets/templates/hunter_match)、[`assets/templates/hunter_rank`](assets/templates/hunter_rank) 和 [`assets/templates/hide_seek`](assets/templates/hide_seek)。普通匹配与排位共用已有的监管者对局图标素材。
+自动捕捉默认通过 Windows Graphics Capture 按游戏窗口句柄读取完整客户区。登录和对局任务均使用前台输入，在发送前重新检查窗口；键鼠按住状态由控制器追踪，释放失败会保留记录供清理重试。识别素材和参考截图分别位于 [`assets/templates/blackjack`](assets/templates/blackjack)、[`assets/templates/hunter_match`](assets/templates/hunter_match)、[`assets/templates/hunter_rank`](assets/templates/hunter_rank) 和 [`assets/templates/hide_seek`](assets/templates/hide_seek)。普通匹配与排位共用已有的监管者对局图标素材。
 
 ## 使用任务
 
@@ -69,7 +69,7 @@ window capture + Windows input
 
 页面左侧显示当前阶段、角色与完成循环数。默认完成一局并返回归宿后结束；“无限循环”默认关闭。任务启动和暂停恢复后会识别当前画面，从已知阶段继续。已识别的匹配、准备、淘汰和结算界面会持续等待；未知界面、持续加载或无法取得可用窗口画面仍以 300 秒为上限。捉迷藏的完整阶段与动作见 [状态机说明](docs/state-machine.md)。
 
-监管者匹配和排位会随机移动、转动视角，使用 F、R、T、空格、Q、E 和左右键；黑杰克两种角色均包含空格、Q、E。捉迷藏确认固定后立即开始随机转动视角，目标角度为 60.1–199.9°，结合视角幅度设置换算鼠标位移；实际角度受游戏灵敏度影响。移动仍延迟 5 秒；之后若 V 图标消失且仍为存活界面，WASD 循环保持运行，同时立即开始依次按 F、T、G，键间隔 0.3–0.7 秒，再每 7–13 秒按 Alt+1，直到离开对局。组合键先按住左 Alt，再按主键盘 1，依次松开 1 和 Alt。
+监管者匹配和排位会随机移动、转动视角，使用 F、R、T、空格、Q、E 和左右键；黑杰克两种角色均包含空格、Q、E。捉迷藏确认存活对局界面后立即同时开始 WASD 和随机转动视角，目标角度为 60.1–199.9°，结合视角幅度设置换算鼠标位移；实际角度受游戏灵敏度影响。F 在移动与转视角期间每 1–3 秒重试，直到确认出现 V 图标；随后保持移动并每 5–8 秒尝试固定。若固定后 V 图标消失且仍为存活界面，WASD 循环保持运行，同时立即开始依次按 F、T、G，键间隔 0.3–0.7 秒，再每 7–13 秒按 Alt+1，直到离开对局。组合键先按住左 Alt，再按主键盘 1，依次松开 1 和 Alt。
 
 菜单鼠标移动和视角转动采用平滑加减速；登录点击后鼠标停留在点击位置，避免瞬间跳回。
 
