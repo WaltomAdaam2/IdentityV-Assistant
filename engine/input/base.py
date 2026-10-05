@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from time import sleep
 
 from core.models import Point
 
@@ -21,9 +22,15 @@ class InputBackend(ABC):
 
     def click(self, point: Point, button: str = "left") -> None:
         self.move_mouse(point)
-        self.mouse_down(button)
-        self.mouse_up(button)
+        try:
+            self.mouse_down(button)
+            sleep(0.10)
+        finally:
+            self.mouse_up(button)
 
     def press(self, key: str) -> None:
-        self.key_down(key)
-        self.key_up(key)
+        try:
+            self.key_down(key)
+            sleep(0.10)
+        finally:
+            self.key_up(key)

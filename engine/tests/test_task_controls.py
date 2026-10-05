@@ -19,6 +19,43 @@ def test_task_control_pause_resume_and_cancel() -> None:
     asyncio.run(exercise())
 
 
+def test_window_moves_during_click_route_discards_old_target():
+    from types import SimpleNamespace
+    from config.schema import EngineConfig
+    from core.models import Rect
+    from tasks.blackjack_task import BlackjackTask
+
+    async def exercise():
+        task = BlackjackTask()
+        clicks = []
+        windows = iter([
+            SimpleNamespace(hwnd=42, client_rect=Rect(0, 0, 1920, 1080)),
+            SimpleNamespace(hwnd=42, client_rect=Rect(200, 100, 1600, 900)),
+        ])
+
+        async def noop(*_):
+            pass
+
+        async def capture(*_):
+            return object()
+
+        async def confirmed(*_):
+            return True
+
+        async def window(*_):
+            return next(windows)
+
+        task._sleep, task._capture, task._confirmed = noop, capture, confirmed
+        task._input_window, task._curved_move = window, noop
+        ctx = SimpleNamespace(config=EngineConfig(), input=SimpleNamespace(
+            _jitter_point=lambda point, bounds=None: point, mouse_down=clicks.append,
+        ))
+        assert not await task._click(ctx, TaskControl(), "home", "open_book")
+        assert not clicks
+
+    asyncio.run(exercise())
+
+
 def test_pause_duration_freezes_game_timeout_clock(monkeypatch):
     import tasks.base as module
     from tasks.blackjack_task import BlackjackTask

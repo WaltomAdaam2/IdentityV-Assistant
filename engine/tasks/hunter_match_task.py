@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
 from input.windows_sendinput import ForegroundLostError, WindowsSendInput
-from tasks.base import TaskControl
+from tasks.base import TaskControl, await_with_workers, cancel_tasks
 from tasks.blackjack_task import BlackjackTask, _Stopped, _WindowLost, _WindowRecoveryTimeout
 from vision.blackjack_detector import BlackjackDetector
 from vision.home_detector import detect_home_book
@@ -93,8 +93,10 @@ class HunterMatchTask(BlackjackTask):
             await self._log(ctx, "error", f"{self.task_id} failed: {error}")
             return TaskFinishReason.ENGINE_ERROR
         finally:
-            ctx.input.release_all()
-            ctx.input.backend = previous_backend
+            try:
+                ctx.input.release_all()
+            finally:
+                ctx.input.backend = previous_backend
 
     async def _log(self, ctx: AutomationContext, level: str, message: str) -> None:
         await ctx.emit("log", level=level, source=self.task_id, message=message, data={"important": True})
@@ -229,12 +231,7 @@ class HunterMatchTask(BlackjackTask):
     async def _movement(self, ctx: AutomationContext, control: TaskControl) -> None:
         while True:
             key = self.rng.choice("wasd")
-            if await self._before_game_input(ctx, control):
-                ctx.input.key_down(key)
-                try:
-                    await self._sleep(ctx, control, self.rng.uniform(5, 15))
-                finally:
-                    ctx.input.key_up(key)
+            await self._hold_key(ctx, control, key, self.rng.uniform(5, 15))
             await self._sleep(ctx, control, self.rng.uniform(0.1, 0.6))
 
     async def _combat(self, ctx: AutomationContext, control: TaskControl) -> None:
@@ -282,12 +279,11 @@ class HunterMatchTask(BlackjackTask):
         retry_at = 0.0
         next_clock_check = 0.0
         missing_playing = 0
-        try:
+
+        async def observe() -> None:
+            nonlocal surrendering, retry_at, next_clock_check, missing_playing
             while True:
                 await self._sleep(ctx, control, 1)
-                for task in (movement, actions):
-                    if task.done() and not task.cancelled() and task.exception():
-                        raise task.exception()
                 image = await self._capture(ctx, control)
                 for name in ("return_lobby", "result_second", "result_first"):
                     if await self._confirmed(ctx, control, image, name):
@@ -315,9 +311,7 @@ class HunterMatchTask(BlackjackTask):
                                 self._ocr_warning_logged = True
                     if clock.due(self._now(control), displayed):
                         surrendering = True
-                        movement.cancel()
-                        actions.cancel()
-                        await asyncio.gather(movement, actions, return_exceptions=True)
+                        await cancel_tasks(movement, actions)
                         ctx.input.release_all()
                         await self._progress(ctx, "surrendering")
                 if surrendering and self._now(control) >= retry_at:
@@ -326,11 +320,14 @@ class HunterMatchTask(BlackjackTask):
                     else:
                         await self._key(ctx, control, "esc")
                     retry_at = self._now(control) + 15
+
+        try:
+            await await_with_workers(observe(), movement, actions)
         finally:
-            movement.cancel()
-            actions.cancel()
-            await asyncio.gather(movement, actions, return_exceptions=True)
-            ctx.input.release_all()
+            try:
+                await cancel_tasks(movement, actions)
+            finally:
+                ctx.input.release_all()
 
 
 class HunterRankTask(HunterMatchTask):

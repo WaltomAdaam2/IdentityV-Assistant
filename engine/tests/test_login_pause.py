@@ -25,7 +25,7 @@ class _Input:
 
 def _context(*, click_delay_ms: int = 100):
     input_controller = _Input()
-    window = WindowInfo(42, "Game", "Class", 1, Rect(0, 0, 1920, 1080), 1.0)
+    window = WindowInfo(42, "Game", "Class", 1, Rect(0, 0, 1920, 1080), 1.0, is_foreground=True)
 
     async def emit(*args, **kwargs) -> None:
         pass

@@ -11,7 +11,7 @@ from core.enums import TaskFinishReason
 from core.models import CoordinateSpace, Point, Rect
 from input.mouse_path import curved_route, route_duration
 from input.windows_sendinput import ForegroundLostError, WindowsSendInput
-from tasks.base import AutomationTask, TaskControl
+from tasks.base import AutomationTask, TaskControl, await_with_workers, cancel_tasks
 from vision.blackjack_detector import BlackjackDetector, MARKS
 from vision.home_detector import detect_home_book
 
@@ -93,8 +93,10 @@ class BlackjackTask(AutomationTask):
             await self._log(ctx, "error", f"Blackjack failed: {error}")
             return TaskFinishReason.ENGINE_ERROR
         finally:
-            ctx.input.release_all()
-            ctx.input.backend = previous_backend
+            try:
+                ctx.input.release_all()
+            finally:
+                ctx.input.backend = previous_backend
 
     async def _cycle(self, ctx: AutomationContext, control: TaskControl) -> None:
         actions = {
@@ -338,10 +340,12 @@ class BlackjackTask(AutomationTask):
         if self._resume_recheck:
             self._resume_recheck = False
             return False
-        await self._input_window(ctx, control)
+        current_window = await self._input_window(ctx, control)
+        if current_window.hwnd != window.hwnd or current_window.client_rect != window.client_rect:
+            return False
         ctx.input.mouse_down("left")
         try:
-            await self._sleep(ctx, control, max(0.01, (35 + self.rng.uniform(-config.click_duration_jitter_ms, config.click_duration_jitter_ms)) / 1000))
+            await self._sleep(ctx, control, max(0.08, (100 + self.rng.uniform(-config.click_duration_jitter_ms, config.click_duration_jitter_ms)) / 1000))
         finally:
             ctx.input.mouse_up("left")
         await ctx.emit("planned_action", action=action, input="foreground_click", target={"x": actual.x, "y": actual.y})
@@ -413,7 +417,7 @@ class BlackjackTask(AutomationTask):
         if await self._before_game_input(ctx, control):
             ctx.input.key_down(key)
             try:
-                await self._sleep(ctx, control, self.rng.uniform(0.03, 0.07))
+                await self._sleep(ctx, control, self.rng.uniform(0.08, 0.12))
             finally:
                 ctx.input.key_up(key)
 
@@ -421,7 +425,7 @@ class BlackjackTask(AutomationTask):
         if await self._before_game_input(ctx, control):
             ctx.input.mouse_down(button)
             try:
-                await self._sleep(ctx, control, self.rng.uniform(0.03, 0.07))
+                await self._sleep(ctx, control, self.rng.uniform(0.08, 0.12))
             finally:
                 ctx.input.mouse_up(button)
 
@@ -453,13 +457,25 @@ class BlackjackTask(AutomationTask):
     async def _movement(self, ctx: AutomationContext, control: TaskControl) -> None:
         while True:
             key = self.rng.choice("wasd")
-            if await self._before_game_input(ctx, control):
-                ctx.input.key_down(key)
-                try:
-                    await self._sleep(ctx, control, self.rng.uniform(1, 5))
-                finally:
-                    ctx.input.key_up(key)
+            await self._hold_key(ctx, control, key, self.rng.uniform(1, 5))
             await self._sleep(ctx, control, self.rng.uniform(0.1, 0.6))
+
+    async def _hold_key(self, ctx: AutomationContext, control: TaskControl, key: str, seconds: float) -> None:
+        if not await self._before_game_input(ctx, control):
+            return
+        try:
+            while seconds > 0:
+                # Pause/recovery releases keys. Reconfirm and re-press instead
+                # of spending the remainder of the hold timer motionless.
+                if key not in ctx.input.pressed_keys:
+                    if not await self._before_game_input(ctx, control):
+                        return
+                    ctx.input.key_down(key)
+                step = min(0.05, seconds)
+                await self._sleep(ctx, control, step)
+                seconds -= step
+        finally:
+            ctx.input.key_up(key)
 
     async def _survivor(self, ctx: AutomationContext, control: TaskControl) -> None:
         timers = {name: self._now(control) + self.rng.uniform(*bounds) for name, bounds in SURVIVOR_INTERVALS.items()}
@@ -495,9 +511,7 @@ class BlackjackTask(AutomationTask):
         try:
             await asyncio.gather(combo, extra_keys)
         finally:
-            combo.cancel()
-            extra_keys.cancel()
-            await asyncio.gather(combo, extra_keys, return_exceptions=True)
+            await cancel_tasks(combo, extra_keys)
 
     async def _hunter_combo(self, ctx: AutomationContext, control: TaskControl) -> None:
         last_t = -30.0
@@ -524,16 +538,9 @@ class BlackjackTask(AutomationTask):
             await self._turn(ctx, control)
 
     async def _play(self, ctx: AutomationContext, control: TaskControl) -> None:
-        movement = asyncio.create_task(self._movement(ctx, control))
-        actions = asyncio.create_task(self._hunter(ctx, control) if self.role == "hunter" else self._survivor(ctx, control))
-        try:
+        async def observe() -> str | None:
             while True:
                 await self._sleep(ctx, control, 5)
-                for task in (movement, actions):
-                    if task.done() and not task.cancelled():
-                        error = task.exception()
-                        if error:
-                            raise error
                 image = await self._capture(ctx, control)
                 for result_stage in ("continue", "return_lobby"):
                     if await self._confirmed(ctx, control, image, result_stage):
@@ -546,14 +553,19 @@ class BlackjackTask(AutomationTask):
                     await self._sleep(ctx, control, 0.01)
                     confirmed, _ = self.detector.role(await self._capture(ctx, control))
                     if confirmed == role:
-                        actions.cancel()
-                        await asyncio.gather(actions, return_exceptions=True)
-                        ctx.input.release_all()
-                        self.role = role
-                        await self._progress(ctx, "playing")
-                        actions = asyncio.create_task(self._hunter(ctx, control) if role == "hunter" else self._survivor(ctx, control))
-        finally:
-            movement.cancel()
-            actions.cancel()
-            await asyncio.gather(movement, actions, return_exceptions=True)
-            ctx.input.release_all()
+                        return role
+
+        while True:
+            movement = asyncio.create_task(self._movement(ctx, control))
+            actions = asyncio.create_task(self._hunter(ctx, control) if self.role == "hunter" else self._survivor(ctx, control))
+            try:
+                role = await await_with_workers(observe(), movement, actions)
+            finally:
+                try:
+                    await cancel_tasks(movement, actions)
+                finally:
+                    ctx.input.release_all()
+            if role is None:
+                return
+            self.role = role
+            await self._progress(ctx, "playing")

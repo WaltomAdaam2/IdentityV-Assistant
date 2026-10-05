@@ -113,6 +113,36 @@ def combat_context(task):
     return ctx, control, clock, backend
 
 
+@pytest.mark.parametrize("task_class", [BlackjackTask, HunterMatchTask, HunterRankTask])
+def test_released_movement_is_repressed_after_reconfirmation_without_waiting_out_hold(task_class):
+    async def scenario():
+        task = task_class(random.Random(42))
+        ctx, control, clock, backend = combat_context(task)
+        confirmations = []
+        slept = [0]
+
+        async def allowed(*_):
+            confirmations.append(clock.now)
+            return True
+
+        async def sleep(_ctx, _control, seconds):
+            clock.now += seconds
+            slept[0] += 1
+            if slept[0] == 1:
+                # The pause/recovery path releases held input while freezing timers.
+                ctx.input.release_all()
+            await asyncio.sleep(0)
+
+        task._before_game_input, task._sleep = allowed, sleep
+        await task._hold_key(ctx, control, "w", 1)
+        downs = [at for at, action, key in backend.events if action == "key_down" and key == "w"]
+        assert downs == [0, 0.05]
+        assert 0.05 in confirmations
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("task_class", [HunterMatchTask, HunterRankTask])
 def test_hunter_combat_survives_brief_hud_misses_and_surrenders(task_class):
     async def scenario():

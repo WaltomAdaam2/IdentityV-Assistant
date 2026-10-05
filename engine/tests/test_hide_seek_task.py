@@ -130,40 +130,13 @@ def test_confirmation_requires_matching_second_frame_after_ten_ms():
     assert asyncio.run(scenario(True)) == (True, [0.01, "evidence"])
 
 
-def test_fixed_seed_timing_ranges_and_transform_order():
+def test_fixed_seed_timing_ranges():
     rng = random.Random(12)
     for _ in range(1000):
         duration, gap = movement_timing(rng)
         assert 13 <= duration <= 17 and 1 <= gap <= 5
         duration, gap = camera_timing(rng)
         assert 2.5 <= duration <= 3.5 and 2.5 <= gap <= 3.5
-
-    async def scenario(stage, blocked=True):
-        task = HideSeekTask(random.Random(12))
-        events = []
-
-        async def hold(_ctx, _control, seconds):
-            events.append(seconds)
-
-        async def key(_ctx, _control, name):
-            events.append(name)
-
-        async def capture(*_):
-            return object()
-
-        async def confirmed(*_):
-            return blocked
-
-        task._hold, task._key, task._capture, task._confirmed = hold, key, capture, confirmed
-        await task._prepare_hiding(None, None, stage)
-        return events
-
-    initial = asyncio.run(scenario("f_initial"))
-    assert 1 <= initial[0] <= 3 and initial[1] == "f"
-    transformed = asyncio.run(scenario("v_ready"))
-    assert 5 <= transformed[0] <= 8 and transformed[1] == "v"
-    assert asyncio.run(scenario("v_ready", False)) == []
-
 
 def test_leaving_play_cancels_movement_and_releases_all_input():
     async def scenario():
@@ -282,6 +255,10 @@ def input_context():
     from input.controller import InputController
 
     events = []
+
+    async def emit(*_, **__):
+        pass
+
     backend = SimpleNamespace(
         key_down=lambda key: events.append(("down", key)),
         key_up=lambda key: events.append(("up", key)),
@@ -290,6 +267,7 @@ def input_context():
     return SimpleNamespace(
         input=InputController(backend),
         config=SimpleNamespace(automation=SimpleNamespace(camera_turn_scale_percent=100)),
+        emit=emit,
     ), events
 
 
@@ -322,7 +300,7 @@ def test_camera_emits_relative_motion_before_movement_wait_finishes():
         pending.cancel()
         await asyncio.gather(pending, return_exceptions=True)
         assert any(event[0] == "move" and event[1] != 0 for event in events)
-        assert not any(event[0] == "down" for event in events)
+        assert any(event[0] == "down" and event[1] in "wasd" for event in events)
         assert not ctx.input.pressed_keys
 
     asyncio.run(scenario())
@@ -546,6 +524,9 @@ def test_post_fixed_stage_changes_keep_camera_running_and_only_living_no_v_trigg
         async def escape(*_):
             await action("escape")
 
+        async def prepare(*_):
+            await asyncio.Event().wait()
+
         async def sleep(*_):
             await asyncio.sleep(0)
 
@@ -554,6 +535,7 @@ def test_post_fixed_stage_changes_keep_camera_running_and_only_living_no_v_trigg
 
         task._capture, task._detect_stage = capture, detect
         task._fixed_actions, task._escape_actions = fixed, escape
+        task._prepare_hiding = prepare
         task._sleep, task._progress = sleep, progress
         ctx, _ = input_context()
         await task._play(ctx, None)
@@ -567,7 +549,7 @@ def test_post_fixed_stage_changes_keep_camera_running_and_only_living_no_v_trigg
     started, _ = asyncio.run(scenario(["v_fixed", ending]))
     assert started == ["fixed"]
     started, _ = asyncio.run(scenario(["living_no_v", ending]))
-    assert started == []
+    assert started == ["fixed"]
 
 
 def test_resume_escape_after_unknown_does_not_repeat_ftg():
@@ -652,5 +634,227 @@ def test_v_disappearance_keeps_wasd_held_while_ftg_runs_then_releases_on_death()
         assert events.count(("down", movement_key)) == 1
         assert events.index(("up", movement_key)) > events.index(("up", "g"))
         assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+class PlayClock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleepers = []
+
+    async def sleep(self, _ctx, _control, seconds):
+        future = asyncio.get_running_loop().create_future()
+        self.sleepers.append((self.now + seconds, future))
+        await future
+
+    async def run(self, coroutine):
+        pending = asyncio.create_task(coroutine)
+        try:
+            for _ in range(10000):
+                # Drain ready callbacks before advancing the shared clock.
+                for _ in range(64):
+                    await asyncio.sleep(0)
+                if pending.done():
+                    return await pending
+                self.sleepers = [(deadline, future) for deadline, future in self.sleepers if not future.done()]
+                assert self.sleepers, "play workers stalled without a timer"
+                self.now = min(deadline for deadline, _ in self.sleepers)
+                for deadline, future in self.sleepers:
+                    if deadline <= self.now and not future.done():
+                        future.set_result(None)
+            pytest.fail("play workers did not finish")
+        finally:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
+
+def virtual_play(stages):
+    clock = PlayClock()
+    task = HideSeekTask(random.Random(12), clock=lambda: clock.now)
+    ctx, _ = input_context()
+    events = []
+    ctx.input.backend.key_down = lambda key: events.append((clock.now, "down", key, set(ctx.input.pressed_keys)))
+    ctx.input.backend.key_up = lambda key: events.append((clock.now, "up", key, set(ctx.input.pressed_keys)))
+    ctx.input.backend.move_relative = lambda x, y: events.append((clock.now, "move", x, set(ctx.input.pressed_keys)))
+
+    async def capture(*_):
+        return object()
+
+    async def detect(*_):
+        return next(stage for until, stage in stages if clock.now < until)
+
+    async def check(*_):
+        pass
+
+    async def window(*_):
+        return SimpleNamespace(client_rect=SimpleNamespace(width=1920))
+
+    async def progress(_ctx, stage):
+        task.stage = stage
+
+    task._capture, task._detect_stage, task._check = capture, detect, check
+    task._input_window, task._progress, task._sleep = window, progress, clock.sleep
+    return clock, task, ctx, events
+
+
+@pytest.mark.parametrize("ending", ["death_f", "loading", None])
+def test_start_runs_wasd_and_camera_during_f_retries_then_retries_v_until_fixed(ending):
+    async def scenario():
+        clock, task, ctx, events = virtual_play([
+            (3, "f_initial"), (4, "r_blocked"), (7, "f_initial"),
+            (23, "v_ready"), (26, "v_fixed"), (float("inf"), ending),
+        ])
+        await clock.run(task._play(ctx, None))
+        moves = [event for event in events if event[1] == "move"]
+        walks = [event for event in events if event[1] == "down" and event[2] in "wasd"]
+        fs = [event for event in events if event[1:3] == ("down", "f")]
+        vs = [event for event in events if event[1:3] == ("down", "v")]
+        assert walks[0][0] == 0 and moves[0][0] < 0.1
+        assert len(fs) >= 2 and all(1 <= event[0] < 7 for event in fs)
+        assert all(event[3] & set("wasd") for event in fs)
+        assert len(vs) >= 2 and 12 <= vs[0][0] <= 15
+        assert all(7 <= event[0] < 23 for event in vs)
+        first_release = next(event[0] for event in events if event[1:3] == ("up", walks[0][2]))
+        assert 13 <= first_release <= 17  # F/R/V changes never replace the movement worker.
+        assert any(23 <= event[0] < 26 for event in moves)
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("changed_stage", ["v_ready", "v_fixed", "loading", None])
+@pytest.mark.parametrize("worker", ["_movement", "_camera", "_prepare_hiding"])
+def test_worker_failure_is_propagated_even_when_detection_changes_stage(changed_stage, worker):
+    async def scenario():
+        clock, task, ctx, _ = virtual_play([(1, "f_initial"), (float("inf"), changed_stage)])
+
+        async def broken(*_):
+            ctx.input.key_down("w")
+            try:
+                await clock.sleep(ctx, None, 0.1)
+                raise RuntimeError("movement failed")
+            finally:
+                ctx.input.key_up("w")
+
+        async def detect(*_):
+            return "f_initial" if clock.now == 0 else changed_stage
+
+        setattr(task, worker, broken)
+        task._detect_stage = detect
+        with pytest.raises(RuntimeError, match="movement failed"):
+            await clock.run(task._play(ctx, None))
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+def test_pause_resume_restarts_movement_only_after_play_loop_confirms_screen():
+    async def scenario():
+        clock, task, ctx, events = virtual_play([(3, "f_initial"), (float("inf"), "death_f")])
+        control = TaskControl()
+        ctx.cancellation = SimpleNamespace(cancelled=False)
+        original_check = HideSeekTask._check.__get__(task)
+        paused = False
+        confirmed = []
+        detect = task._detect_stage
+
+        async def capture(*_):
+            nonlocal paused
+            if clock.now >= 0.5 and not paused:
+                paused = True
+                control.pause()
+                check = asyncio.create_task(original_check(ctx, control))
+                await asyncio.sleep(0)
+                assert not ctx.input.pressed_keys
+                mark = len(events)
+                await asyncio.sleep(0)
+                assert len(events) == mark
+                control.resume()
+                await check
+                assert task._resume_recheck
+                assert not await task._before_game_input(ctx, control)
+            return object()
+
+        async def confirmed_stage(*args):
+            stage = await detect(*args)
+            if task._resume_recheck:
+                confirmed.append(clock.now)
+            return stage
+
+        task._capture, task._detect_stage, task._check = capture, confirmed_stage, original_check
+        await clock.run(task._play(ctx, control))
+        walks = [event for event in events if event[1] == "down" and event[2] in "wasd"]
+        assert len(walks) == 2 and walks[0][0] == 0
+        assert confirmed == [walks[1][0]]
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("blocked_operation", ["capture", "detect", "sleep"])
+def test_play_worker_failure_interrupts_blocked_observation_and_wait(blocked_operation):
+    async def scenario():
+        task = HideSeekTask()
+        ctx, _ = input_context()
+        blocked = asyncio.Event()
+        observation_cancelled = []
+        calls = {"capture": 0, "detect": 0, "sleep": 0}
+
+        async def operation(name):
+            calls[name] += 1
+            if name == blocked_operation and (name == "sleep" or calls[name] > 1):
+                blocked.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    observation_cancelled.append(name)
+            await asyncio.sleep(0)
+
+        async def capture(*_):
+            await operation("capture")
+            return object()
+
+        async def detect(*_):
+            await operation("detect")
+            return "v_fixed"
+
+        async def sleep(*_):
+            await operation("sleep")
+
+        async def progress(_ctx, stage):
+            task.stage = stage
+
+        async def broken(*_):
+            ctx.input.key_down("w")
+            try:
+                await blocked.wait()
+                raise RuntimeError("input worker failed while observing")
+            finally:
+                ctx.input.key_up("w")
+
+        task._capture, task._detect_stage, task._sleep = capture, detect, sleep
+        task._progress, task._fixed_actions = progress, broken
+        with pytest.raises(RuntimeError, match="input worker failed while observing"):
+            await asyncio.wait_for(task._play(ctx, None), 1)
+        assert observation_cancelled == [blocked_operation]
+        assert not ctx.input.pressed_keys
+
+    asyncio.run(scenario())
+
+
+def test_f_retry_logs_state_once_while_multiple_attempts_continue():
+    async def scenario():
+        clock, task, ctx, events = virtual_play([(7, "f_initial"), (float("inf"), "death_f")])
+        logs = []
+
+        async def emit(kind, **data):
+            if kind == "log":
+                logs.append(data)
+
+        ctx.emit = emit
+        await clock.run(task._play(ctx, None))
+        assert len([event for event in events if event[1:3] == ("down", "f")]) >= 2
+        assert len(logs) == 1 and "重试 F" in logs[0]["message"]
 
     asyncio.run(scenario())

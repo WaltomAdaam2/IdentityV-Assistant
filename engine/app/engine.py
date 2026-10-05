@@ -15,7 +15,7 @@ from config.schema import EngineConfig
 from core.enums import EngineStatus, ErrorCode, TaskFinishReason
 from core.models import CoordinateSpace, Point, Rect
 from input.controller import InputController
-from input.windows_message import WindowsMessageInput
+from input.windows_sendinput import WindowsClientInput
 from ipc.messages import ENGINE_VERSION, event
 from ipc.reader import NdjsonReader
 from ipc.writer import NdjsonWriter
@@ -54,7 +54,7 @@ class AutomationEngine:
             window,
             CaptureManager(config.capture),
             InputController(
-                WindowsMessageInput(window.current_hwnd),
+                WindowsClientInput(window.current_hwnd),
                 position_jitter_px=config.automation.click_position_jitter_px,
                 click_duration_jitter_ms=config.automation.click_duration_jitter_ms,
             ),
@@ -453,7 +453,13 @@ class AutomationEngine:
         if not self._developer_input_enabled:
             await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="Developer input test mode is disabled", recoverable=True, details={}, request_id=request_id)
             return
+        if self._task_runner and not self._task_runner.done():
+            await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message="Stop the active task before testing input", recoverable=True, details={}, request_id=request_id)
+            return
         try:
+            if isinstance(getattr(self.context.input, "backend", None), WindowsClientInput):
+                self.context.window.find_window()
+                self.context.window.bring_to_front()
             if action.get("type") == "click":
                 window = self.context.window.find_window()
                 if window is None:
@@ -469,8 +475,9 @@ class AutomationEngine:
                 await self.emit("planned_action", action="input_test_press", input="key", target={"key": key}, request_id=request_id)
             else:
                 raise ValueError("input_test supports click and press actions")
-        except (KeyError, TypeError, ValueError, RuntimeError) as error:
+        except Exception as error:
             await self.emit("error", code=ErrorCode.INPUT_FAILED.value, message=str(error), recoverable=True, details={}, request_id=request_id)
+            await self._release_inputs()
 
     def _save_debug_frame(self, image: Any, captured_at: datetime) -> Path:
         import cv2

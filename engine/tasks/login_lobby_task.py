@@ -9,6 +9,7 @@ from typing import Any
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
 from core.models import CoordinateSpace, Point, Rect
+from input.windows_sendinput import ForegroundLostError
 from tasks.base import AutomationTask, TaskControl
 from vision.blackjack_detector import BlackjackDetector
 from vision.home_detector import detect_home_book
@@ -92,7 +93,7 @@ class LoginLobbyTask(AutomationTask):
             if monotonic() >= deadline.expires_at:
                 break
             window = ctx.window.find_window()
-            if window is not None and window.is_responding:
+            if window is not None:
                 return window
             await self._random_delay(
                 ctx,
@@ -116,7 +117,10 @@ class LoginLobbyTask(AutomationTask):
             if monotonic() >= deadline.expires_at:
                 break
             window = ctx.window.find_window()
-            if window is not None and window.is_responding and not window.is_minimized:
+            if window is not None and window.is_minimized:
+                ctx.window.bring_to_front()
+                window = ctx.window.find_window()
+            if window is not None and not window.is_minimized:
                 ctx.memory_guard.protect()
                 try:
                     frame = ctx.capture.capture(window.client_rect, window.hwnd)
@@ -177,7 +181,6 @@ class LoginLobbyTask(AutomationTask):
             if (
                 window is None
                 or window.hwnd != hwnd
-                or not window.is_responding
                 or window.is_minimized
             ):
                 return False
@@ -235,8 +238,13 @@ class LoginLobbyTask(AutomationTask):
         )
         await self._check_control(ctx, control, deadline)
         window = ctx.window.find_window()
-        if window is None or not window.is_responding or window.is_minimized:
+        if window is None:
             return False
+        if window.is_minimized or not window.is_foreground:
+            ctx.window.bring_to_front()
+            window = ctx.window.find_window()
+            if window is None or window.is_minimized or not window.is_foreground:
+                return False
         try:
             frame = ctx.capture.capture(window.client_rect, window.hwnd)
         except Exception:
@@ -250,7 +258,12 @@ class LoginLobbyTask(AutomationTask):
         point = CoordinateSpace().to_client(reference, window.client_rect)
         radius_x = max(1, round(20 * window.client_rect.width / 1920))
         radius_y = max(1, round(20 * window.client_rect.height / 1080))
-        ctx.input.click(point, bounds=Rect(point.x - radius_x, point.y - radius_y, 2 * radius_x + 1, 2 * radius_y + 1))
+        try:
+            ctx.input.click(point, bounds=Rect(point.x - radius_x, point.y - radius_y, 2 * radius_x + 1, 2 * radius_y + 1))
+        except ForegroundLostError:
+            # The login stage deadline bounds retries if focus changes mid-route.
+            ctx.input.release_all()
+            return False
         await ctx.emit(
             "planned_action",
             action=action,

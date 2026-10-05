@@ -1,8 +1,34 @@
 from abc import ABC, abstractmethod
+import asyncio
 from time import monotonic
 
 from app.context import AutomationContext
 from core.enums import TaskFinishReason
+
+
+async def cancel_tasks(*tasks: asyncio.Task) -> None:
+    for task in tasks:
+        task.cancel()
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
+            raise result
+
+
+async def await_with_workers(operation, *workers: asyncio.Task):
+    observer = asyncio.create_task(operation)
+    pending = set(workers)
+    try:
+        while True:
+            done, _ = await asyncio.wait({observer, *pending}, return_when=asyncio.FIRST_COMPLETED)
+            for worker in done & pending:
+                pending.remove(worker)
+                if not worker.cancelled():
+                    worker.result()
+            if observer in done:
+                return observer.result()
+    finally:
+        await cancel_tasks(observer)
 
 
 class TaskControl:
