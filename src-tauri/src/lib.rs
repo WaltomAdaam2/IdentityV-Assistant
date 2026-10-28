@@ -44,6 +44,7 @@ pub fn run() {
         .manage(EngineSupervisor::default())
         .manage(power::PowerManager::default())
         .invoke_handler(tauri::generate_handler![
+            commands::open_project_repository,
             commands::engine::start_engine,
             commands::engine::stop_engine,
             commands::engine::restart_engine,

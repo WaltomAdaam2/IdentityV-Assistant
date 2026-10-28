@@ -1,4 +1,5 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
 import Journal from "./Journal";
@@ -811,6 +812,7 @@ export default function App() {
   const [progress, setProgress] = useState<TaskProgress | null>(null);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const startupHandled = useRef(false);
   const language = settings.app.language;
   const languageRef = useRef<Language>(language);
   languageRef.current = language;
@@ -959,6 +961,7 @@ export default function App() {
     void bridge
       .loadSettings()
       .then((loaded) => {
+        if (disposed) return;
         const enabled = new Set(
           (loaded.tasks?.enabled ?? defaults.tasks.enabled).map((id) =>
             id === "home_book" ? "blackjack" : id,
@@ -1238,6 +1241,15 @@ export default function App() {
     };
   }, [appendLog, refreshSnapshot, updateFrame]);
   useEffect(() => {
+    if (!settingsLoaded || startupHandled.current) return;
+    startupHandled.current = true;
+    if (settings.app.launch_engine_on_start)
+      void run(t.dashboard.start, async () => {
+        await bridge.startEngine();
+        await refreshSnapshot();
+      });
+  }, [settingsLoaded, settings.app.launch_engine_on_start, run, refreshSnapshot, t.dashboard.start]);
+  useEffect(() => {
     document.documentElement.dataset.theme = settings.app.theme;
   }, [settings.app.theme]);
   useEffect(() => {
@@ -1456,7 +1468,7 @@ export default function App() {
             </div>
           </div>
         </aside>
-        <section className="workspace" ref={workspaceRef}>
+        <section className={`workspace${page === "about" ? " workspace-about" : ""}`} ref={workspaceRef}>
           <header className="topbar">
             <div key={page} className="page-heading">
               <h1>{t.nav[page]}</h1>
@@ -2484,8 +2496,27 @@ function SettingsPage({
 }
 function About({ language }: { language: Language }) {
   const t = translations[language].about;
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const [linkError, setLinkError] = useState("");
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const panel = panelRef.current;
+    if (!viewport || !panel) return;
+    const fit = () => {
+      const width = Math.max(640, viewport.clientWidth);
+      panel.style.width = `${width}px`;
+      panel.style.setProperty("--about-scale", String(Math.min(1, viewport.clientWidth / width, viewport.clientHeight / panel.offsetHeight)));
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(viewport);
+    observer.observe(panel);
+    fit();
+    return () => observer.disconnect();
+  }, []);
   return (
-    <section className="panel about">
+    <div className="about-viewport" ref={viewportRef}>
+    <section className="panel about" ref={panelRef}>
       <div className="about-intro">
         <span className="large-mark">V</span>
         <span className="eyebrow">IDENTITYV ASSISTANT</span>
@@ -2503,7 +2534,7 @@ function About({ language }: { language: Language }) {
         </div>
         <div>
           <span>{t.license}</span>
-          <strong>AGPL-3.0-or-later</strong>
+          <strong>GPL-3.0-only</strong>
         </div>
         <div>
           <span>{t.stack}</span>
@@ -2515,10 +2546,18 @@ function About({ language }: { language: Language }) {
         href="https://github.com/WaltomAdaam2/IdentityV-Assistant"
         target="_blank"
         rel="noreferrer"
+        onClick={(event) => {
+          if (!isTauri()) return;
+          event.preventDefault();
+          setLinkError("");
+          void bridge.openRepository().catch((error) => setLinkError(String(error)));
+        }}
       >
         GitHub · WaltomAdaam2/IdentityV-Assistant{" "}
         <span aria-hidden="true">↗</span>
       </a>
+      {linkError && <p className="form-error" role="alert">{language === "zh-CN" ? "无法打开浏览器：" : "Could not open browser: "}{linkError}</p>}
     </section>
+    </div>
   );
 }

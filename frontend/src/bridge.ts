@@ -8,6 +8,7 @@ import type {
 } from "./types";
 
 export const bridge = {
+  openRepository: () => invoke<void>("open_project_repository"),
   startEngine: () => invoke<void>("start_engine"),
   stopEngine: () => invoke<void>("stop_engine"),
   restartEngine: () => invoke<void>("restart_engine"),
