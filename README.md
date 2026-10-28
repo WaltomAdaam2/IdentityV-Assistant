@@ -165,6 +165,10 @@ pnpm tauri build
 
 构建会自动运行冻结引擎的离线检查，验证原生依赖、模板和 OCR 模型；这不代表实际游戏对局验证。`pnpm tauri dev` 保留原来的 Python 开发流程。
 
+发行构建需要原始更新签名私钥（默认 `%LOCALAPPDATA%\IdentityV-Assistant\release-keys\updater.key`），成功后同时生成 `.sig`、`latest.json` 和 `SHA256SUMS.txt`。私钥不能上传到 GitHub，丢失后不能给既有客户端发布可信更新。完整步骤见 [更新与发布说明](docs/updates.md)。
+
+从 v0.1.1 起，「设置 → 软件更新」支持启动时自动检查、GitHub 直连与国内代理下载、取消及重试，安装前校验发布签名、SHA-256 和文件大小。只检查不会自动安装，安装由用户确认。v0.1.0 用户需要先手动安装一次新版。维护者提交并推送干净的 `main` 后重新打包，再运行 `scripts/publish_release.ps1 -NotesFile <版本说明文件>` 发布；打包本身不会上传。
+
 ## 验证方法
 
 ```powershell

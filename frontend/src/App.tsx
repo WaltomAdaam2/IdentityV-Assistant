@@ -3,6 +3,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
 import Journal from "./Journal";
+import UpdatePanel from "./UpdatePanel";
 import { defaultJournalSettings } from "./journalData";
 import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog, type LogEntry, type LogLevel } from "./logs";
 import type {
@@ -674,6 +675,8 @@ const defaults: Settings = {
     developer_mode: false,
     prevent_system_sleep: false,
     prevent_display_sleep: false,
+    check_updates_on_start: true,
+    update_source: "direct",
   },
   engine: {
     memory_protection: false,
@@ -1458,13 +1461,13 @@ export default function App() {
               <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
               <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
             </div>}
-            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.0`}>
+            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.1`}>
               <span className={`local-status-dot ${engineState(snapshot)}`} />
               <span className="local-status-copy">
                 <strong>{t.localConsole}</strong>
                 <small>{t.localOnly}</small>
               </span>
-              <b>v0.1.0</b>
+              <b>v0.1.1</b>
             </div>
           </div>
         </aside>
@@ -1489,6 +1492,9 @@ export default function App() {
           )}
           <div className={`page-content page-${page} page-${pagePhase}`} style={{ "--page-direction": pageDirection } as CSSProperties}
             onAnimationEnd={(event) => { if (event.target === event.currentTarget && event.animationName === "page-in") setPagePhase("idle"); }}>
+            <UpdatePanel settings={settings} loaded={settingsLoaded} expanded={page === "settings"}
+              onSettingsChange={(app) => setSettings((previous) => ({ ...previous, app }))}
+              onOpen={() => navigate("settings")} />
             {content}
           </div>
         </section>

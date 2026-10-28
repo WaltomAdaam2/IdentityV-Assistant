@@ -135,6 +135,8 @@ export interface Settings {
     developer_mode: boolean;
     prevent_system_sleep: boolean;
     prevent_display_sleep: boolean;
+    check_updates_on_start: boolean;
+    update_source: "direct" | "proxy";
   };
   engine: {
     memory_protection: boolean;

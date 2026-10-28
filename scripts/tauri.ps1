@@ -34,5 +34,23 @@ if ($isDevCommand -and -not (Test-IsAdministrator)) {
 }
 
 Set-Location -LiteralPath $repoRoot
-& pnpm exec tauri @TauriArgs
-exit $LASTEXITCODE
+$isBuild = $TauriArgs.Count -gt 0 -and $TauriArgs[0] -eq "build"
+$previousKey = $env:TAURI_SIGNING_PRIVATE_KEY
+try {
+    if ($isBuild -and -not $previousKey) {
+        $keyPath = Join-Path $env:LOCALAPPDATA "IdentityV-Assistant/release-keys/updater.key"
+        if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) {
+            throw "Restore the original updater signing key to $keyPath or set TAURI_SIGNING_PRIVATE_KEY. Never replace the signing key of an existing release. See docs/updates.md."
+        }
+        $env:TAURI_SIGNING_PRIVATE_KEY = $keyPath
+    }
+    & pnpm exec tauri @TauriArgs
+    $buildExit = $LASTEXITCODE
+    if ($buildExit -eq 0 -and $isBuild -and $TauriArgs -notcontains "--debug" -and $TauriArgs -notcontains "--no-bundle") {
+        & (Join-Path $PSScriptRoot "update_manifest.ps1")
+    }
+    exit $buildExit
+}
+finally {
+    $env:TAURI_SIGNING_PRIVATE_KEY = $previousKey
+}

@@ -5,6 +5,7 @@ mod journal;
 mod journal_dialog;
 mod logs;
 mod power;
+mod updates;
 
 use engine::EngineSupervisor;
 use serde_json::json;
@@ -14,6 +15,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -43,8 +45,14 @@ pub fn run() {
         )
         .manage(EngineSupervisor::default())
         .manage(power::PowerManager::default())
+        .manage(updates::UpdateManager::default())
         .invoke_handler(tauri::generate_handler![
             commands::open_project_repository,
+            updates::get_update_status,
+            updates::check_update,
+            updates::download_update,
+            updates::cancel_update,
+            updates::install_update,
             commands::engine::start_engine,
             commands::engine::stop_engine,
             commands::engine::restart_engine,

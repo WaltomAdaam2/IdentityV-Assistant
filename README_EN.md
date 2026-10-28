@@ -162,6 +162,10 @@ Python is not required on the recipient's computer. The installer downloads Micr
 
 The build runs an offline frozen-engine check for native dependencies, templates and OCR models; it does not test live gameplay. `pnpm tauri dev` continues to use the Python development environment.
 
+Release builds require the original updater signing key, defaulting to `%LOCALAPPDATA%\IdentityV-Assistant\release-keys\updater.key`. A successful build also generates `.sig`, `latest.json`, and `SHA256SUMS.txt`. Never upload the private key; losing it prevents trusted updates to existing clients. See [update and publishing instructions](docs/updates.md).
+
+Starting with v0.1.1, Settings → Software updates supports startup checks, direct GitHub downloads or a third-party China proxy, cancellation, and retries. Downloads must pass release signature, SHA-256, and file-size verification before installation. Checks never install updates automatically. Users of v0.1.0 must manually install a newer version once. To publish, commit and push clean `main`, rebuild, then run `scripts/publish_release.ps1 -NotesFile <release-notes-file>`. Building alone never publishes.
+
 ## Verification
 
 ```powershell

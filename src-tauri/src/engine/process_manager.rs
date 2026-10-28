@@ -1,7 +1,10 @@
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -51,11 +54,13 @@ struct EngineState {
 pub struct EngineSupervisor {
     inner: Arc<Mutex<EngineState>>,
     lifecycle: Arc<Mutex<()>>,
+    updating: Arc<AtomicBool>,
 }
 
 impl Default for EngineSupervisor {
     fn default() -> Self {
         Self {
+            updating: Arc::new(AtomicBool::new(false)),
             lifecycle: Arc::new(Mutex::new(())),
             inner: Arc::new(Mutex::new(EngineState {
                 process: None,
@@ -80,6 +85,9 @@ impl EngineSupervisor {
     }
 
     async fn start_locked(&self, app: AppHandle) -> Result<(), String> {
+        if self.updating.load(Ordering::SeqCst) {
+            return Err("Update installation is in progress".into());
+        }
         let wait_for_existing_start = {
             let mut state = self.inner.lock().await;
             if let Some(process) = state.process.as_mut() {
@@ -546,6 +554,16 @@ impl EngineSupervisor {
     pub async fn stop(&self) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock().await;
         self.stop_locked().await
+    }
+
+    pub async fn prepare_update(&self) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock().await;
+        self.updating.store(true, Ordering::SeqCst);
+        self.stop_locked().await
+    }
+
+    pub fn finish_update(&self) {
+        self.updating.store(false, Ordering::SeqCst);
     }
 
     async fn stop_locked(&self) -> Result<(), String> {

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { UpdateInfo, UpdateStatus } from "./UpdatePanel";
 import type {
   DiagnosticRequest,
   EngineEvent,
@@ -8,6 +9,13 @@ import type {
 } from "./types";
 
 export const bridge = {
+  checkUpdate: (source: "direct" | "proxy") => invoke<UpdateInfo | null>("check_update", { source }),
+  downloadUpdate: (source: "direct" | "proxy") => invoke<void>("download_update", { source }),
+  cancelUpdate: () => invoke<void>("cancel_update"),
+  installUpdate: () => invoke<void>("install_update"),
+  getUpdateStatus: () => invoke<UpdateStatus>("get_update_status"),
+  onUpdateStatus: (handler: (status: UpdateStatus) => void): Promise<UnlistenFn> =>
+    listen<UpdateStatus>("update-status", ({ payload }) => handler(payload)),
   openRepository: () => invoke<void>("open_project_repository"),
   startEngine: () => invoke<void>("start_engine"),
   stopEngine: () => invoke<void>("stop_engine"),

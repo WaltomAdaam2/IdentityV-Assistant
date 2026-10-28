@@ -1,0 +1,27 @@
+.update-panel { margin-bottom: 20px; }
+.update-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.update-heading h2 { margin: 5px 0; }
+.update-heading p, .update-hint { color: var(--muted); line-height: 1.7; }
+.update-symbol { display: grid; place-items: center; width: 54px; height: 54px; flex: 0 0 auto; border: 1px solid var(--accent-border); border-radius: 18px; background: var(--accent-soft); color: var(--accent); font-size: 30px; }
+.update-checking, .update-verifying { animation: update-pulse 1.3s ease-in-out infinite alternate; }
+.update-preferences { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin: 20px 0; }
+.update-preferences label { display: flex; gap: 10px; align-items: center; white-space: nowrap; }
+.update-state { padding: 16px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-subtle); }
+.update-version { display: flex; align-items: center; gap: 12px; margin-top: 12px; color: var(--muted); }
+.update-version b { color: var(--accent); font-size: 22px; }
+.update-error { color: var(--danger); overflow-wrap: anywhere; }
+.update-download { display: grid; gap: 8px; margin-top: 14px; }
+.update-download progress { width: 100%; height: 8px; border: 0; border-radius: 10px; overflow: hidden; accent-color: var(--accent); }
+.update-download progress::-webkit-progress-bar { background: var(--surface-raised); }
+.update-download progress::-webkit-progress-value { background: var(--accent); transition: width 180ms ease-out; }
+.update-download small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.update-verified { color: var(--accent); }
+.update-notes { margin: 18px 0; }
+.update-notes summary { cursor: pointer; color: var(--muted-strong); }
+.update-notes p { max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.update-notes code { display: block; margin-top: 10px; overflow-wrap: anywhere; font-size: 12px; }
+.update-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.update-notice { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; padding: 12px 16px; background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 14px; animation: status-update 180ms ease-out; }
+.update-notice > span { flex: 1; }
+@keyframes update-pulse { to { opacity: .5; transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .update-symbol, .update-notice { animation: none; } .update-download progress::-webkit-progress-value { transition: none; } }
