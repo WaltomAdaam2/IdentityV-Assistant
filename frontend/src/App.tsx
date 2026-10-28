@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
 import Journal from "./Journal";
@@ -786,7 +786,10 @@ function WindowTitleBar({ language }: { language: Language }) {
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
-  const [pagePhase, setPagePhase] = useState<"enter" | "leave">("enter");
+  const [pagePhase, setPagePhase] = useState<"enter" | "leave" | "idle">(() =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "idle" : "enter");
+  const [pageDirection, setPageDirection] = useState(1);
+  const pendingPageRef = useRef<Page>("dashboard");
   const pageTransitionTimer = useRef<number | null>(null);
   const workspaceRef = useRef<HTMLElement | null>(null);
   const [snapshot, setSnapshot] = useState<EngineSnapshot>({
@@ -827,6 +830,13 @@ export default function App() {
   const logFlushTimer = useRef<number | null>(null);
   const nextLogId = useRef(2);
   const [notice, setNotice] = useState<string | null>(null);
+  const [visibleNotice, setVisibleNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (notice) { setVisibleNotice(notice); return; }
+    const timer = window.setTimeout(() => setVisibleNotice(null),
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 180);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
   const [frame, setFrame] = useState<CaptureFrame | null>(null);
   const [diagnosticError, setDiagnosticError] = useState<EngineEvent | null>(
@@ -1289,25 +1299,34 @@ export default function App() {
   );
   const navigate = useCallback(
     (nextPage: Page) => {
-      if (nextPage === page || pagePhase === "leave") return;
+      pendingPageRef.current = nextPage;
+      if (nextPage === page) {
+        if (pageTransitionTimer.current !== null) {
+          window.clearTimeout(pageTransitionTimer.current);
+          pageTransitionTimer.current = null;
+          setPagePhase("enter");
+        }
+        return;
+      }
+      setPageDirection(nav.findIndex((item) => item.id === nextPage) > nav.findIndex((item) => item.id === page) ? 1 : -1);
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         setPage(nextPage);
-        setPagePhase("enter");
+        setPagePhase("idle");
         workspaceRef.current?.scrollTo({ top: 0 });
         return;
       }
-      workspaceRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      if (pageTransitionTimer.current !== null) return;
       setPagePhase("leave");
       pageTransitionTimer.current = window.setTimeout(() => {
-        setPage(nextPage);
+        setPage(pendingPageRef.current);
         setPagePhase("enter");
         pageTransitionTimer.current = null;
         window.requestAnimationFrame(() =>
-          workspaceRef.current?.scrollTo({ top: 0 }),
+          workspaceRef.current?.scrollTo({ top: 0, behavior: "instant" }),
         );
       }, 160);
     },
-    [page, pagePhase],
+    [page],
   );
   useEffect(() => {
     if (
@@ -1315,7 +1334,7 @@ export default function App() {
       page === "runtime"
     ) {
       setPage("settings");
-      setPagePhase("enter");
+      setPagePhase(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "idle" : "enter");
       workspaceRef.current?.scrollTo({ top: 0 });
     }
   }, [page, settings.app.developer_mode]);
@@ -1408,11 +1427,12 @@ export default function App() {
             <span className="brand-mark">V</span>
             <span>{t.about.name}</span>
           </div>
-          <nav>
+          <nav style={{ "--nav-index": visibleNav.findIndex((item) => item.id === page) } as CSSProperties}>
             {visibleNav.map((item) => (
               <button
                 key={item.id}
                 className={page === item.id ? "nav-item active" : "nav-item"}
+                aria-current={page === item.id ? "page" : undefined}
                 onClick={() => navigate(item.id)}
               >
                 <span>{item.icon}</span>
@@ -1438,7 +1458,7 @@ export default function App() {
         </aside>
         <section className="workspace" ref={workspaceRef}>
           <header className="topbar">
-            <div>
+            <div key={page} className="page-heading">
               <h1>{t.nav[page]}</h1>
               <p>IdentityV Assistant</p>
             </div>
@@ -1447,15 +1467,16 @@ export default function App() {
               {t.engine} {stateLabel(engineState(snapshot), language)}
             </div>
           </header>
-          {notice && (
-            <div className="notice">
-              <span>{notice}</span>
+          {visibleNotice && (
+            <div key={visibleNotice} className={`notice${notice ? "" : " notice-leave"}`} role="status">
+              <span>{visibleNotice}</span>
               <button aria-label={t.closeNotice} onClick={() => setNotice(null)}>
                 ×
               </button>
             </div>
           )}
-          <div className={`page-content page-${page} page-${pagePhase}`}>
+          <div className={`page-content page-${page} page-${pagePhase}`} style={{ "--page-direction": pageDirection } as CSSProperties}
+            onAnimationEnd={(event) => { if (event.target === event.currentTarget && event.animationName === "page-in") setPagePhase("idle"); }}>
             {content}
           </div>
         </section>
@@ -1597,6 +1618,13 @@ function Tasks({
   const t = translations[language].tasks;
   const labels = translations[language].settings;
   const [editingTask, setEditingTask] = useState<string | null>(null);
+  const [closingTask, setClosingTask] = useState<string | null>(null);
+  useEffect(() => {
+    if (!closingTask) return;
+    const timer = window.setTimeout(() => setClosingTask(null),
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 280);
+    return () => window.clearTimeout(timer);
+  }, [closingTask]);
   const [pendingCommand, setPendingCommand] = useState<{
     type: "start" | "pause" | "resume" | "stop";
     afterRevision: number;
@@ -1680,7 +1708,7 @@ function Tasks({
           const [name, description] = taskCopy(task, language);
           return (
             <div className="task-block" key={task.id}>
-            <article className="task-card">
+            <article className="task-card" data-enabled={task.enabled}>
               <label className="switch">
                 <input
                   type="checkbox"
@@ -1720,7 +1748,10 @@ function Tasks({
                     ? t.resume
                     : t.execute}
               </button>
-              <button className="task-edit-button" onClick={() => setEditingTask(editingTask === task.id ? null : task.id)}>
+              <button className="task-edit-button" aria-expanded={editingTask === task.id} aria-controls={`editor-${task.id}`} onClick={() => {
+                setClosingTask(editingTask);
+                setEditingTask(editingTask === task.id ? null : task.id);
+              }}>
                 {editingTask === task.id ? t.closeEdit : t.edit}
               </button>
               <button
@@ -1740,7 +1771,9 @@ function Tasks({
               </button>
               <span key={task.status} className={`tag task-status ${task.status}`}>{statusLabel(task.status, language)}</span>
             </article>
-            {editingTask === task.id && <section className="task-editor panel">
+            {(editingTask === task.id || closingTask === task.id) && <div className={`task-editor-reveal${editingTask === task.id ? "" : " is-closing"}`}
+              ref={(element) => element?.toggleAttribute("inert", editingTask !== task.id)} aria-hidden={editingTask !== task.id}>
+              <div><section id={`editor-${task.id}`} className="task-editor panel">
               <h3>{name} · {t.edit}</h3>
               {task.id === "login_lobby" ? <>
                 <label>{labels.loginPlatform}
@@ -1765,7 +1798,7 @@ function Tasks({
                 </label>)}
               </>}
               <p>{t.editHint}</p>
-            </section>}
+            </section></div></div>}
             </div>
           );
         })}

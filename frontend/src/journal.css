@@ -1,9 +1,13 @@
 .journal { display: grid; gap: 18px; }
-.journal-layout { display: grid; grid-template-columns: 252px minmax(0, 1fr); align-items: start; gap: 18px; }
+.journal-layout { display: grid; grid-template-columns: 252px minmax(0, 1fr); align-items: start; gap: 18px; transition: grid-template-columns var(--motion-slow, 460ms) var(--ease-out, ease-out); }
 .journal-layout.journal-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
-.journal .journal-filters { padding: 14px; }
+.journal .journal-filters { min-width: 0; padding: 14px; overflow: hidden; }
 .journal-filter-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .journal-filter-heading button { min-width: 32px; padding: 3px 10px; font-size: 23px; }
+.journal-filter-heading h2 { max-width: 200px; overflow: hidden; white-space: nowrap; opacity: 1; transition: max-width var(--motion-base, 280ms) var(--ease-out, ease-out), opacity var(--motion-fast, 160ms); }
+.journal-collapsed .journal-filter-heading h2 { max-width: 0; opacity: 0; }
+.journal-collapsed .journal-filter-heading { gap: 0; }
+#journal-filter-body:not([hidden]) { animation: journal-filter-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) both; }
 .journal-collapsed .journal-filters { padding: 14px; }
 .journal-collapsed .journal-filter-heading { margin: 0; }
 .journal-season { display: grid; gap: 6px; margin-bottom: 12px; color: var(--muted-strong); font-size: 13px; }
@@ -21,23 +25,41 @@
 .journal-footer small { color: var(--muted); }
 @media (max-width: 1100px) { .journal-layout { grid-template-columns: 215px minmax(0, 1fr); gap: 12px; }.journal-filters, .journal-viewer { padding: 14px; } }
 .journal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
-.journal-map { display: block; width: 100%; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--input); text-align: center; }
+.journal-map { display: block; width: 100%; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--input); text-align: center; animation: journal-card-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) var(--map-delay, 0ms) backwards; }
 .journal-map:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .journal-thumbnail { height: 230px; display: flex; align-items: center; justify-content: center; padding: 10px; color: var(--muted); }
-.journal-thumbnail img { display: block; width: 210px; height: 210px; max-width: 100%; object-fit: contain; }
+.journal-thumbnail img { display: block; width: 210px; height: 210px; max-width: 100%; object-fit: contain; animation: journal-image-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) both; transition: scale var(--motion-slow, 460ms) var(--ease-out, ease-out); }
+.journal-map:hover .journal-thumbnail img { scale: 1.04; }
 .journal-thumbnail p { overflow-wrap: anywhere; padding: 12px; }
 .journal-thumbnail small { display: block; }
 .journal-map-name { display: block; padding: 12px; text-align: center; border-top: 1px solid var(--border); color: var(--text); }
-.journal-detail { position: relative; display: flex; align-items: center; justify-content: center; height: clamp(360px, calc(100vh - 300px), 740px); padding: 58px 14px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--input); }
-.journal-detail > img { width: 100%; height: 100%; object-fit: contain; }
+.journal-detail { position: relative; display: flex; align-items: center; justify-content: center; height: clamp(360px, calc(100vh - 300px), 740px); padding: 58px 14px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--input); animation: journal-detail-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) both; }
+.journal-detail > img { width: 100%; height: 100%; object-fit: contain; animation: journal-image-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) both; }
 .journal-detail > p { color: var(--muted); overflow-wrap: anywhere; }
 .journal-back { position: absolute; left: 14px; top: 14px; }
 .journal-footer > div { display: grid; gap: 5px; }
 .journal-detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .journal-detail-footer > button { flex-shrink: 0; }
-.journal-full-preview { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / 30%); overscroll-behavior: contain; }
-.journal-full-preview > img { display: block; width: min(calc(100vw - 48px), calc((100vh - 48px) * var(--map-aspect-ratio, 1))); height: auto; max-height: calc(100vh - 48px); object-fit: contain; background: rgb(0 0 0 / 90%); }
+.journal-full-preview { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / 30%); overscroll-behavior: contain; animation: journal-overlay-reveal var(--motion-base, 280ms) ease-out both; }
+.journal-full-preview > img { display: block; width: min(calc(100vw - 48px), calc((100vh - 48px) * var(--map-aspect-ratio, 1))); height: auto; max-height: calc(100vh - 48px); object-fit: contain; background: rgb(0 0 0 / 90%); animation: journal-preview-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) both; }
+.journal-full-preview.is-closing { animation: journal-overlay-dismiss 220ms ease-in both; }
+.journal-full-preview.is-closing > img { animation: journal-preview-dismiss 220ms ease-in both; }
 .journal-preview-close { position: absolute; top: 16px; right: 16px; width: 42px; height: 42px; padding: 0; border-radius: 50%; background: var(--surface); color: var(--text); font-size: 28px; line-height: 1; }
+.journal-preview-close:hover:not(:disabled) { transform: rotate(90deg) scale(1.08); }
 .journal-directory { overflow-wrap: anywhere; }
 .journal-error { padding: 12px; border: 1px solid var(--border-strong); border-radius: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
 @media (max-width: 760px) { .journal-layout { grid-template-columns: 1fr; }.journal-layout.journal-collapsed { grid-template-columns: 64px minmax(0, 1fr); }.journal-grid { grid-template-columns: 1fr; } }
+@keyframes journal-filter-reveal { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes journal-card-reveal { from { opacity: 0; transform: translateY(20px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes journal-image-reveal { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes journal-detail-reveal { from { opacity: 0; transform: translateX(20px) scale(.985); } to { opacity: 1; transform: translateX(0) scale(1); } }
+@keyframes journal-overlay-reveal { from { opacity: 0; } to { opacity: 1; } }
+@keyframes journal-overlay-dismiss { from { opacity: 1; } to { opacity: 0; } }
+@keyframes journal-preview-reveal { from { opacity: 0; transform: scale(.88) translateY(16px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes journal-preview-dismiss { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(.94); } }
+@media (prefers-reduced-motion: reduce) {
+  .journal-layout, .journal-filter-heading h2, .journal-thumbnail img { transition: none; }
+  #journal-filter-body:not([hidden]), .journal-map, .journal-thumbnail img, .journal-detail, .journal-detail > img, .journal-full-preview, .journal-full-preview > img { animation: none; }
+  .journal-map:hover .journal-thumbnail img { scale: 1; }
+  .journal-preview-close:hover:not(:disabled) { transform: none; }
+}
