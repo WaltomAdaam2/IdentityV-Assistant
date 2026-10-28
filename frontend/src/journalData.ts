@@ -40,4 +40,3 @@ export const journalApi = {
   image: (image: MapImage) => invoke<string>("journal_read_image", { packId: image.packId, path: image.path }),
   openDirectory: () => invoke<void>("journal_open_directory"),
 };
-

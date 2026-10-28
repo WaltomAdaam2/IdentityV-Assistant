@@ -123,4 +123,3 @@ export default function Journal({ language, windowInfo, settings, onSettingsChan
     </div>
   </div>;
 }
-
