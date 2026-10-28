@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Settings } from "./types";
 import { importJournalPacks, journalApi, matchingMaps, type JournalLibrary, type JournalSettings, type MapImage } from "./journalData";
 import "./journal.css";
@@ -46,6 +47,11 @@ export default function Journal({ language, settings, onSettingsChange }: {
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
+  const [preview, setPreview] = useState(false);
+  const [detailImage, setDetailImage] = useState({ key: "", url: "", error: "" });
+  const enterButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (settings.door === "td") onSettingsChange({ ...settings, door: "lf" });
   }, [settings, onSettingsChange]);
@@ -62,8 +68,43 @@ export default function Journal({ language, settings, onSettingsChange }: {
     return [...names];
   }, [library.packs, settings.season, zh]);
   const maps = useMemo(() => matchingMaps(library.packs, settings), [library.packs, settings]);
+  const selectedMap = maps.find((map) => map.index === selectedNumber);
+  const selectedName = selectedMap?.name || (zh ? `地图 ${selectedNumber}` : `Map ${selectedNumber}`);
+  const detailKey = selectedMap ? `${selectedMap.image.packId}:${selectedMap.image.path}` : "";
+  const detailUrl = detailImage.key === detailKey ? detailImage.url : "";
+  const detailError = detailImage.key === detailKey ? detailImage.error : "";
+  useEffect(() => {
+    if (!selectedMap) return;
+    let active = true;
+    setDetailImage({ key: detailKey, url: "", error: "" });
+    journalApi.image(selectedMap.image)
+      .then((url) => { if (active) setDetailImage({ key: detailKey, url, error: "" }); })
+      .catch((reason) => { if (active) setDetailImage({ key: detailKey, url: "", error: String(reason) }); });
+    return () => { active = false; };
+  }, [detailKey]);
+  useEffect(() => {
+    if (selectedNumber === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (event.repeat) return;
+        if (preview) setPreview(false);
+        else setSelectedNumber(null);
+      } else if (preview && event.key === "Tab") {
+        event.preventDefault(); closeButton.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [selectedNumber, preview]);
+  useEffect(() => {
+    if (!preview) return;
+    closeButton.current?.focus();
+    return () => { enterButton.current?.focus(); };
+  }, [preview]);
   const summary = [seasons.find(([id]) => id === settings.season)?.[1], ...groups.map((group) => group.options.find(([value]) => value === settings[group.key])?.[zh ? 1 : 2])].join(" · ");
   const change = (patch: Partial<JournalSettings>) => {
+    if (patch.season || patch.difficulty || patch.door) setSelectedNumber(null);
     const next = { ...settings, ...patch };
     if (next.difficulty === "hard" && ["b1f", "3"].includes(next.floor)) next.floor = "1";
     onSettingsChange(next);
@@ -112,13 +153,26 @@ export default function Journal({ language, settings, onSettingsChange }: {
       </aside>
       <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy}>
         {busy ? <div className="empty journal-empty">{zh ? "正在读取地图包…" : "Loading map packs…"}</div>
+          : selectedNumber !== null ? <div className="journal-detail">
+            <button type="button" className="journal-back" onClick={() => setSelectedNumber(null)}>{zh ? "‹ 返回列表" : "‹ Back to list"}</button>
+            {!selectedMap ? <p>{zh ? "当前楼层或显示模式暂无此地图。" : "This map is unavailable for the selected floor or display mode."}</p>
+              : detailError ? <p role="alert">{zh ? "图片读取失败：" : "Could not read image: "}{detailError}</p>
+              : detailUrl ? <img src={detailUrl} alt={selectedName} onError={() => setDetailImage({ key: detailKey, url: "", error: zh ? "图片格式无效或已损坏" : "Invalid or damaged image" })} />
+              : <p>{zh ? "正在读取地图…" : "Loading map…"}</p>}
+          </div>
           : maps.length ? <div className="journal-grid">{maps.map((map) => {
             const name = map.name || (zh ? `地图 ${map.index}` : `Map ${map.index}`);
-            return <figure className="journal-map" key={`${map.key}:${map.image.path}`}><Thumbnail image={map.image} name={name} zh={zh} /><figcaption>{name}</figcaption></figure>;
+            return <button type="button" className="journal-map" key={`${map.key}:${map.image.path}`} onClick={() => setSelectedNumber(map.index)} aria-label={zh ? `查看${name}` : `View ${name}`}><Thumbnail image={map.image} name={name} zh={zh} /><span className="journal-map-name">{name}</span></button>;
           })}</div>
           : <div className="empty journal-empty"><span className="journal-empty-icon" aria-hidden="true">▤</span><h3>{zh ? "当前组合暂无地图" : "No maps in this group"}</h3><p>{zh ? "请导入地图包，或选择其他赛季、难度、门型及楼层。" : "Import a map pack or choose another season, difficulty, door type or floor."}</p></div>}
-        <footer className="journal-footer" aria-live="polite"><span>{zh ? `当前组合共 ${maps.length} 张地图` : `${maps.length} maps in this group`}</span><small>{summary}</small></footer>
+        <footer className={`journal-footer${selectedNumber !== null ? " journal-detail-footer" : ""}`} aria-live="polite"><div><span>{selectedNumber !== null ? selectedName : zh ? `当前组合共 ${maps.length} 张地图` : `${maps.length} maps in this group`}</span><small>{summary}</small></div>
+          {selectedNumber !== null && <button ref={enterButton} type="button" className="primary" disabled={!detailUrl || !!detailError || !selectedMap} onClick={() => setPreview(true)}>{zh ? "进入地图" : "Enter map"}</button>}
+        </footer>
       </section>
     </div>
+    {preview && createPortal(<div className="journal-full-preview" role="dialog" aria-modal="true" aria-label={zh ? `${selectedName}全窗口预览` : `${selectedName} full-window preview`}>
+      <img src={detailUrl} alt={selectedName} />
+      <button ref={closeButton} type="button" className="journal-preview-close" aria-label={zh ? "退出全窗口预览" : "Exit full-window preview"} title={zh ? "退出预览（Esc）" : "Exit preview (Esc)"} onClick={() => setPreview(false)}>×</button>
+    </div>, document.body)}
   </div>;
 }
