@@ -1359,7 +1359,7 @@ export default function App() {
         onCommand={sendEngineCommand}
       />
     ),
-    journal: <Journal language={language} windowInfo={windowInfo} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
+    journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
     runtime: (
       <Runtime
         language={language}

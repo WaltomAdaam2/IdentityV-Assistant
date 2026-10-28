@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Settings, WindowInfo } from "./types";
+import type { Settings } from "./types";
 import { journalApi, matchingMaps, type JournalLibrary, type JournalSettings, type MapImage } from "./journalData";
 import "./journal.css";
 
@@ -36,9 +36,8 @@ function Thumbnail({ image, name, zh }: { image: MapImage; name: string; zh: boo
   </div>;
 }
 
-export default function Journal({ language, windowInfo, settings, onSettingsChange }: {
+export default function Journal({ language, settings, onSettingsChange }: {
   language: Settings["app"]["language"];
-  windowInfo: WindowInfo | null;
   settings: JournalSettings;
   onSettingsChange: (settings: JournalSettings) => void;
 }) {
@@ -81,10 +80,6 @@ export default function Journal({ language, windowInfo, settings, onSettingsChan
     } catch (reason) { setMessage(""); setError(String(reason)); } finally { setBusy(false); }
   }
   return <div className="journal">
-    <div className="journal-status">
-      <span className={`tag ${windowInfo?.found ? "running" : ""}`}>{windowInfo?.found ? (zh ? "已检测到第五人格窗口" : "Identity V window detected") : (zh ? "尚未检测到游戏窗口" : "Game window not detected")}</span>
-      <p>{zh ? "选择地图，查看各楼层布局与路线。" : "Browse map layouts and routes by floor."}</p>
-    </div>
     {message && <p role="status">{message}</p>}
     {error && <p className="journal-error" role="alert">{error}</p>}
     {library.errors.length > 0 && <details className="journal-error"><summary>{zh ? "部分地图包读取失败" : "Some map packs could not be read"}</summary>{library.errors.map((item, index) => <p key={index}>{item}</p>)}</details>}
@@ -102,7 +97,6 @@ export default function Journal({ language, windowInfo, settings, onSettingsChan
             <legend>{zh ? group.zh : group.en}</legend>
             <div className="journal-options">{group.options.filter(([value]) => !(group.key === "floor" && value === "b1f" && settings.difficulty === "hard")).map(([value, chinese, english]) => <button type="button" key={value} aria-pressed={settings[group.key] === value} className={settings[group.key] === value ? "primary" : ""} onClick={() => change({ [group.key]: value })}>{zh ? chinese : english}</button>)}</div>
           </fieldset>)}
-          <p>{zh ? "纯净显示底图，速刷显示路线图。" : "Base maps show the layout; route maps show a route."}</p>
           <div className="journal-options journal-tools">
             <button type="button" disabled={busy} onClick={() => void importPack()}>{zh ? "导入地图包" : "Import map pack"}</button>
             <button type="button" disabled={busy} onClick={() => void reload()}>{zh ? "刷新地图" : "Refresh maps"}</button>
