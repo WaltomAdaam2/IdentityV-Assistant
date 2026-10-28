@@ -36,7 +36,7 @@
 .journal-detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .journal-detail-footer > button { flex-shrink: 0; }
 .journal-full-preview { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / 20%); overscroll-behavior: contain; }
-.journal-full-preview > img { display: block; width: min(100vw, calc(100vh * var(--map-aspect-ratio, 1))); height: auto; max-height: 100vh; object-fit: contain; background: #000; }
+.journal-full-preview > img { display: block; width: min(calc(100vw - 48px), calc((100vh - 48px) * var(--map-aspect-ratio, 1))); height: auto; max-height: calc(100vh - 48px); object-fit: contain; background: rgb(0 0 0 / 10%); }
 .journal-preview-close { position: absolute; top: 16px; right: 16px; width: 42px; height: 42px; padding: 0; border-radius: 50%; background: var(--surface); color: var(--text); font-size: 28px; line-height: 1; }
 .journal-directory { overflow-wrap: anywhere; }
 .journal-error { padding: 12px; border: 1px solid var(--border-strong); border-radius: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
