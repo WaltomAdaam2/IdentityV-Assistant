@@ -2532,7 +2532,7 @@ function About({ language }: { language: Language }) {
       <div className="about-details">
         <div>
           <span>{t.version}</span>
-          <strong>0.1.0</strong>
+          <strong>0.1.1</strong>
         </div>
         <div>
           <span>{t.author}</span>
