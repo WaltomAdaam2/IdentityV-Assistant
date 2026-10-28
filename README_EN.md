@@ -77,12 +77,17 @@ Prevent display sleep and idle lock keeps the display on and periodically sends 
 
 ## Local data
 
+Journal filters maps by season, difficulty, door type, floor, and base/route display, showing every matching thumbnail. Filters are saved under `journal` in `config.json`; changing them does not reload game engine settings. Map details, automatic recognition, and game overlays are not included.
+
+Use Import map pack to choose a folder containing `pack.json`, or place a valid pack in `journal\packs\<packId>\` and refresh. Import copies only referenced PNG/JPEG/WebP images, rejects duplicate IDs, and never reads another application's data directory. Legacy `manifest.json` packs are not supported. The descriptor contains `packId`, `packName`, `seasonId`, `difficulty` (`hard`/`nightmare`), and `maps`. Each map has `index`, `category` (`lf`/`rf`/`lr`/`triple`/`td`), `floors`, and optional `display`. Both image tables map floor keys `1`, `2`, `b1f` to package-relative paths using `/`: `floors` supplies base maps and `display` supplies route maps.
+
 Settings and runtime data are stored under `%LOCALAPPDATA%\IdentityV-Assistant\`:
 
 ```text
 config.json                  Settings and enabled tasks
 logs\YYYY-MM-DD.jsonl       Complete daily event archive
 debug\captures\            Manual diagnostic screenshots
+journal\packs\<packId>\    Journal map packs
 ```
 
 Daily logs are kept for 30 days. Expired files are removed on startup and when the date changes. The Logs page shows only the current app session, retaining at most 99,000 entries with 1,000 per page. Clearing the page does not delete daily files. Verbose mode changes only what the page shows; disk logs remain complete.

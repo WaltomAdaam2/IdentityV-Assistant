@@ -126,6 +126,7 @@ export interface DiagnosticRequest {
 }
 
 export interface Settings {
+  journal?: import("./journalData").JournalSettings;
   tasks: { enabled: string[] };
   app: {
     language: "zh-CN" | "en-US";

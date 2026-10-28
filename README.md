@@ -79,12 +79,17 @@ window capture + Windows input
 
 ## 本地数据
 
+“加页手记”支持按赛季、难度、门型、楼层和纯净／速刷筛选地图，并显示全部匹配的缩略图。筛选偏好保存在 `config.json` 的 `journal` 字段；切换地图筛选不会重载游戏引擎设置。当前不提供地图详情、自动识图或悬浮地图。
+
+通过“导入地图包”选择包含 `pack.json` 的文件夹，或将有效地图包放到下方 `journal\packs\<packId>\` 后刷新。导入只复制描述文件引用的 PNG/JPEG/WebP 图片，不覆盖同名包，不读取其他软件的安装或数据目录；暂不支持旧版 `manifest.json`。描述文件包含 `packId`、`packName`、`seasonId`、`difficulty`（`hard`/`nightmare`）和 `maps`；每张地图包含 `index`、`category`（`lf`/`rf`/`lr`/`triple`/`td`）、`floors` 和可选的 `display`。两种图片路径表按 `1`、`2`、`b1f` 楼层映射到包内相对路径，使用 `/` 分隔。`floors` 用于纯净图，`display` 用于速刷图。
+
 配置和运行数据保存在 `%LOCALAPPDATA%\IdentityV-Assistant\`：
 
 ```text
 config.json                  设置与启用任务
 logs\YYYY-MM-DD.jsonl       按日期保存的完整事件
 debug\captures\            手动捕捉的调试截图
+journal\packs\<packId>\    加页手记地图包
 ```
 
 日志文件只保留最近 30 天，启动和跨日写入时自动清理过期文件。日志页面只显示本次应用会话，最多保留 99,000 条、每页 1,000 条；清空页面不删除日期日志。详细调试开关只改变页面显示，磁盘日志仍保存完整事件。

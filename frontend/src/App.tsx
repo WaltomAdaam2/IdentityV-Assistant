@@ -1,6 +1,8 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
+import Journal from "./Journal";
+import { defaultJournalSettings } from "./journalData";
 import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog, type LogEntry, type LogLevel } from "./logs";
 import type {
   CaptureFrame,
@@ -792,6 +794,7 @@ export default function App() {
     queue_size: 0,
   });
   const engineStatusRef = useRef("stopped");
+  const savedEngineSettingsRef = useRef("");
   engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
   const enabledTaskIds = tasks.filter((task) => task.enabled).map((task) => task.id).join(",");
@@ -1247,7 +1250,12 @@ export default function App() {
         try {
           const nextSettings = { ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } };
           await bridge.saveSettings(nextSettings);
+          const { journal: _journal, ...engineSettings } = nextSettings;
+          const serializedEngineSettings = JSON.stringify(engineSettings);
+          const engineSettingsChanged = savedEngineSettingsRef.current !== serializedEngineSettings;
+          savedEngineSettingsRef.current = serializedEngineSettings;
           if (
+            engineSettingsChanged &&
             !["stopped", "starting", "stopping", "error"].includes(
               engineStatusRef.current,
             )
@@ -1351,13 +1359,7 @@ export default function App() {
         onCommand={sendEngineCommand}
       />
     ),
-    journal: (
-      <section className="panel">
-        <p>
-          {language === "zh-CN" ? "暂无手记内容" : "No journal entries yet"}
-        </p>
-      </section>
-    ),
+    journal: <Journal language={language} windowInfo={windowInfo} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
     runtime: (
       <Runtime
         language={language}

@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod engine;
+mod journal;
 mod logs;
 mod power;
 
@@ -51,6 +52,11 @@ pub fn run() {
             commands::settings::save_settings,
             commands::settings::append_ui_log,
             commands::settings::set_power_prevention,
+            journal::journal_list_packs,
+            journal::journal_import_pack,
+            journal::journal_read_image,
+            journal::journal_open_directory,
+            journal::journal_choose_pack_folder,
             commands::diagnostics::detect_window,
             commands::diagnostics::capture_frame,
             commands::diagnostics::test_template,
