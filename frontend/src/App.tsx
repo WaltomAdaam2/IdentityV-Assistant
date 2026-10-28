@@ -15,6 +15,7 @@ import type {
 type Page =
   | "dashboard"
   | "tasks"
+  | "journal"
   | "runtime"
   | "debug"
   | "logs"
@@ -39,6 +40,7 @@ const translations = {
     nav: {
       dashboard: "概览",
       tasks: "任务",
+      journal: "加页手记",
       runtime: "服务详情",
       debug: "捕捉诊断",
       logs: "运行日志",
@@ -320,6 +322,7 @@ const translations = {
     nav: {
       dashboard: "Overview",
       tasks: "Tasks",
+      journal: "Journal",
       runtime: "Service details",
       debug: "Capture diagnostics",
       logs: "Service logs",
@@ -615,6 +618,7 @@ const translations = {
 const nav: Array<{ id: Page; icon: string }> = [
   { id: "dashboard", icon: "⌂" },
   { id: "tasks", icon: "✓" },
+  { id: "journal", icon: "▤" },
   { id: "runtime", icon: "⌘" },
   { id: "debug", icon: "⌕" },
   { id: "logs", icon: "≡" },
@@ -1346,6 +1350,13 @@ export default function App() {
         taskControlEvent={taskControlEvent}
         onCommand={sendEngineCommand}
       />
+    ),
+    journal: (
+      <section className="panel">
+        <p>
+          {language === "zh-CN" ? "暂无手记内容" : "No journal entries yet"}
+        </p>
+      </section>
     ),
     runtime: (
       <Runtime
