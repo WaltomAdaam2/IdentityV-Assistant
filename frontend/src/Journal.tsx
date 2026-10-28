@@ -5,7 +5,7 @@ import "./journal.css";
 
 const groups = [
   { key: "difficulty", zh: "难度", en: "Difficulty", options: [["hard", "困难", "Hard"], ["nightmare", "噩梦", "Nightmare"]] },
-  { key: "door", zh: "门型", en: "Doors", options: [["lf", "左前", "Left / front"], ["rf", "右前", "Right / front"], ["lr", "左右", "Left / right"], ["triple", "三开", "Three doors"], ["td", "侧门", "Side door"]] },
+  { key: "door", zh: "门型", en: "Doors", options: [["lf", "左前", "Left / front"], ["rf", "右前", "Right / front"], ["lr", "左右", "Left / right"], ["triple", "三开", "Three doors"]] },
   { key: "floor", zh: "楼层", en: "Floor", options: [["1", "一楼", "1F"], ["2", "二楼", "2F"], ["b1f", "地下室", "Basement"]] },
   { key: "display", zh: "显示", en: "Display", options: [["pure", "纯净", "Base map"], ["route", "速刷", "Route map"]] },
 ] as const;
@@ -46,6 +46,9 @@ export default function Journal({ language, settings, onSettingsChange }: {
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (settings.door === "td") onSettingsChange({ ...settings, door: "lf" });
+  }, [settings, onSettingsChange]);
   useEffect(() => {
     let active = true;
     journalApi.list().then((data) => { if (active) setLibrary(data); })
