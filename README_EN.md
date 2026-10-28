@@ -10,11 +10,11 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 
 Overview:
 
-![Overview](docs/images/overview.jpg)
+![Overview](docs/images/overview.png)
 
 Journal with a sample map pack:
 
-![Journal](docs/images/journal.jpg)
+![Journal](docs/images/journal.png)
 
 ## Features
 
@@ -143,6 +143,25 @@ Set-Location engine
 uv run python main.py
 ```
 
+## One-click Windows installer build
+
+Install Node/pnpm, Rust/MSVC Build Tools and uv, then double-click **`打包.bat`** in the repository root. Use the same file after updating the source. It installs project dependencies, builds the engine and UI, and opens the installer output folder. Errors remain visible if a build fails.
+
+Alternatively, run from the repository root:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm tauri build
+```
+
+Distribute the `*-setup.exe` in `src-tauri\target\release\bundle\nsis\`. Users can choose the installation drive and folder. The installation contains `identityv-assistant.exe` for the UI and an `engine/` directory with Python, native capture libraries, OCR models, templates and defaults. Startup reads these files directly without extracting them each time. **Distribute the installer, not the UI executable alone.**
+
+The native wizard provides Chinese/English selection, a welcome page, the GPL license, installation directory selection, progress and completion pages, Start Menu shortcuts and Windows uninstall integration. Updates use the standard installer upgrade flow.
+
+Python is not required on the recipient's computer. The installer downloads Microsoft Edge WebView2 Runtime if missing. Settings, logs, captures and imported maps stay in `%LOCALAPPDATA%\IdentityV-Assistant\`, separate from installed files and release artifacts. The first build downloads dependencies and takes longer.
+
+The build runs an offline frozen-engine check for native dependencies, templates and OCR models; it does not test live gameplay. `pnpm tauri dev` continues to use the Python development environment.
+
 ## Verification
 
 ```powershell
@@ -172,7 +191,6 @@ scripts/        Windows development helpers
 ## Planned Work
 
 * Calibrate screen recognition and input against live game sessions
-* Package the Python engine as a standalone executable
 * Verify gameplay and results recognition in a live game environment
 
 Process hooks, memory access, anti-cheat bypass, kernel input, and network protocol manipulation are outside this project's design.

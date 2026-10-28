@@ -10,11 +10,11 @@ Identity V Assistant 是 Windows 桌面端的《第五人格》外部视觉自�
 
 主界面：
 
-![主界面](docs/images/overview.jpg)
+![主界面](docs/images/overview.png)
 
 加页手记（示例地图包）：
 
-![加页手记](docs/images/journal.jpg)
+![加页手记](docs/images/journal.png)
 
 ## 功能
 
@@ -146,6 +146,25 @@ Set-Location engine
 uv run python main.py
 ```
 
+## 一键打包安装版（Windows）
+
+安装 Node/pnpm、Rust/MSVC Build Tools 和 uv 后，在仓库根目录双击 **`打包.bat`**。更新代码后仍用同一个文件，它会安装项目依赖、打包引擎和界面，并打开安装包输出目录；失败时保留错误信息。
+
+也可以在仓库根目录执行：
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm tauri build
+```
+
+安装包位于 `src-tauri\target\release\bundle\nsis\`，分发其中的 `*-setup.exe` 即可。安装时可以选择 C 盘或其他路径。安装目录中包含 UI 主程序 `identityv-assistant.exe` 和 `engine/` 引擎目录（Python、Windows 截图库、OCR 模型、识别模板和默认配置），启动时直接读取，无需每次解压。**不要单独复制 UI EXE，分发请使用安装包。**
+
+安装向导提供中英文选择、欢迎页、GPL 许可、安装位置选择、安装进度和完成页，并集成开始菜单快捷方式与 Windows 卸载入口。后续安装新版时沿用标准升级流程。
+
+用户不需要安装 Python。Microsoft Edge WebView2 Runtime 缺失时，安装程序会联网安装。配置、日志、截图和导入地图仍保存在 `%LOCALAPPDATA%\IdentityV-Assistant\`，不会混入程序安装目录或发布包。首次构建会下载依赖，因此比后续构建更慢。
+
+构建会自动运行冻结引擎的离线检查，验证原生依赖、模板和 OCR 模型；这不代表实际游戏对局验证。`pnpm tauri dev` 保留原来的 Python 开发流程。
+
 ## 验证方法
 
 ```powershell
@@ -176,7 +195,6 @@ engine/tests/fixtures/ Generated test images
 ## 后续计划
 
 - 在实际游戏中校准各阶段识别与输入参数
-- 将 Python 引擎打包为独立可执行文件
 - 在真实游戏环境中验证对局与结算识别
 
 项目不会加入进程内挂钩、内存读取、反作弊绕过、内核输入或网络协议操作。
