@@ -171,7 +171,7 @@ export default function Journal({ language, settings, onSettingsChange }: {
       </section>
     </div>
     {preview && createPortal(<div className="journal-full-preview" role="dialog" aria-modal="true" aria-label={zh ? `${selectedName}全窗口预览` : `${selectedName} full-window preview`}>
-      <img src={detailUrl} alt={selectedName} />
+      <img src={detailUrl} alt={selectedName} onLoad={({ currentTarget: image }) => image.style.setProperty("--map-aspect-ratio", String(image.naturalWidth / image.naturalHeight))} />
       <button ref={closeButton} type="button" className="journal-preview-close" aria-label={zh ? "退出全窗口预览" : "Exit full-window preview"} title={zh ? "退出预览（Esc）" : "Exit preview (Esc)"} onClick={() => setPreview(false)}>×</button>
     </div>, document.body)}
   </div>;
