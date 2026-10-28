@@ -183,6 +183,69 @@ def test_leaving_play_releases_all_keys() -> None:
     assert asyncio.run(scenario()) == [True]
 
 
+def test_hud_gap_keeps_surrender_fallback_and_results_reset_it() -> None:
+    async def scenario(task_class):
+        task = task_class()
+        elapsed = 0.0
+        result_at = 361.0
+        events = []
+
+        async def idle(*_args):
+            await asyncio.Event().wait()
+
+        async def sleep(_ctx, _control, seconds):
+            nonlocal elapsed
+            elapsed += seconds
+            await asyncio.sleep(0)
+
+        async def capture(*_args):
+            return object()
+
+        async def confirmed(_ctx, _control, _image, name):
+            if name == "result_first":
+                return elapsed >= result_at
+            return name == "playing" and not 298 <= elapsed <= 300
+
+        async def progress(_ctx, name):
+            events.append((name, elapsed))
+
+        async def key(_ctx, _control, name):
+            events.append((name, elapsed))
+
+        def unavailable(_image):
+            raise RuntimeError("OCR unavailable")
+
+        async def log(*_args):
+            pass
+
+        task._movement = task._combat = idle
+        task._sleep = sleep
+        task._capture = capture
+        task._confirmed = confirmed
+        task._progress = progress
+        task._key = key
+        task._log = log
+        task._displayed_seconds = unavailable
+        task._now = lambda _control: elapsed
+        ctx = SimpleNamespace(input=SimpleNamespace(release_all=lambda: None))
+
+        await task._play(ctx, None)
+        assert elapsed == 300
+        assert not events
+        await task._play(ctx, None)
+        assert ("surrendering", 360.0) in events
+        assert ("esc", 360.0) in events
+
+        # A new game must not inherit the elapsed time from the finished round.
+        elapsed, result_at = 1000.0, 1002.0
+        events.clear()
+        await task._play(ctx, None)
+        assert events == [("result_first", 1002.0)]
+
+    for task_class in (HunterMatchTask, HunterRankTask):
+        asyncio.run(scenario(task_class))
+
+
 def test_hunter_action_intervals_and_left_followed_by_e() -> None:
     class Done(Exception):
         pass

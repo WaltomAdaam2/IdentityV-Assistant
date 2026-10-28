@@ -59,6 +59,7 @@ class HunterMatchTask(BlackjackTask):
         self.loading_detector = BlackjackDetector()
         self.ocr = RapidOcrEngine()
         self._ocr_warning_logged = False
+        self._surrender_clock: SurrenderClock | None = None
 
     def _infinite(self, ctx: AutomationContext) -> bool:
         setting = "hunter_rank_infinite_loop" if self.ranked else "hunter_match_infinite_loop"
@@ -178,6 +179,8 @@ class HunterMatchTask(BlackjackTask):
                 await self._sleep(ctx, control, 0.25)
                 continue
             unknown_since = None
+            if stage in ("home", "ready_case", "ready_start", "result_first", "result_second", "return_lobby"):
+                self._surrender_clock = None
             if stage == "loading":
                 if loading_since is None:
                     loading_since = self._now(control)
@@ -272,7 +275,9 @@ class HunterMatchTask(BlackjackTask):
         return None
 
     async def _play(self, ctx: AutomationContext, control: TaskControl) -> None:
-        clock = SurrenderClock.start(self._now(control))
+        if self._surrender_clock is None:
+            self._surrender_clock = SurrenderClock.start(self._now(control))
+        clock = self._surrender_clock
         movement = asyncio.create_task(self._movement(ctx, control))
         actions = asyncio.create_task(self._combat(ctx, control))
         surrendering = False
@@ -287,6 +292,7 @@ class HunterMatchTask(BlackjackTask):
                 image = await self._capture(ctx, control)
                 for name in ("return_lobby", "result_second", "result_first"):
                     if await self._confirmed(ctx, control, image, name):
+                        self._surrender_clock = None
                         await self._progress(ctx, name)
                         return
                 if await self._confirmed(ctx, control, image, "loading"):
