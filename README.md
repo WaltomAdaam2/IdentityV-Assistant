@@ -81,7 +81,9 @@ window capture + Windows input
 
 “加页手记”支持按赛季、难度、门型、楼层和纯净／速刷筛选地图，并显示全部匹配的缩略图。筛选偏好保存在 `config.json` 的 `journal` 字段；切换地图筛选不会重载游戏引擎设置。当前不提供地图详情、自动识图或悬浮地图。
 
-通过“导入地图包”选择包含 `pack.json` 的文件夹，或将有效地图包放到下方 `journal\packs\<packId>\` 后刷新。导入只复制描述文件引用的 PNG/JPEG/WebP 图片，不覆盖同名包，不读取其他软件的安装或数据目录；暂不支持旧版 `manifest.json`。描述文件包含 `packId`、`packName`、`seasonId`、`difficulty`（`hard`/`nightmare`）和 `maps`；每张地图包含 `index`、`category`（`lf`/`rf`/`lr`/`triple`/`td`）、`floors` 和可选的 `display`。两种图片路径表按 `1`、`2`、`b1f` 楼层映射到包内相对路径，使用 `/` 分隔。`floors` 用于纯净图，`display` 用于速刷图。
+“导入文件夹”和“导入 ZIP”使用 Windows 原生文件对话框，支持系统目录导航、搜索和排序。优先使用根目录的 `pack.json`；根目录没有时，自动查找嵌套目录（最多 16 层）。找到多个包会提示选择更具体的文件夹，不会任意选一个。也可将有效地图包放到下方 `journal\packs\<packId>\` 后刷新。
+
+导入只复制描述文件引用的 PNG/JPEG/WebP 图片，不覆盖同名包，不修改源文件，不读取其他软件的安装或数据目录；暂不支持旧版 `manifest.json`。ZIP 会校验路径、链接、重复文件和解压大小。描述文件包含 `packId`、`packName`、`seasonId`、`difficulty`（`hard`/`nightmare`）和 `maps`；每张地图包含 `index`、`category`（`lf`/`rf`/`lr`/`triple`/`td`）、`floors` 和可选的 `display`。两种图片路径表按 `1`、`2`、`b1f` 楼层映射到包内相对路径，使用 `/` 分隔。`floors` 用于纯净图，`display` 用于速刷图。
 
 配置和运行数据保存在 `%LOCALAPPDATA%\IdentityV-Assistant\`：
 

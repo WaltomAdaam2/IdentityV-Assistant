@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod engine;
 mod journal;
+mod journal_dialog;
 mod logs;
 mod power;
 
@@ -56,7 +57,7 @@ pub fn run() {
             journal::journal_import_pack,
             journal::journal_read_image,
             journal::journal_open_directory,
-            journal::journal_choose_pack_folder,
+            journal_dialog::journal_choose_pack_source,
             commands::diagnostics::detect_window,
             commands::diagnostics::capture_frame,
             commands::diagnostics::test_template,

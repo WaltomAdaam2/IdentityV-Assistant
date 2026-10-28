@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     path::{Component, Path, PathBuf},
     sync::Mutex,
 };
@@ -11,6 +12,9 @@ use std::{
 static PACK_WRITE: Mutex<()> = Mutex::new(());
 const MAX_IMAGE: u64 = 20 * 1024 * 1024;
 const MAX_PACK: u64 = 512 * 1024 * 1024;
+const MAX_DESCRIPTOR: u64 = 2 * 1024 * 1024;
+const MAX_ENTRIES: usize = 20_000;
+const MAX_DEPTH: usize = 16;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JournalMap {
@@ -77,7 +81,7 @@ fn reject_link(path: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-fn inside(root: &Path, relative: &str) -> Result<PathBuf, String> {
+fn validate_relative(relative: &str) -> Result<(), String> {
     if relative.is_empty() || relative.contains(':') || relative.contains('\\') {
         return Err("地图路径必须是包内相对路径，使用 / 分隔".into());
     }
@@ -88,6 +92,28 @@ fn inside(root: &Path, relative: &str) -> Result<PathBuf, String> {
     {
         return Err("地图路径不能越出地图包".into());
     }
+    for part in relative.split('/') {
+        let stem = part.split('.').next().unwrap_or("").to_ascii_uppercase();
+        if part.is_empty()
+            || part == "."
+            || part == ".."
+            || part.ends_with(['.', ' '])
+            || part
+                .chars()
+                .any(|c| c.is_control() || "<>\"|?*".contains(c))
+            || ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
+            || (stem.len() == 4
+                && (stem.starts_with("COM") || stem.starts_with("LPT"))
+                && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+        {
+            return Err("地图路径包含不安全的文件名".into());
+        }
+    }
+    Ok(())
+}
+fn inside(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    validate_relative(relative)?;
+    let path = Path::new(relative);
     reject_link(root)?;
     let root = root.canonicalize().map_err(io)?;
     let mut target = root.clone();
@@ -127,11 +153,27 @@ fn image_file(root: &Path, path: &str) -> Result<(PathBuf, u64), String> {
 fn load_pack(root: &Path) -> Result<JournalPack, String> {
     let descriptor =
         inside(root, "pack.json").map_err(|error| format!("需要 pack.json 格式地图包：{error}"))?;
-    if fs::metadata(&descriptor).map_err(io)?.len() > 2 * 1024 * 1024 {
-        return Err("地图描述文件超过 2 MiB".into());
+    parse_pack(
+        &read_bounded(fs::File::open(descriptor).map_err(io)?, MAX_DESCRIPTOR)?,
+        |path| Ok(image_file(root, path)?.1),
+    )
+}
+fn read_bounded(reader: impl Read, limit: u64) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    reader.take(limit + 1).read_to_end(&mut bytes).map_err(io)?;
+    if bytes.len() as u64 > limit {
+        return Err("地图文件超过大小限制".into());
     }
-    let mut pack: JournalPack = serde_json::from_slice(&fs::read(descriptor).map_err(io)?)
-        .map_err(|e| format!("地图描述格式错误：{e}"))?;
+    Ok(bytes)
+}
+fn parse_pack(
+    bytes: &[u8],
+    mut image_size: impl FnMut(&str) -> Result<u64, String>,
+) -> Result<JournalPack, String> {
+    // Windows-exported descriptors commonly include a UTF-8 BOM.
+    let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
+    let mut pack: JournalPack =
+        serde_json::from_slice(bytes).map_err(|e| format!("地图描述格式错误：{e}"))?;
     if !valid_id(&pack.id) {
         return Err("packId 只能包含英文字母、数字、下划线和短横线".into());
     }
@@ -166,7 +208,13 @@ fn load_pack(root: &Path) -> Result<JournalPack, String> {
                     return Err(format!("不支持楼层 {floor}"));
                 }
                 if files.insert(path.clone()) {
-                    total += image_file(root, path)?.1;
+                    validate_relative(path)?;
+                    mime(Path::new(path))?;
+                    let size = image_size(path)?;
+                    if size == 0 || size > MAX_IMAGE {
+                        return Err(format!("地图图片必须是 20 MiB 以内的非空文件：{path}"));
+                    }
+                    total += size;
                     if total > MAX_PACK {
                         return Err("地图包图片总大小超过 512 MiB".into());
                     }
@@ -203,9 +251,43 @@ fn list(root: &Path) -> Result<JournalLibrary, String> {
     library.packs.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(library)
 }
-fn import(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
-    let _lock = PACK_WRITE.lock().map_err(|_| "地图包操作锁异常")?;
-    let pack = load_pack(source)?;
+fn find_pack_folder(source: &Path) -> Result<PathBuf, String> {
+    reject_link(source)?;
+    if source.join("pack.json").exists() {
+        return Ok(source.to_path_buf());
+    }
+    let mut stack = vec![(source.to_path_buf(), 0)];
+    let mut candidates = Vec::new();
+    let mut visited = 0;
+    while let Some((directory, depth)) = stack.pop() {
+        reject_link(&directory)?;
+        if directory.join("pack.json").exists() {
+            candidates.push(directory);
+            if candidates.len() > 1 {
+                return Err("找到多个地图包，请选择具体地图包文件夹".into());
+            }
+            continue;
+        }
+        for entry in fs::read_dir(directory).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            visited += 1;
+            if visited > MAX_ENTRIES {
+                return Err("地图目录条目超过 20000，请选择更具体的文件夹".into());
+            }
+            reject_link(&entry.path())?;
+            if entry.file_type().map_err(io)?.is_dir() {
+                if depth >= MAX_DEPTH {
+                    return Err("地图目录嵌套超过 16 层，请选择更具体的文件夹".into());
+                }
+                stack.push((entry.path(), depth + 1));
+            }
+        }
+    }
+    candidates
+        .pop()
+        .ok_or_else(|| "所选目录及子目录中没有 pack.json".into())
+}
+fn create_staging(root: &Path, pack: &JournalPack) -> Result<PathBuf, String> {
     fs::create_dir_all(root).map_err(io)?;
     reject_link(root)?;
     let destination = root.join(&pack.id);
@@ -217,25 +299,145 @@ fn import(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
     reject_link(&imports)?;
     let staging = imports.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&staging).map_err(io)?;
-    let files: BTreeSet<_> = pack
-        .maps
+    Ok(staging)
+}
+fn referenced_images(pack: &JournalPack) -> BTreeSet<&String> {
+    pack.maps
         .iter()
         .flat_map(|m| m.floors.values().chain(m.display.values()))
-        .collect();
-    for path in files {
-        let (source_image, _) = image_file(source, path)?;
-        let target = staging.join(path);
-        fs::create_dir_all(target.parent().ok_or("无效图片目录")?).map_err(io)?;
-        fs::copy(source_image, target).map_err(io)?;
-    }
+        .collect()
+}
+fn finish_import(
+    root: &Path,
+    staging: &Path,
+    pack: &JournalPack,
+) -> Result<JournalLibrary, String> {
     fs::write(
         staging.join("pack.json"),
         serde_json::to_vec_pretty(&pack).map_err(|e| e.to_string())?,
     )
     .map_err(io)?;
     load_pack(&staging)?;
-    fs::rename(staging, destination).map_err(io)?;
+    fs::rename(staging, root.join(&pack.id)).map_err(io)?;
     list(root)
+}
+fn import(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
+    let _lock = PACK_WRITE.lock().map_err(|_| "地图包操作锁异常")?;
+    reject_link(source)?;
+    if source.is_file() {
+        if source
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s.eq_ignore_ascii_case("zip"))
+        {
+            return import_zip(root, source);
+        }
+        return Err("请选择地图包文件夹或 ZIP 文件".into());
+    }
+    let source = find_pack_folder(source)?;
+    let pack = load_pack(&source)?;
+    let staging = create_staging(root, &pack)?;
+    let mut copied_bytes = 0u64;
+    for path in referenced_images(&pack) {
+        let (source_image, _) = image_file(&source, path)?;
+        let target = staging.join(path);
+        fs::create_dir_all(target.parent().ok_or("无效图片目录")?).map_err(io)?;
+        let bytes = read_bounded(fs::File::open(source_image).map_err(io)?, MAX_IMAGE)?;
+        copied_bytes += bytes.len() as u64;
+        if copied_bytes > MAX_PACK {
+            return Err("地图包图片总大小超过 512 MiB".into());
+        }
+        fs::write(target, bytes).map_err(io)?;
+    }
+    finish_import(root, &staging, &pack)
+}
+
+fn import_zip(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
+    if fs::metadata(source).map_err(io)?.len() > MAX_PACK {
+        return Err("ZIP 文件超过 512 MiB".into());
+    }
+    let mut archive = zip::ZipArchive::new(fs::File::open(source).map_err(io)?)
+        .map_err(|e| format!("无法读取 ZIP：{e}"))?;
+    if archive.len() > MAX_ENTRIES {
+        return Err("ZIP 条目超过 20000".into());
+    }
+    let mut entries = BTreeMap::new();
+    let mut seen = BTreeSet::new();
+    let mut descriptors = Vec::new();
+    let mut total = 0u64;
+    for index in 0..archive.len() {
+        let file = archive.by_index(index).map_err(|e| e.to_string())?;
+        let name = file.name().map_err(|e| e.to_string())?.into_owned();
+        let path = name.trim_end_matches('/');
+        validate_relative(path)?;
+        if path.split('/').count() > MAX_DEPTH + 1 {
+            return Err("ZIP 目录嵌套超过 16 层".into());
+        }
+        if !seen.insert(path.to_lowercase()) {
+            return Err("ZIP 包含重复或大小写冲突路径".into());
+        }
+        if file.is_symlink()
+            || file.unix_mode().is_some_and(|m| {
+                m & 0o170000 != 0 && ![0o100000, 0o040000].contains(&(m & 0o170000))
+            })
+        {
+            return Err("ZIP 不支持链接或特殊文件".into());
+        }
+        total = total.checked_add(file.size()).ok_or("ZIP 大小溢出")?;
+        if total > MAX_PACK || file.size() > MAX_IMAGE {
+            return Err("ZIP 解压大小超过限制".into());
+        }
+        if file.is_dir() {
+            continue;
+        }
+        if path == "pack.json" || path.ends_with("/pack.json") {
+            descriptors.push(name.clone());
+        }
+        entries.insert(name, (index, file.size()));
+    }
+    let descriptor = if descriptors.iter().any(|p| p == "pack.json") {
+        "pack.json".to_owned()
+    } else if descriptors.len() == 1 {
+        descriptors.pop().unwrap()
+    } else if descriptors.is_empty() {
+        return Err("ZIP 中没有 pack.json".into());
+    } else {
+        return Err("ZIP 中有多个地图包，请分别打包或选择具体地图包文件夹".into());
+    };
+    let prefix = descriptor.strip_suffix("pack.json").unwrap();
+    let (descriptor_index, size) = entries[&descriptor];
+    if size > MAX_DESCRIPTOR {
+        return Err("地图描述文件超过 2 MiB".into());
+    }
+    let bytes = read_bounded(
+        archive
+            .by_index(descriptor_index)
+            .map_err(|e| e.to_string())?,
+        MAX_DESCRIPTOR,
+    )?;
+    let pack = parse_pack(&bytes, |path| {
+        entries
+            .get(&format!("{prefix}{path}"))
+            .map(|(_, size)| *size)
+            .ok_or_else(|| format!("ZIP 缺少图片：{path}"))
+    })?;
+    let staging = create_staging(root, &pack)?;
+    let mut copied_bytes = 0u64;
+    for path in referenced_images(&pack) {
+        let (index, _) = entries[&format!("{prefix}{path}")];
+        let bytes = read_bounded(
+            archive.by_index(index).map_err(|e| e.to_string())?,
+            MAX_IMAGE,
+        )?;
+        copied_bytes += bytes.len() as u64;
+        if copied_bytes > MAX_PACK {
+            return Err("ZIP 实际解压大小超过 512 MiB".into());
+        }
+        let target = staging.join(path);
+        fs::create_dir_all(target.parent().ok_or("无效图片目录")?).map_err(io)?;
+        fs::write(target, bytes).map_err(io)?;
+    }
+    finish_import(root, &staging, &pack)
 }
 #[tauri::command]
 pub async fn journal_list_packs() -> Result<JournalLibrary, String> {
@@ -285,28 +487,27 @@ pub fn journal_open_directory() -> Result<String, String> {
     #[cfg(windows)]
     Ok(root.display().to_string())
 }
-#[tauri::command]
-pub async fn journal_choose_pack_folder() -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let result = std::process::Command::new("powershell.exe")
-                .args(["-NoProfile", "-STA", "-Command", "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $picker = New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description = '选择包含 pack.json 的地图包文件夹'; $picker.ShowNewFolderButton = $false; try { if ($picker.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($picker.SelectedPath) } } finally { $picker.Dispose() }"])
-                .creation_flags(0x08000000).output().map_err(io)?;
-            if !result.status.success() { return Err("无法打开文件夹选择器".into()); }
-            let path = String::from_utf8(result.stdout).map_err(|e| e.to_string())?;
-            let path = path.trim_start_matches('\u{feff}').trim().to_string();
-            Ok(if path.is_empty() { None } else { Some(path) })
-        }
-        #[cfg(not(windows))]
-        Err("仅 Windows 支持目录选择器".into())
-    }).await.map_err(|e| e.to_string())?
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    fn zip_fixture(path: &Path, prefix: &str, extra: Option<&str>) {
+        let source = tempfile::tempdir().unwrap();
+        fixture(source.path());
+        let mut zip = zip::ZipWriter::new(fs::File::create(path).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        for name in ["pack.json", "map.png"] {
+            zip.start_file(format!("{prefix}{name}"), options).unwrap();
+            zip.write_all(&fs::read(source.path().join(name)).unwrap())
+                .unwrap();
+        }
+        if let Some(extra) = extra {
+            zip.start_file(extra, options).unwrap();
+            zip.write_all(b"unrelated").unwrap();
+        }
+        zip.finish().unwrap();
+    }
     fn fixture(root: &Path) {
         fs::create_dir_all(root).unwrap();
         fs::write(root.join("map.png"), b"png fixture").unwrap();
@@ -346,5 +547,117 @@ mod tests {
         )
         .unwrap();
         assert!(load_pack(dir.path()).is_err());
+    }
+    #[test]
+    fn discovers_nested_folder_and_rejects_ambiguity() {
+        let source = tempfile::tempdir().unwrap();
+        fixture(&source.path().join("one/two/three/four"));
+        let descriptor = source.path().join("one/two/three/four/pack.json");
+        let mut bom_json = vec![0xef, 0xbb, 0xbf];
+        bom_json.extend(fs::read(&descriptor).unwrap());
+        fs::write(descriptor, bom_json).unwrap();
+        assert_eq!(
+            find_pack_folder(source.path()).unwrap(),
+            source.path().join("one/two/three/four")
+        );
+        let destination = tempfile::tempdir().unwrap();
+        assert_eq!(
+            import(&destination.path().join("packs"), source.path())
+                .unwrap()
+                .packs
+                .len(),
+            1
+        );
+        fixture(&source.path().join("second"));
+        assert!(find_pack_folder(source.path())
+            .unwrap_err()
+            .contains("多个"));
+        fixture(source.path());
+        assert_eq!(find_pack_folder(source.path()).unwrap(), source.path());
+    }
+    #[test]
+    fn imports_zip_root_and_nested_without_unrelated_files() {
+        for prefix in ["", "outer/inner/third/"] {
+            let dir = tempfile::tempdir().unwrap();
+            let archive = dir.path().join("sample.zip");
+            zip_fixture(&archive, prefix, Some("unrelated.txt"));
+            let root = dir.path().join("packs");
+            assert_eq!(import(&root, &archive).unwrap().packs.len(), 1);
+            assert!(root.join("test_pack/map.png").is_file());
+            assert!(!root.join("test_pack/unrelated.txt").exists());
+            assert!(import(&root, &archive).unwrap_err().contains("已经存在"));
+        }
+    }
+    #[test]
+    fn rejects_zip_traversal_ambiguity_and_resource_limits() {
+        let dir = tempfile::tempdir().unwrap();
+        for extra in [
+            "../escape.png",
+            "/absolute.png",
+            "C:/absolute.png",
+            "nested/../../escape.png",
+        ] {
+            let archive = dir.path().join("unsafe.zip");
+            zip_fixture(&archive, "nested/", Some(extra));
+            assert!(
+                import(&dir.path().join("packs"), &archive).is_err(),
+                "{extra}"
+            );
+        }
+        let ambiguous = dir.path().join("ambiguous.zip");
+        zip_fixture(&ambiguous, "one/", Some("two/pack.json"));
+        assert!(import(&dir.path().join("packs"), &ambiguous)
+            .unwrap_err()
+            .contains("多个"));
+        assert!(read_bounded(&b"12345"[..], 4).is_err());
+        let oversized = dir.path().join("oversized.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&oversized).unwrap());
+        zip.start_file(
+            "huge.png",
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated),
+        )
+        .unwrap();
+        let chunk = [0u8; 1024];
+        for _ in 0..(MAX_IMAGE / 1024 + 1) {
+            zip.write_all(&chunk).unwrap();
+        }
+        zip.finish().unwrap();
+        assert!(import(&dir.path().join("packs"), &oversized)
+            .unwrap_err()
+            .contains("限制"));
+    }
+    #[test]
+    fn rejects_malformed_descriptor_and_deep_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("pack.json"), b"not json").unwrap();
+        assert!(load_pack(dir.path()).unwrap_err().contains("格式错误"));
+        let nested = tempfile::tempdir().unwrap();
+        let mut leaf = nested.path().to_path_buf();
+        for _ in 0..MAX_DEPTH + 2 {
+            leaf.push("level");
+        }
+        fs::create_dir_all(leaf).unwrap();
+        assert!(find_pack_folder(nested.path()).unwrap_err().contains("16"));
+    }
+    #[test]
+    #[ignore = "Set JOURNAL_SAMPLE_ROOT to the folder containing the five user-supplied samples"]
+    fn import_user_samples_to_temporary_storage() {
+        let source =
+            PathBuf::from(std::env::var_os("JOURNAL_SAMPLE_ROOT").expect("JOURNAL_SAMPLE_ROOT"));
+        for name in [
+            "s0_hard_president",
+            "s0_hard_speedrun",
+            "s0_nightmare_speedrun",
+            "s0_nightmare_speedrun.zip",
+            "s0_nightmare_maps.zip",
+        ] {
+            let destination = tempfile::tempdir().unwrap();
+            let library = import(&destination.path().join("packs"), &source.join(name))
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(library.packs.len(), 1);
+            assert!(library.errors.is_empty());
+            println!("{name}: {} maps", library.packs[0].maps.len());
+        }
     }
 }

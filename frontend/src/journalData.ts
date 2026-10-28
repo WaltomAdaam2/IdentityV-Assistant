@@ -35,7 +35,7 @@ export function matchingMaps(packs: JournalPack[], filters: JournalSettings): Br
 }
 export const journalApi = {
   list: () => invoke<JournalLibrary>("journal_list_packs"),
-  choose: () => invoke<string | null>("journal_choose_pack_folder"),
+  choose: (kind: "folder" | "zip") => invoke<string | null>("journal_choose_pack_source", { kind }),
   import: (sourcePath: string) => invoke<JournalLibrary>("journal_import_pack", { sourcePath }),
   image: (image: MapImage) => invoke<string>("journal_read_image", { packId: image.packId, path: image.path }),
   openDirectory: () => invoke<void>("journal_open_directory"),

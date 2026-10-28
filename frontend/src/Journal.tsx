@@ -69,13 +69,13 @@ export default function Journal({ language, settings, onSettingsChange }: {
     setBusy(true); setError(""); setMessage("");
     try { setLibrary(await journalApi.list()); } catch (reason) { setError(String(reason)); } finally { setBusy(false); }
   }
-  async function importPack() {
-    setBusy(true); setError(""); setMessage(zh ? "请选择地图包文件夹…" : "Choose a map pack folder…");
+  async function importPack(kind: "folder" | "zip") {
+    setBusy(true); setError(""); setMessage(zh ? "请选择地图包…" : "Choose a map pack…");
     try {
-      const folder = await journalApi.choose();
-      if (!folder) { setMessage(""); return; }
+      const source = await journalApi.choose(kind);
+      if (!source) { setMessage(""); return; }
       setMessage(zh ? "正在导入地图包…" : "Importing map pack…");
-      setLibrary(await journalApi.import(folder));
+      setLibrary(await journalApi.import(source));
       setMessage(zh ? "地图包导入成功，请选择对应赛季、难度和门型。" : "Map pack imported. Select its season, difficulty and doors.");
     } catch (reason) { setMessage(""); setError(String(reason)); } finally { setBusy(false); }
   }
@@ -98,7 +98,8 @@ export default function Journal({ language, settings, onSettingsChange }: {
             <div className="journal-options">{group.options.filter(([value]) => !(group.key === "floor" && value === "b1f" && settings.difficulty === "hard")).map(([value, chinese, english]) => <button type="button" key={value} aria-pressed={settings[group.key] === value} className={settings[group.key] === value ? "primary" : ""} onClick={() => change({ [group.key]: value })}>{zh ? chinese : english}</button>)}</div>
           </fieldset>)}
           <div className="journal-options journal-tools">
-            <button type="button" disabled={busy} onClick={() => void importPack()}>{zh ? "导入地图包" : "Import map pack"}</button>
+            <button type="button" disabled={busy} onClick={() => void importPack("folder")}>{zh ? "导入文件夹" : "Import folder"}</button>
+            <button type="button" disabled={busy} onClick={() => void importPack("zip")}>{zh ? "导入 ZIP" : "Import ZIP"}</button>
             <button type="button" disabled={busy} onClick={() => void reload()}>{zh ? "刷新地图" : "Refresh maps"}</button>
             <button type="button" onClick={() => { void journalApi.openDirectory().catch((reason) => setError(String(reason))); }}>{zh ? "打开地图目录" : "Open map folder"}</button>
           </div>

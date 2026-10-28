@@ -79,7 +79,9 @@ Prevent display sleep and idle lock keeps the display on and periodically sends 
 
 Journal filters maps by season, difficulty, door type, floor, and base/route display, showing every matching thumbnail. Filters are saved under `journal` in `config.json`; changing them does not reload game engine settings. Map details, automatic recognition, and game overlays are not included.
 
-Use Import map pack to choose a folder containing `pack.json`, or place a valid pack in `journal\packs\<packId>\` and refresh. Import copies only referenced PNG/JPEG/WebP images, rejects duplicate IDs, and never reads another application's data directory. Legacy `manifest.json` packs are not supported. The descriptor contains `packId`, `packName`, `seasonId`, `difficulty` (`hard`/`nightmare`), and `maps`. Each map has `index`, `category` (`lf`/`rf`/`lr`/`triple`/`td`), `floors`, and optional `display`. Both image tables map floor keys `1`, `2`, `b1f` to package-relative paths using `/`: `floors` supplies base maps and `display` supplies route maps.
+Import folder and Import ZIP use native Windows file dialogs with system navigation, search, and sorting. A root `pack.json` takes priority; otherwise nested directories are searched up to 16 levels. Multiple packs require a more specific source instead of an arbitrary selection. You can also place a valid pack in `journal\packs\<packId>\` and refresh.
+
+Import copies only referenced PNG/JPEG/WebP images, rejects duplicate IDs, preserves source files, and never reads another application's data directory. ZIP paths, links, duplicate entries, and expanded sizes are checked. Legacy `manifest.json` packs are not supported. The descriptor contains `packId`, `packName`, `seasonId`, `difficulty` (`hard`/`nightmare`), and `maps`. Each map has `index`, `category` (`lf`/`rf`/`lr`/`triple`/`td`), `floors`, and optional `display`. Both image tables map floor keys `1`, `2`, `b1f` to package-relative paths using `/`: `floors` supplies base maps and `display` supplies route maps.
 
 Settings and runtime data are stored under `%LOCALAPPDATA%\IdentityV-Assistant\`:
 
