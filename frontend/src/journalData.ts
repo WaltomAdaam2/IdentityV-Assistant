@@ -35,8 +35,19 @@ export function matchingMaps(packs: JournalPack[], filters: JournalSettings): Br
 }
 export const journalApi = {
   list: () => invoke<JournalLibrary>("journal_list_packs"),
-  choose: (kind: "folder" | "zip") => invoke<string | null>("journal_choose_pack_source", { kind }),
+  choose: () => invoke<string[] | null>("journal_choose_pack_source"),
   import: (sourcePath: string) => invoke<JournalLibrary>("journal_import_pack", { sourcePath }),
   image: (image: MapImage) => invoke<string>("journal_read_image", { packId: image.packId, path: image.path }),
   openDirectory: () => invoke<void>("journal_open_directory"),
 };
+
+export async function importJournalPacks(sources: string[], importPack = journalApi.import) {
+  let library: JournalLibrary | null = null;
+  let imported = 0;
+  const errors: string[] = [];
+  for (const source of new Set(sources)) {
+    try { library = await importPack(source); imported++; }
+    catch (reason) { errors.push(`${source}: ${String(reason)}`); }
+  }
+  return { library, imported, errors };
+}
