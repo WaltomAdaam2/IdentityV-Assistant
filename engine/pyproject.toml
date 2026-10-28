@@ -16,6 +16,7 @@ dependencies = [
 windows = ["dxcam>=0.0.5", "pywin32>=306", "windows-capture>=2.0.1"]
 ocr = ["rapidocr-onnxruntime>=1.4"]
 dev = ["pytest>=8.0"]
+build = ["pyinstaller>=6.16,<7"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

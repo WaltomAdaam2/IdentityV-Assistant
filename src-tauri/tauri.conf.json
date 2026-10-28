@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm --dir frontend dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm --dir frontend build",
+    "beforeBuildCommand": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_release.ps1",
     "frontendDist": "../frontend/dist"
   },
   "app": {
@@ -27,7 +27,25 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Identity V Assistant contributors",
+    "homepage": "https://github.com/WaltomAdaam2/IdentityV-Assistant",
+    "licenseFile": "../LICENSE",
+    "shortDescription": "第五人格助手与加页手记地图浏览",
+    "icon": ["icons/icon.ico"],
+    "resources": {
+      "../engine/dist/identityv-engine/": "engine/"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "startMenuFolder": "Identity V Assistant"
+      }
+    }
   }
 }

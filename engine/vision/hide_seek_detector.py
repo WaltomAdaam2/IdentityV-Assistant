@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
+from core.resources import read_template, resource_root
 
 from vision.blackjack_detector import BlackjackDetector, Detection, ScreenMark
 
 
-ROOT = Path(__file__).resolve().parents[2] / "assets" / "templates" / "hide_seek"
+ROOT = resource_root() / "assets" / "templates" / "hide_seek"
 
 
 MARKS = {
@@ -37,10 +37,8 @@ class HideSeekDetector:
         self._templates: dict[str, Any] = {}
 
     def _template(self, name: str) -> Any:
-        import cv2
-
         if name not in self._templates:
-            template = cv2.imread(str(ROOT / f"{name}.png"), cv2.IMREAD_GRAYSCALE)
+            template = read_template(ROOT / f"{name}.png")
             if template is None:
                 raise FileNotFoundError(ROOT / f"{name}.png")
             self._templates[name] = template

@@ -14,6 +14,7 @@ from config.loader import parse_config
 from config.schema import EngineConfig
 from core.enums import EngineStatus, ErrorCode, TaskFinishReason
 from core.models import CoordinateSpace, Point, Rect
+from core.resources import resource_root
 from input.controller import InputController
 from input.windows_sendinput import WindowsClientInput
 from ipc.messages import ENGINE_VERSION, event
@@ -399,7 +400,7 @@ class AutomationEngine:
         if not isinstance(template_value, str) or not template_value:
             await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="A template path is required", recoverable=True, details={}, request_id=request_id)
             return
-        template_root = Path(__file__).resolve().parents[2] / "assets" / "templates"
+        template_root = resource_root() / "assets" / "templates"
         template_path = (template_root / template_value).resolve()
         if not template_path.is_relative_to(template_root.resolve()) or not template_path.is_file():
             await self.emit("error", code=ErrorCode.TEMPLATE_NOT_FOUND.value, message="Template must be an existing file under assets/templates", recoverable=True, details={"template": template_value}, request_id=request_id)

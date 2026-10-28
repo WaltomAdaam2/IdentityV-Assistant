@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
+from core.resources import read_template, resource_root
 
 
 REFERENCE_SIZE = (1920, 1080)
-TEMPLATE_ROOT = Path(__file__).resolve().parents[2] / "assets" / "templates" / "blackjack"
+TEMPLATE_ROOT = resource_root() / "assets" / "templates" / "blackjack"
 
 
 @dataclass(frozen=True)
@@ -57,10 +57,8 @@ class BlackjackDetector:
         return cv2.resize(image, REFERENCE_SIZE, interpolation=cv2.INTER_AREA)
 
     def _template(self, name: str) -> Any:
-        import cv2
-
         if name not in self._templates:
-            image = cv2.imread(str(TEMPLATE_ROOT / f"{name}.png"), cv2.IMREAD_GRAYSCALE)
+            image = read_template(TEMPLATE_ROOT / f"{name}.png")
             if image is None:
                 raise FileNotFoundError(f"Missing blackjack template: {name}")
             self._templates[name] = image

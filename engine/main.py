@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.engine import AutomationEngine
 from config.loader import load_config
+from core.resources import resource_root
 
 
 def parse_args() -> argparse.Namespace:
@@ -15,13 +16,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "config" / "default.json",
+        default=resource_root() / "config" / "default.json",
     )
+    parser.add_argument("--self-test", action="store_true", help="Check packaged dependencies without touching the game")
     return parser.parse_args()
 
 
 async def run() -> int:
     args = parse_args()
+    if args.self_test:
+        from core.package_check import check_package
+        check_package()
+        return 0
     try:
         config = load_config(args.config)
     except ValueError as error:

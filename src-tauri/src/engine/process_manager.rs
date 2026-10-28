@@ -8,7 +8,7 @@ use std::{
 use chrono::Utc;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
@@ -115,14 +115,19 @@ impl EngineSupervisor {
             state.process_generation
         };
 
-        let engine_path = match locate_engine() {
+        let engine_path = match app
+            .path()
+            .resource_dir()
+            .map_err(|error| error.to_string())
+            .and_then(|root| locate_engine(&root))
+        {
             Ok(path) => path,
             Err(error) => {
                 self.fail_start(&error).await;
                 return Err(error);
             }
         };
-        let python = locate_python(&engine_path);
+        let mut command = engine_command(&engine_path);
         let config_path = match crate::config::active_path() {
             Ok(path) => path,
             Err(error) => {
@@ -130,8 +135,7 @@ impl EngineSupervisor {
                 return Err(error);
             }
         };
-        let mut child = match Command::new(&python)
-            .arg(&engine_path)
+        let mut child = match command
             .arg("--config")
             .arg(config_path)
             .current_dir(engine_path.parent().unwrap_or_else(|| Path::new(".")))
@@ -144,10 +148,7 @@ impl EngineSupervisor {
         {
             Ok(child) => child,
             Err(error) => {
-                let message = format!(
-                    "Unable to start Python engine with {}: {error}",
-                    python.display()
-                );
+                let message = format!("Unable to start engine {}: {error}", engine_path.display());
                 self.fail_start(&message).await;
                 return Err(message);
             }
@@ -711,7 +712,7 @@ fn task_queue_from_command(command: &Value) -> Option<Vec<String>> {
     }
 }
 
-fn locate_engine() -> Result<PathBuf, String> {
+fn locate_engine(resource_directory: &Path) -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("IDENTITYV_ENGINE_PATH") {
         let path = PathBuf::from(path);
         if path.is_file() {
@@ -723,6 +724,9 @@ fn locate_engine() -> Result<PathBuf, String> {
         ));
     }
 
+    if !cfg!(dev) {
+        return installed_engine_path(resource_directory);
+    }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     let candidates = [
         cwd.join("engine/main.py"),
@@ -748,6 +752,36 @@ fn locate_python(engine_path: &Path) -> PathBuf {
     PathBuf::from("python")
 }
 
+fn installed_engine_path(resource_directory: &Path) -> Result<PathBuf, String> {
+    let path = resource_directory
+        .join("engine")
+        .join("identityv-engine.exe");
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "Installed engine is missing: {}. Please reinstall the application.",
+            path.display()
+        ))
+    }
+}
+
+fn engine_command(engine_path: &Path) -> Command {
+    let mut command = if engine_path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+    {
+        Command::new(engine_path)
+    } else {
+        let mut python = Command::new(locate_python(engine_path));
+        python.arg(engine_path);
+        python
+    };
+    #[cfg(windows)]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW; keep piped NDJSON handles.
+    command
+}
+
 fn protocol_error(code: &str, message: &str) -> Value {
     json!({
         "version": 1,
@@ -762,8 +796,36 @@ fn protocol_error(code: &str, message: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{task_queue_from_command, EngineProcess, EngineSupervisor};
+    use super::{
+        engine_command, installed_engine_path, task_queue_from_command, EngineProcess,
+        EngineSupervisor,
+    };
     use serde_json::json;
+
+    #[test]
+    fn installed_engine_uses_installation_path_and_launches_directly() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(installed_engine_path(root.path()).is_err());
+        let folder = root.path().join("engine");
+        std::fs::create_dir(&folder).unwrap();
+        let executable = folder.join("identityv-engine.exe");
+        std::fs::write(&executable, b"fixture").unwrap();
+        let found = installed_engine_path(root.path()).unwrap();
+        let command = engine_command(&found);
+        assert_eq!(command.as_std().get_program(), executable.as_os_str());
+        assert_eq!(command.as_std().get_args().count(), 0);
+    }
+
+    #[test]
+    fn development_engine_still_passes_script_to_python() {
+        let root = tempfile::tempdir().unwrap();
+        let script = root.path().join("main.py");
+        let command = engine_command(&script);
+        assert_eq!(
+            command.as_std().get_args().collect::<Vec<_>>(),
+            [script.as_os_str()]
+        );
+    }
 
     #[test]
     fn extracts_single_task_for_crash_recovery() {
