@@ -6,6 +6,16 @@ Identity V Assistant 是 Windows 桌面端的《第五人格》外部视觉自�
 
 > 当前为 **0.1.0 开发版本**。黑杰克、自动监管者匹配、自动监管者排位和捉迷藏已通过提供的截图与逻辑检查；按约定未进行实际游戏对局验证。
 
+## 界面预览
+
+主界面：
+
+![主界面](docs/images/overview.jpg)
+
+加页手记（示例地图包）：
+
+![加页手记](docs/images/journal.jpg)
+
 ## 功能
 
 - React + TypeScript 中英文桌面界面，默认中文
@@ -73,7 +83,7 @@ window capture + Windows input
 
 菜单鼠标移动和视角转动采用平滑加减速；登录点击后鼠标停留在点击位置，避免瞬间跳回。
 
-关闭引擎会先取消任务、释放输入并恢复窗口；监督层最多等待 10 秒供清理完成。普通日志显示中文任务阶段，窗口响应探测等诊断信息可通过“显示详细调试日志”查看。日志批量刷新，任务状态变化不会反复保存配置；窗口查找缓存常规探测，同时实时检查句柄、前台状态和位置。任务、进度和编辑器使用短过渡动画，并支持系统的减少动态效果偏好。
+关闭引擎会先取消任务、释放输入并恢复窗口；监督层最多等待 10 秒供清理完成。普通日志显示中文任务阶段，窗口响应探测等诊断信息可通过“显示详细调试日志”查看。日志批量刷新，任务状态变化不会反复保存配置；窗口查找缓存常规探测，同时实时检查句柄、前台状态和位置。页面切换、导航指示条、卡片、任务编辑器和地图预览提供进出场动画，支持系统的减少动态效果偏好；日志列表不逐行播放动画。启动时开启引擎的设置在下次应用启动时执行一次。“关于”页根据可用空间整体缩放，无需上下滚动；GitHub 链接通过 Windows 默认浏览器打开。
 
 “禁止自动熄屏和闲置锁屏”在应用开启期间维持屏幕亮起，并定期发送 F15 键以刷新 Windows 闲置计时；关闭开关或退出应用即停止。手动按 Win+L 仍会锁屏，设备管理策略也可能强制锁屏。Windows 的[电源请求](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest)本身只阻止屏幕因闲置熄灭；[自动锁屏策略](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/interactive-logon-machine-inactivity-limit)按用户输入闲置时间执行。
 
@@ -173,4 +183,4 @@ engine/tests/fixtures/ Generated test images
 
 ## 许可证
 
-本项目的组合分发采用 [GNU Affero General Public License v3.0 or later](LICENSE)（`AGPL-3.0-or-later`）。`engine/window/windows.py` 中与游戏窗口框架、置顶、尺寸和恢复相关的部分改编自 AhabAssistantLimbusCompany；来源、修订和版权说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。分发修改版本时必须依照该许可证提供对应源代码并保留许可证与版权声明。
+本项目采用 [GNU General Public License v3.0 only](LICENSE)（`GPL-3.0-only`）。窗口布局由本项目的独立 Win32 实现负责；第三方依赖和用户导入地图包保留各自的许可证与权利声明。

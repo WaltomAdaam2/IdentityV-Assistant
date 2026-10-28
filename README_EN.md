@@ -6,6 +6,16 @@ Identity V Assistant is a Windows desktop visual automation assistant for Identi
 
 > This is a **0.1.0 development version**. Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek have passed the supplied screenshot and logic checks. As requested, no live game match was run.
 
+## Interface preview
+
+Overview:
+
+![Overview](docs/images/overview.jpg)
+
+Journal with a sample map pack:
+
+![Journal](docs/images/journal.jpg)
+
 ## Features
 
 * React and TypeScript desktop interface in Chinese and English, with Chinese as the default
@@ -71,7 +81,7 @@ The left sidebar shows the current stage, role, and completed cycle count. Indef
 
 Hunter match and rank randomly move, turn the camera, and use F, R, T, Space, Q, E, and both mouse buttons. Both Blackjack roles include Space, Q, and E. Hide and Seek starts WASD and random camera turns together on the confirmed living HUD, targeting 60.1–199.9° with the configured scale; actual angles depend on game sensitivity. F retries every 1–3 seconds while both loops continue until V-ready or fixed is recognized. At V-ready, V retries every 5–8 seconds until fixing succeeds. If V subsequently disappears while the living HUD is confirmed, the WASD loop continues while F, T, G start immediately with 0.3–0.7-second gaps, then Alt+1 repeats every 7–13 seconds until leaving play. The shortcut holds physical left Alt before pressing top-row 1, then releases 1 followed by Alt. Menu and camera movement ease in and out; login clicks leave the cursor at the clicked position instead of snapping it back.
 
-Engine shutdown cancels tasks, releases inputs, and restores the game window; the supervisor allows up to 10 seconds for cleanup. Normal logs show readable task stages; routine window diagnostics appear only with detailed logs enabled. Log updates are batched, runtime state changes no longer repeatedly save settings, and cached window discovery still checks current handle validity, focus, and geometry. Short task, progress, and editor transitions respect reduced-motion preferences.
+Engine shutdown cancels tasks, releases inputs, and restores the game window; the supervisor allows up to 10 seconds for cleanup. Normal logs show readable task stages; routine window diagnostics appear only with detailed logs enabled. Log updates are batched, runtime state changes no longer repeatedly save settings, and cached window discovery still checks current handle validity, focus, and geometry. Page changes, the navigation indicator, cards, task editors, and map previews use entrance and exit motion while respecting reduced-motion preferences; log rows do not animate individually. Launch engine on startup runs once at the next application launch. About scales its content to the available space without vertical scrolling, and its GitHub link opens in the Windows default browser.
 
 Prevent display sleep and idle lock keeps the display on and periodically sends F15 to refresh Windows' user-idle timer while the app is open. Turning the option off or closing the app stops this. Manual Win+L still locks the session, and device management policy can enforce a lock. A Windows [power request](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest) only keeps the display on; [idle-lock policy](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/interactive-logon-machine-inactivity-limit) follows user-input inactivity.
 
@@ -169,4 +179,4 @@ Process hooks, memory access, anti-cheat bypass, kernel input, and network proto
 
 ## License
 
-The combined distribution is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (`AGPL-3.0-or-later`). The game-window frame, topmost, sizing, and restoration portions of `engine/window/windows.py` are adapted from AhabAssistantLimbusCompany. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the source, revision, and copyright notice. Modified distributions must provide the corresponding source and preserve the license and copyright notices as required by the license.
+This project is licensed under the [GNU General Public License v3.0 only](LICENSE) (`GPL-3.0-only`). Window layout uses this project's independent Win32 implementation. Third-party dependencies and imported map packs retain their own licenses and rights notices.
