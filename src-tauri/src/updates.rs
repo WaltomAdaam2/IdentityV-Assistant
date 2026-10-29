@@ -126,6 +126,16 @@ fn newest_release(
         .max()
 }
 
+fn release_client() -> Result<reqwest::Client, reqwest::Error> {
+    // Preview metadata is fetched before the updater plugin initializes TLS.
+    // Reuse its ring provider; a concurrent installation is harmless.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    reqwest::Client::builder()
+        .user_agent("Desktop-Updater")
+        .timeout(Duration::from_secs(25))
+        .build()
+}
+
 async fn preview_version(
     source: &str,
     current: &semver::Version,
@@ -135,11 +145,7 @@ async fn preview_version(
         "https://api.github.com/repos/WaltomAdaam2/desktop-releases/releases?per_page=100",
         source,
     )?;
-    let client = reqwest::Client::builder()
-        .user_agent("Desktop-Updater")
-        .timeout(Duration::from_secs(25))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = release_client().map_err(|e| e.to_string())?;
     let mut response = client
         .get(url)
         .header("Accept", "application/vnd.github+json")
@@ -423,6 +429,24 @@ pub async fn install_update(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn preview_client_initializes_tls_before_any_updater_check() {
+        // Run this test alone too: other updater tests can initialize the provider.
+        assert!(release_client().is_ok());
+        assert!(release_client().is_ok());
+    }
+
+    #[test]
+    #[ignore = "Fetches public release metadata over HTTPS"]
+    fn preview_metadata_works_before_stable_check() {
+        tauri::async_runtime::block_on(async {
+            assert!(preview_version("direct", &semver::Version::new(0, 0, 0))
+                .await
+                .unwrap()
+                .is_some());
+        });
+    }
 
     #[test]
     fn preview_selection_obeys_semver_channel_and_publication() {

@@ -1521,6 +1521,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "reqwest",
+ "rustls",
  "semver",
  "serde",
  "serde_json",

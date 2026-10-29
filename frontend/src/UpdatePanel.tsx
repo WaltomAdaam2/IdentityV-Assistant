@@ -54,16 +54,22 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
   const source = settings.app.update_source;
   const busy = pending || ["checking", "downloading", "verifying", "installing"].includes(status.phase);
 
-  const run = useCallback(async (action: () => Promise<unknown>) => {
+  const run = useCallback(async (action: () => Promise<unknown>, checking = false) => {
     if (requestPending.current || !isTauri()) return;
     requestPending.current = true; setPending(true);
+    let timer: number | undefined;
     try {
-      await action();
-      const next = await bridge.getUpdateStatus();
+      const operation = action().then(() => bridge.getUpdateStatus());
+      const next = checking ? await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = window.setTimeout(() => reject(new Error("更新检查超时，请重试或更换更新源。 / Update check timed out.")), 60_000);
+        }),
+      ]) : await operation;
       if (mounted.current) setStatus(next);
     } catch (error) {
       if (mounted.current) setStatus((previous) => ({ ...previous, phase: "error", error: String(error) }));
-    } finally { requestPending.current = false; if (mounted.current) setPending(false); }
+    } finally { window.clearTimeout(timer); requestPending.current = false; if (mounted.current) setPending(false); }
   }, []);
 
   useEffect(() => {
@@ -78,7 +84,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
       const next = await bridge.getUpdateStatus();
       if (!disposed) {
         setStatus(next); setListening(true);
-        if (connectionAttempt > 0 && promptCheck.current === "manual") void run(() => bridge.checkUpdate(source, settings.app.update_prereleases));
+        if (connectionAttempt > 0 && promptCheck.current === "manual") void run(() => bridge.checkUpdate(source, settings.app.update_prereleases), true);
       }
     }).catch((error) => {
       if (!disposed) {
@@ -94,7 +100,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
     startupHandled.current = true;
     promptCheck.current = "startup";
     setCheckedPrereleases(settings.app.update_prereleases);
-    void run(() => bridge.checkUpdate(source, settings.app.update_prereleases));
+    void run(() => bridge.checkUpdate(source, settings.app.update_prereleases), true);
   }, [loaded, desktop, listening, source, settings.app.update_prereleases, run]);
 
   useEffect(() => {
@@ -122,7 +128,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
     setCheckedPrereleases(settings.app.update_prereleases);
     setStatus((previous) => ({ ...previous, phase: "checking", info: null, error: null, source }));
     if (connectionFailed) { setConnectionAttempt((attempt) => attempt + 1); return; }
-    void run(() => bridge.checkUpdate(source, settings.app.update_prereleases));
+    void run(() => bridge.checkUpdate(source, settings.app.update_prereleases), true);
   };
   const progress = status.total && status.total > 0 ? Math.min(100, status.downloaded / status.total * 100) : undefined;
   const modal = showPrompt ? createPortal(<dialog ref={dialog} className={`update-dialog${status.info ? " has-release" : ""}`} aria-labelledby="update-dialog-title" onCancel={(event) => { event.preventDefault(); closePrompt(); }}>
