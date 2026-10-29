@@ -1485,13 +1485,13 @@ export default function App() {
               <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
               <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
             </div>}
-            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.2`}>
+            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.3`}>
               <span className={`local-status-dot ${engineState(snapshot)}`} />
               <span className="local-status-copy">
                 <strong>{t.localConsole}</strong>
                 <small>{t.localOnly}</small>
               </span>
-              <b>v0.1.2</b>
+              <b>v0.1.3</b>
             </div>
           </div>
         </aside>
@@ -2536,7 +2536,7 @@ function About({ language }: { language: Language }) {
       <div className="about-details">
         <div>
           <span>{t.version}</span>
-          <strong>0.1.2</strong>
+          <strong>0.1.3</strong>
         </div>
         <div>
           <span>{t.author}</span>
