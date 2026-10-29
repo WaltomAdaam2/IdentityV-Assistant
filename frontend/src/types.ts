@@ -132,10 +132,15 @@ export interface Settings {
     language: "zh-CN" | "en-US";
     theme: "system" | "light" | "dark";
     launch_engine_on_start: boolean;
+    launch_on_login: boolean;
+    minimize_to_tray: boolean;
+    ui_scale_percent: number;
+    engine_hotkey: string;
     developer_mode: boolean;
     prevent_system_sleep: boolean;
     prevent_display_sleep: boolean;
     check_updates_on_start: boolean;
+    update_prereleases: boolean;
     update_source: "direct" | "proxy";
   };
   engine: {
@@ -143,6 +148,7 @@ export interface Settings {
     heartbeat_interval_seconds: number;
   };
   game_window: {
+    executable_path: string;
     resolution: "2560x1440" | "1920x1080" | "1600x900" | "1280x720";
     position: "center" | "unrestricted" | "top_left" | "top_right" | "bottom_left" | "bottom_right";
     process_names: string[];

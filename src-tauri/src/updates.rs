@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
-const RELEASES: &str = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/";
+const RELEASES: &str = "https://github.com/WaltomAdaam2/desktop-releases/releases/";
 const PROXY: &str = "https://gh-proxy.com/";
 const MAX_INSTALLER_SIZE: u64 = 512 * 1024 * 1024;
 
@@ -81,10 +81,85 @@ fn route(url: &str, source: &str) -> Result<String, String> {
 }
 
 fn validate_asset(url: &str, version: &str) -> Result<(), String> {
-    if url != format!("{RELEASES}download/v{version}/IdentityV-Assistant_{version}_x64-setup.exe") {
+    let prefix = format!("{RELEASES}download/v{version}/");
+    let name = url
+        .strip_prefix(&prefix)
+        .and_then(|name| name.strip_suffix(".exe"));
+    if !name.is_some_and(|name| {
+        name.len() == 32
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    }) {
         return Err("Installer URL must match this project's release and version".into());
     }
     Ok(())
+}
+
+fn newest_release(
+    releases: &serde_json::Value,
+    current: &semver::Version,
+    prereleases: bool,
+) -> Option<semver::Version> {
+    releases
+        .as_array()?
+        .iter()
+        .filter_map(|release| {
+            if release["draft"].as_bool() != Some(false) {
+                return None;
+            }
+            let tag = release["tag_name"].as_str()?.strip_prefix('v')?;
+            let version = semver::Version::parse(tag).ok()?;
+            if version.to_string() != tag
+                || &version <= current
+                || (!prereleases
+                    && (!version.pre.is_empty() || release["prerelease"].as_bool() != Some(false)))
+            {
+                return None;
+            }
+            let has_manifest = release["assets"]
+                .as_array()?
+                .iter()
+                .any(|asset| asset["name"] == "latest.json");
+            has_manifest.then_some(version)
+        })
+        .max()
+}
+
+async fn preview_version(
+    source: &str,
+    current: &semver::Version,
+) -> Result<Option<semver::Version>, String> {
+    // Only public metadata is sent to the selected route; no account token is used.
+    let url = route(
+        "https://api.github.com/repos/WaltomAdaam2/desktop-releases/releases?per_page=100",
+        source,
+    )?;
+    let client = reqwest::Client::builder()
+        .user_agent("Desktop-Updater")
+        .timeout(Duration::from_secs(25))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut response = client
+        .get(url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len() + chunk.len() > 4 * 1024 * 1024 {
+            return Err("Release metadata is too large".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let releases: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    if !releases.is_array() {
+        return Err("Invalid release metadata".into());
+    }
+    Ok(newest_release(&releases, current, true))
 }
 
 fn expected_integrity(raw: &serde_json::Value) -> Result<(String, u64), String> {
@@ -122,19 +197,35 @@ pub async fn check_update(
     app: AppHandle,
     manager: State<'_, UpdateManager>,
     source: String,
+    prereleases: Option<bool>,
 ) -> Result<Option<UpdateInfo>, String> {
     let _operation = manager
         .operation
         .try_lock()
         .map_err(|_| "An update operation is in progress")?;
-    let endpoint = route(&format!("{RELEASES}latest/download/latest.json"), &source)?;
+    route("", &source)?;
     {
         let mut session = manager.session.lock().unwrap();
         *session = Session::default();
-        session.status.source = source;
+        session.status.source = source.clone();
     }
     manager.report(&app, "checking", None);
     let result = async {
+        let selected = if prereleases.unwrap_or(false) {
+            let current = semver::Version::parse(&app.package_info().version.to_string())
+                .map_err(|e| e.to_string())?;
+            let Some(version) = preview_version(&source, &current).await? else {
+                return Ok(None);
+            };
+            Some(version.to_string())
+        } else {
+            None
+        };
+        let endpoint = match &selected {
+            Some(version) => format!("{RELEASES}download/v{version}/latest.json"),
+            None => format!("{RELEASES}latest/download/latest.json"),
+        };
+        let endpoint = route(&endpoint, &source)?;
         let updater = app
             .updater_builder()
             .target("windows-x86_64")
@@ -148,6 +239,14 @@ pub async fn check_update(
         let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
             return Ok(None);
         };
+        let version = semver::Version::parse(&update.version).map_err(|e| e.to_string())?;
+        if selected
+            .as_ref()
+            .is_some_and(|selected| selected != &update.version)
+            || (!prereleases.unwrap_or(false) && !version.pre.is_empty())
+        {
+            return Err("Release manifest does not match the selected update channel".into());
+        }
         validate_asset(update.download_url.as_str(), &update.version)?;
         let (sha256, size) = expected_integrity(&update.raw_json)?;
         let info = UpdateInfo {
@@ -325,6 +424,46 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn preview_selection_obeys_semver_channel_and_publication() {
+        let release = |version: &str, preview: bool, draft: bool| {
+            json!({
+                "tag_name":format!("v{version}"), "prerelease":preview, "draft":draft,
+                "assets":[{"name":"latest.json"}]
+            })
+        };
+        let current = semver::Version::parse("0.1.2").unwrap();
+        let releases = json!([
+            release("0.2.0-beta.2", true, false),
+            release("0.2.0-beta.10", true, false),
+            release("0.1.3", false, false),
+            release("9.0.0", false, true),
+            release("invalid", true, false),
+            {"tag_name":"v8.0.0", "draft":false, "prerelease":false,"assets":[]}
+        ]);
+        assert_eq!(
+            newest_release(&releases, &current, true)
+                .unwrap()
+                .to_string(),
+            "0.2.0-beta.10"
+        );
+        assert_eq!(
+            newest_release(&releases, &current, false)
+                .unwrap()
+                .to_string(),
+            "0.1.3"
+        );
+        let stable = json!([
+            release("0.2.0-beta.10", true, false),
+            release("0.2.0", false, false)
+        ]);
+        assert_eq!(
+            newest_release(&stable, &current, true).unwrap().to_string(),
+            "0.2.0"
+        );
+        assert!(newest_release(&stable, &semver::Version::parse("0.2.0").unwrap(), true).is_none());
+    }
+
     fn test_app() -> tauri::App<tauri::test::MockRuntime> {
         let mut context = tauri::test::mock_context(tauri::test::noop_assets());
         let config: serde_json::Value =
@@ -351,7 +490,7 @@ mod tests {
             .unwrap();
         let payload = include_bytes!("../tests/fixtures/update-payload.txt");
         let raw = json!({"version":"0.1.1", "platforms":{"windows-x86_64":{
-            "url":format!("{RELEASES}download/v0.1.1/IdentityV-Assistant_0.1.1_x64-setup.exe"),
+            "url":format!("{RELEASES}download/v0.1.1/0123456789abcdef0123456789abcdef.exe"),
             "signature":include_str!("../tests/fixtures/update-payload.txt.sig").trim()}}});
         let update = updater.restore_update(raw.clone()).unwrap().unwrap();
         update.verify(payload).unwrap();
@@ -421,13 +560,16 @@ mod tests {
 
     #[test]
     fn accepts_only_project_installers_and_known_routes() {
-        let url = format!("{RELEASES}download/v0.2.0/IdentityV-Assistant_0.2.0_x64-setup.exe");
+        let url = format!("{RELEASES}download/v0.2.0/0123456789abcdef0123456789abcdef.exe");
         assert!(validate_asset(&url, "0.2.0").is_ok());
         for bad in [
             url.replace("github.com/", "github.com.evil/"),
-            url.replace("IdentityV-Assistant/", "other/"),
+            url.replace("desktop-releases/", "other/"),
             format!("{url}?redirect=other"),
             url.replace(".exe", ".zip"),
+            url.replace("0123456789abcdef0123456789abcdef", "../installer"),
+            url.replace("0123456789abcdef0123456789abcdef", "0123456789abcdef"),
+            url.replace("abcdef", "ABCDEF"),
         ] {
             assert!(validate_asset(&bad, "0.2.0").is_err());
         }

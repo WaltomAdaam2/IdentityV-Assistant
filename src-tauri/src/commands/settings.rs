@@ -7,8 +7,10 @@ pub fn load_settings() -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn save_settings(settings: Value) -> Result<(), String> {
-    crate::config::save(&settings)
+pub async fn save_settings(app: tauri::AppHandle, settings: Value) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || crate::desktop::save(&app, &settings))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

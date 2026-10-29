@@ -53,6 +53,11 @@ pub fn load() -> Result<Value, String> {
 
 fn migrate(settings: &mut Value) -> bool {
     let before = settings.clone();
+    if let Some(app) = settings.get_mut("app").and_then(Value::as_object_mut) {
+        if !app.get("update_prereleases").is_some_and(Value::is_boolean) {
+            app.insert("update_prereleases".into(), Value::Bool(false));
+        }
+    }
     if let Some(engine) = settings.get_mut("engine").and_then(Value::as_object_mut) {
         engine.remove("dry_run");
         engine.remove("mock_step_delay_seconds");
@@ -132,6 +137,19 @@ mod tests {
     fn bundled_default_configuration_is_valid_json() {
         let settings: Value = serde_json::from_str(DEFAULT_SETTINGS).expect("default config");
         assert!(settings.get("engine").is_some());
+    }
+
+    #[test]
+    fn preview_updates_default_off_and_preserve_explicit_choice() {
+        let mut settings = json!({"app": {}});
+        migrate(&mut settings);
+        assert_eq!(settings["app"]["update_prereleases"], false);
+        settings["app"]["update_prereleases"] = json!(true);
+        migrate(&mut settings);
+        assert_eq!(settings["app"]["update_prereleases"], true);
+        settings["app"]["update_prereleases"] = json!("yes");
+        migrate(&mut settings);
+        assert_eq!(settings["app"]["update_prereleases"], false);
     }
 
     #[test]

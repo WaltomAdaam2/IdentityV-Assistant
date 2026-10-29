@@ -9,7 +9,10 @@ import type {
 } from "./types";
 
 export const bridge = {
-  checkUpdate: (source: "direct" | "proxy") => invoke<UpdateInfo | null>("check_update", { source }),
+  chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
+  openLogsDirectory: () => invoke<void>("open_logs_directory"),
+  launchGame: (executablePath: string) => invoke<void>("launch_game", { executablePath }),
+  checkUpdate: (source: "direct" | "proxy", prereleases = false) => invoke<UpdateInfo | null>("check_update", { source, prereleases }),
   downloadUpdate: (source: "direct" | "proxy") => invoke<void>("download_update", { source }),
   cancelUpdate: () => invoke<void>("cancel_update"),
   installUpdate: () => invoke<void>("install_update"),

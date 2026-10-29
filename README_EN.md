@@ -4,7 +4,7 @@
 
 Identity V Assistant is a Windows desktop visual automation assistant for Identity V. It recognizes window screenshots and runs tasks through normal Windows input.
 
-> This is a **0.1.1 development version**. Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek have passed the supplied screenshot and logic checks. As requested, no live game match was run.
+> This is a **0.1.2 development version**. Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek have passed the supplied screenshot and logic checks. As requested, no live game match was run.
 
 ## Interface preview
 
@@ -156,7 +156,7 @@ pnpm tauri build
 
 Distribute the `*-setup.exe` in `src-tauri\target\release\bundle\nsis\`. Users can choose the installation drive and folder. The installation contains `identityv-assistant.exe` for the UI and an `engine/` directory with Python, native capture libraries, OCR models, templates and defaults. Startup reads these files directly without extracting them each time. **Distribute the installer, not the UI executable alone.**
 
-The native wizard provides Chinese/English selection, a welcome page, the GPL license, installation directory selection, progress and completion pages, Start Menu shortcuts and Windows uninstall integration. Updates use the standard installer upgrade flow.
+The native wizard provides Chinese/English selection, a welcome page, the proprietary license, installation directory selection, progress and completion pages, Start Menu shortcuts and Windows uninstall integration. Updates use the standard installer upgrade flow.
 
 Python is not required on the recipient's computer. The installer downloads Microsoft Edge WebView2 Runtime if missing. Settings, logs, captures and imported maps stay in `%LOCALAPPDATA%\IdentityV-Assistant\`, separate from installed files and release artifacts. The first build downloads dependencies and takes longer.
 
@@ -164,7 +164,7 @@ The build runs an offline frozen-engine check for native dependencies, templates
 
 Release builds require the original updater signing key, defaulting to `%LOCALAPPDATA%\IdentityV-Assistant\release-keys\updater.key`. A successful build also generates `.sig`, `latest.json`, and `SHA256SUMS.txt`. Never upload the private key; losing it prevents trusted updates to existing clients. See [update and publishing instructions](docs/updates.md).
 
-Starting with v0.1.1, Settings → Software updates supports startup checks, direct GitHub downloads or a third-party China proxy, cancellation, and retries. Downloads must pass release signature, SHA-256, and file-size verification before installation. Checks never install updates automatically. Users of v0.1.0 must manually install a newer version once. To publish, commit and push clean `main`, rebuild, then run `scripts/publish_release.ps1 -NotesFile <release-notes-file>`. Building alone never publishes.
+Starting with v0.1.1, Settings → Software updates supports startup checks, direct GitHub downloads or a third-party China proxy, cancellation, and retries. Downloads must pass release signature, SHA-256, and file-size verification before installation. Checks never install updates automatically. Users of v0.1.0 and v0.1.1 must manually install v0.1.2 once to migrate to the public update repository. To publish, commit and push clean `main`, rebuild, then run `scripts/publish_release.ps1 -NotesFile <release-notes-file>`. Building alone never publishes.
 
 ## Verification
 
@@ -199,6 +199,12 @@ scripts/        Windows development helpers
 
 Process hooks, memory access, anti-cheat bypass, kernel input, and network protocol manipulation are outside this project's design.
 
+## Settings and updates
+
+Settings use one row per option and switches for boolean preferences. Choose the game executable, launch at Windows logon, minimize to tray, UI scale, and engine shortcut (F3 by default), or open the logs folder. A three-second toast confirms successful saves. About information is at the bottom of Settings.
+
+Startup checks show new-version release notes with a per-version dismissal option. Settings offers the prerelease channel, GitHub/free proxy selection, and manual checks.
+
 ## License
 
-This project is licensed under the [GNU General Public License v3.0 only](LICENSE) (`GPL-3.0-only`). Window layout uses this project's independent Win32 implementation. Third-party dependencies and imported map packs retain their own licenses and rights notices.
+Starting with v0.1.2, first-party code uses a [proprietary personal-use license](LICENSE). Unauthorized redistribution and commercial use are prohibited. Existing GPL grants for historical versions remain unchanged. Window layout uses this project's independent Win32 implementation. Third-party dependencies and imported map packs retain their own licenses and rights notices.

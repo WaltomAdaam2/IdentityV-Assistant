@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod desktop;
 mod engine;
 mod journal;
 mod journal_dialog;
@@ -10,7 +11,7 @@ mod updates;
 use engine::EngineSupervisor;
 use serde_json::json;
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -46,8 +47,12 @@ pub fn run() {
         .manage(EngineSupervisor::default())
         .manage(power::PowerManager::default())
         .manage(updates::UpdateManager::default())
+        .manage(desktop::DesktopSettings::default())
         .invoke_handler(tauri::generate_handler![
             commands::open_project_repository,
+            desktop::launch_game,
+            desktop::open_logs_directory,
+            journal_dialog::choose_game_executable,
             updates::get_update_status,
             updates::check_update,
             updates::download_update,
@@ -74,22 +79,12 @@ pub fn run() {
             commands::diagnostics::read_debug_frame,
         ])
         .setup(|app| {
-            if let Err(error) = app.global_shortcut().register("F3") {
-                logs::emit(
-                    app.handle(),
-                    json!({
-                        "version": 1,
-                        "type": "error",
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                        "code": "HOTKEY_UNAVAILABLE",
-                        "message": format!("Could not register F3: {error}"),
-                        "recoverable": true,
-                        "details": {}
-                    }),
-                );
-            }
             logs::prune().map_err(std::io::Error::other)?;
             let settings = config::load().map_err(std::io::Error::other)?;
+            desktop::create_tray(app.handle())?;
+            if let Err(error) = desktop::initialize(app.handle(), &settings) {
+                logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"DESKTOP_SETTINGS_FAILED","message":error,"recoverable":true,"details":{}}));
+            }
             let system = settings["app"]["prevent_system_sleep"]
                 .as_bool()
                 .unwrap_or(false);
@@ -102,15 +97,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            let minimize_to_tray = window.state::<desktop::DesktopSettings>().tray.load(std::sync::atomic::Ordering::Relaxed);
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.state::<power::PowerManager>().apply(false, false);
-                let supervisor = window.state::<EngineSupervisor>().inner().clone();
-                let window = window.clone();
-                tauri::async_runtime::spawn(async move {
-                    let _ = supervisor.stop().await;
-                    let _ = window.destroy();
-                });
+                desktop::quit(window.app_handle());
+            } else if matches!(event, tauri::WindowEvent::Resized(_)) && minimize_to_tray && window.is_minimized().unwrap_or(false) {
+                let _ = window.hide();
             }
         })
         .run(tauri::generate_context!())

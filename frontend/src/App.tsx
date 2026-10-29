@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
@@ -23,8 +23,7 @@ type Page =
   | "runtime"
   | "debug"
   | "logs"
-  | "settings"
-  | "about";
+  | "settings";
 type Language = Settings["app"]["language"];
 interface TaskProgress {
   taskId: string;
@@ -627,7 +626,6 @@ const nav: Array<{ id: Page; icon: string }> = [
   { id: "debug", icon: "⌕" },
   { id: "logs", icon: "≡" },
   { id: "settings", icon: "⚙" },
-  { id: "about", icon: "i" },
 ];
 const initialTasks: TaskItem[] = [
   {
@@ -672,6 +670,11 @@ const defaults: Settings = {
     language: "zh-CN",
     theme: "light",
     launch_engine_on_start: false,
+    launch_on_login: false,
+    minimize_to_tray: false,
+    ui_scale_percent: 100,
+    engine_hotkey: "F3",
+    update_prereleases: false,
     developer_mode: false,
     prevent_system_sleep: false,
     prevent_display_sleep: false,
@@ -683,6 +686,7 @@ const defaults: Settings = {
     heartbeat_interval_seconds: 2,
   },
   game_window: {
+    executable_path: "",
     resolution: "1600x900",
     position: "top_right",
     process_names: ["dwrg.exe", "IdentityV.exe"],
@@ -802,6 +806,9 @@ export default function App() {
   });
   const engineStatusRef = useRef("stopped");
   const savedEngineSettingsRef = useRef("");
+  const persistedSettingsRef = useRef("");
+  const settingsSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [savedToast, setSavedToast] = useState<{ id: number; leaving: boolean } | null>(null);
   engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
   const enabledTaskIds = tasks.filter((task) => task.enabled).map((task) => task.id).join(",");
@@ -971,7 +978,7 @@ export default function App() {
           ),
         );
         setTasks(initialTasks.map((task) => ({ ...task, enabled: enabled.has(task.id) })));
-        setSettings({
+        const hydrated: Settings = {
           ...defaults,
           ...loaded,
           tasks: { enabled: initialTasks.filter((task) => enabled.has(task.id)).map((task) => task.id) },
@@ -982,7 +989,11 @@ export default function App() {
           vision: { ...defaults.vision, ...loaded.vision },
           automation: { ...defaults.automation, ...loaded.automation },
           debug: { ...defaults.debug, ...loaded.debug },
-        });
+        };
+        persistedSettingsRef.current = JSON.stringify(hydrated);
+        const { journal: _journal, ...engineSettings } = hydrated;
+        savedEngineSettingsRef.current = JSON.stringify(engineSettings);
+        setSettings(hydrated);
         setSettingsLoaded(true);
       })
       .catch(() => undefined);
@@ -1270,11 +1281,18 @@ export default function App() {
   ]);
   useEffect(() => {
     if (!settingsLoaded) return;
+    let superseded = false;
     const timer = window.setTimeout(() => {
-      void (async () => {
+      const save = async () => {
+        if (superseded) return;
         try {
           const nextSettings = { ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } };
+          const serialized = JSON.stringify(nextSettings);
+          if (persistedSettingsRef.current === serialized) return;
           await bridge.saveSettings(nextSettings);
+          persistedSettingsRef.current = serialized;
+          if (superseded) return;
+          setSavedToast({ id: Date.now(), leaving: false });
           const { journal: _journal, ...engineSettings } = nextSettings;
           const serializedEngineSettings = JSON.stringify(engineSettings);
           const engineSettingsChanged = savedEngineSettingsRef.current !== serializedEngineSettings;
@@ -1296,12 +1314,19 @@ export default function App() {
             asMessage(error),
           );
           appendLog("error", message, "settings");
-          setNotice(message);
+          if (!superseded) setNotice(message);
         }
-      })();
+      };
+      settingsSaveQueueRef.current = settingsSaveQueueRef.current.then(save, save);
     }, 250);
-    return () => window.clearTimeout(timer);
+    return () => { superseded = true; window.clearTimeout(timer); };
   }, [appendLog, settings, settingsLoaded, enabledTaskIds]);
+  useEffect(() => {
+    if (!savedToast) return;
+    const exit = window.setTimeout(() => setSavedToast((value) => value ? { ...value, leaving: true } : null), 3000);
+    const remove = window.setTimeout(() => setSavedToast(null), 3340);
+    return () => { window.clearTimeout(exit); window.clearTimeout(remove); };
+  }, [savedToast?.id]);
   useEffect(() => {
     document.title = t.about.name;
   }, [t.about.name]);
@@ -1422,11 +1447,10 @@ export default function App() {
     settings: (
       <SettingsPage
         language={language}
-        settings={settings}
+        settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
         setSettings={setSettings}
       />
     ),
-    about: <About language={language} />,
   }[page];
   const visibleNav = nav.filter(
     (item) =>
@@ -1436,6 +1460,7 @@ export default function App() {
   return (
     <>
       <WindowTitleBar language={language} />
+      {savedToast && <div key={savedToast.id} className={`settings-saved-toast${savedToast.leaving ? " leaving" : ""}`} role="status"><span className="saved-check" aria-hidden="true">✓</span>{language === "zh-CN" ? "设置已保存" : "Settings saved"}</div>}
       <main className="shell">
         <aside className="sidebar">
           <div className="brand sidebar-card" title={t.about.name}>
@@ -1461,17 +1486,17 @@ export default function App() {
               <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
               <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
             </div>}
-            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.1`}>
+            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.2`}>
               <span className={`local-status-dot ${engineState(snapshot)}`} />
               <span className="local-status-copy">
                 <strong>{t.localConsole}</strong>
                 <small>{t.localOnly}</small>
               </span>
-              <b>v0.1.1</b>
+              <b>v0.1.2</b>
             </div>
           </div>
         </aside>
-        <section className={`workspace${page === "about" ? " workspace-about" : ""}`} ref={workspaceRef}>
+        <section className="workspace" ref={workspaceRef}>
           <header className="topbar">
             <div key={page} className="page-heading">
               <h1>{t.nav[page]}</h1>
@@ -2261,6 +2286,13 @@ function SettingsPage({
   setSettings: (value: Settings) => void;
 }) {
   const t = translations[language].settings;
+  const [settingsActionError, setSettingsActionError] = useState("");
+  const [settingsActionBusy, setSettingsActionBusy] = useState(false);
+  const desktopAction = async (action: () => Promise<unknown>) => {
+    setSettingsActionError(""); setSettingsActionBusy(true);
+    try { await action(); } catch (error) { setSettingsActionError(asMessage(error)); }
+    finally { setSettingsActionBusy(false); }
+  };
   const updateApp = (patch: Partial<Settings["app"]>) =>
     setSettings({ ...settings, app: { ...settings.app, ...patch } });
   const updateEngine = (patch: Partial<Settings["engine"]>) =>
@@ -2283,6 +2315,7 @@ function SettingsPage({
       .filter(Boolean);
   return (
     <section className="settings-form">
+      {settingsActionError && <p className="form-error" role="alert">{settingsActionError}</p>}
       <section className="panel">
         <h2>{t.general}</h2>
         <p>{t.generalHint}</p>
@@ -2313,9 +2346,13 @@ function SettingsPage({
             <option value="en-US">English</option>
           </select>
         </label>
+        <label className="check-label"><input type="checkbox" role="switch" checked={settings.app.launch_on_login} onChange={(event) => updateApp({ launch_on_login: event.target.checked })} />{language === "zh-CN" ? "开机启动助手" : "Launch at sign-in"}</label>
+        <label className="check-label"><input type="checkbox" role="switch" checked={settings.app.minimize_to_tray} onChange={(event) => updateApp({ minimize_to_tray: event.target.checked })} />{language === "zh-CN" ? "最小化到托盘" : "Minimize to system tray"}</label>
+        <label>{language === "zh-CN" ? "界面缩放" : "Interface scale"}<select value={settings.app.ui_scale_percent} onChange={(event) => updateApp({ ui_scale_percent: Number(event.target.value) })}>{[75, 90, 100, 110, 125, 150].map((scale) => <option key={scale} value={scale}>{scale}%</option>)}</select></label>
+        <label>{language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"}<select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select></label>
         <label className="check-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={settings.app.launch_engine_on_start}
             onChange={(event) =>
               updateApp({ launch_engine_on_start: event.target.checked })
@@ -2325,7 +2362,7 @@ function SettingsPage({
         </label>
         <label className="check-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={settings.app.prevent_system_sleep}
             onChange={(event) =>
               updateApp({ prevent_system_sleep: event.target.checked })
@@ -2335,7 +2372,7 @@ function SettingsPage({
         </label>
         <label className="check-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={settings.app.prevent_display_sleep}
             onChange={(event) =>
               updateApp({ prevent_display_sleep: event.target.checked })
@@ -2345,7 +2382,7 @@ function SettingsPage({
         </label>
         <label className="check-label developer-toggle">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={settings.app.developer_mode}
             onChange={(event) =>
               updateApp({ developer_mode: event.target.checked })
@@ -2360,6 +2397,8 @@ function SettingsPage({
       <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
+        <label>{language === "zh-CN" ? "游戏程序路径" : "Game executable"}<input value={settings.game_window.executable_path} placeholder="dwrg.exe" onChange={(event) => updateWindow({ executable_path: event.target.value })} /></label>
+        <div className="settings-action-row"><span>{language === "zh-CN" ? "选择或启动游戏" : "Select or launch game"}</span><div><button disabled={settingsActionBusy} onClick={() => void desktopAction(async () => { const path = await bridge.chooseGameExecutable(); if (path) updateWindow({ executable_path: path }); })}>{language === "zh-CN" ? "浏览…" : "Browse…"}</button><button disabled={settingsActionBusy || !settings.game_window.executable_path.trim()} onClick={() => void desktopAction(() => bridge.launchGame(settings.game_window.executable_path))}>{language === "zh-CN" ? "启动游戏" : "Launch game"}</button></div></div>
         <label>
           {t.windowResolution}
           <select value={settings.game_window.resolution} onChange={(event) => updateWindow({ resolution: event.target.value as Settings["game_window"]["resolution"] })}>
@@ -2446,7 +2485,7 @@ function SettingsPage({
         </label>
         <label className="check-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={settings.engine.memory_protection}
             onChange={(event) =>
               updateEngine({ memory_protection: event.target.checked })
@@ -2460,6 +2499,7 @@ function SettingsPage({
       </section>
       <section className="panel developer-panel">
         <h2>{t.recognition}</h2>
+        <div className="settings-action-row"><span>{language === "zh-CN" ? "日志文件" : "Log files"}</span><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></div>
         <label>
           {t.threshold}
           <input
@@ -2475,7 +2515,7 @@ function SettingsPage({
         </label>
         <label className="check-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={settings.debug.verbose_logs}
             onChange={(event) =>
               updateDebug({ verbose_logs: event.target.checked })
@@ -2485,7 +2525,7 @@ function SettingsPage({
         </label>
         <label className="check-label">
           <input
-            type="checkbox"
+            type="checkbox" role="switch"
             checked={settings.debug.save_debug_screenshots}
             onChange={(event) =>
               updateDebug({ save_debug_screenshots: event.target.checked })
@@ -2494,35 +2534,15 @@ function SettingsPage({
           {t.screenshots}
         </label>
       </section>
-      <div className="save-bar">
-        <span>{t.autosave}</span>
-      </div>
+      <About language={language} />
     </section>
   );
 }
 function About({ language }: { language: Language }) {
   const t = translations[language].about;
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLElement>(null);
   const [linkError, setLinkError] = useState("");
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    const panel = panelRef.current;
-    if (!viewport || !panel) return;
-    const fit = () => {
-      const width = Math.max(640, viewport.clientWidth);
-      panel.style.width = `${width}px`;
-      panel.style.setProperty("--about-scale", String(Math.min(1, viewport.clientWidth / width, viewport.clientHeight / panel.offsetHeight)));
-    };
-    const observer = new ResizeObserver(fit);
-    observer.observe(viewport);
-    observer.observe(panel);
-    fit();
-    return () => observer.disconnect();
-  }, []);
   return (
-    <div className="about-viewport" ref={viewportRef}>
-    <section className="panel about" ref={panelRef}>
+    <section className="panel about settings-about">
       <div className="about-intro">
         <span className="large-mark">V</span>
         <span className="eyebrow">IDENTITYV ASSISTANT</span>
@@ -2532,7 +2552,7 @@ function About({ language }: { language: Language }) {
       <div className="about-details">
         <div>
           <span>{t.version}</span>
-          <strong>0.1.1</strong>
+          <strong>0.1.2</strong>
         </div>
         <div>
           <span>{t.author}</span>
@@ -2540,7 +2560,7 @@ function About({ language }: { language: Language }) {
         </div>
         <div>
           <span>{t.license}</span>
-          <strong>GPL-3.0-only</strong>
+          <strong>{language === "zh-CN" ? "专有许可 · 仅限个人使用" : "Proprietary · Personal use only"}</strong>
         </div>
         <div>
           <span>{t.stack}</span>
@@ -2549,7 +2569,7 @@ function About({ language }: { language: Language }) {
       </div>
       <a
         className="repository-link"
-        href="https://github.com/WaltomAdaam2/IdentityV-Assistant"
+        href="https://github.com/WaltomAdaam2/desktop-releases"
         target="_blank"
         rel="noreferrer"
         onClick={(event) => {
@@ -2559,11 +2579,10 @@ function About({ language }: { language: Language }) {
           void bridge.openRepository().catch((error) => setLinkError(String(error)));
         }}
       >
-        GitHub · WaltomAdaam2/IdentityV-Assistant{" "}
+        GitHub · WaltomAdaam2/desktop-releases{" "}
         <span aria-hidden="true">↗</span>
       </a>
       {linkError && <p className="form-error" role="alert">{language === "zh-CN" ? "无法打开浏览器：" : "Could not open browser: "}{linkError}</p>}
     </section>
-    </div>
   );
 }

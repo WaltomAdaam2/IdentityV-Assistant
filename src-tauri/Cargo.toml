@@ -1,10 +1,10 @@
 [package]
 name = "identityv-assistant"
-version = "0.1.1"
+version = "0.1.2"
 description = "Identity V external visual automation assistant"
 authors = ["Identity V Assistant contributors"]
 edition = "2021"
-license = "GPL-3.0-only"
+license-file = "../LICENSE"
 
 [lib]
 name = "identityv_assistant_lib"
@@ -26,8 +26,10 @@ base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+semver = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
 sha2 = "0.10"
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2.14.1"
 thiserror = "2"

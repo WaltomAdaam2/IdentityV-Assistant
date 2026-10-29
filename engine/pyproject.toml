@@ -1,8 +1,8 @@
 [project]
 name = "identityv-assistant-engine"
-version = "0.1.1"
+version = "0.1.2"
 description = "External visual automation engine framework for Identity V Assistant"
-license = "GPL-3.0-only"
+license = "LicenseRef-Proprietary"
 requires-python = ">=3.12"
 dependencies = [
   "numpy>=2.0",

@@ -1,8 +1,8 @@
 {
   "name": "identityv-assistant-ui",
   "private": true,
-  "version": "0.1.1",
-  "license": "GPL-3.0-only",
+  "version": "0.1.2",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "vite",

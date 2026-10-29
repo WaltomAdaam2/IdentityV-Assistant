@@ -1,6 +1,29 @@
 //! Modern Windows common item dialogs; no helper process or custom file listing.
 
 #[tauri::command]
+pub async fn choose_game_executable(
+    window: tauri::WebviewWindow,
+) -> Result<Option<String>, String> {
+    #[cfg(windows)]
+    {
+        let owner = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
+        let (send, receive) = tokio::sync::oneshot::channel();
+        std::thread::Builder::new()
+            .name("game-executable-dialog".into())
+            .spawn(move || {
+                let _ = send.send(native::choose_executable(owner));
+            })
+            .map_err(|e| e.to_string())?;
+        receive.await.map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window;
+        Err("游戏文件选择器仅支持 Windows".into())
+    }
+}
+
+#[tauri::command]
 pub async fn journal_choose_pack_source(
     window: tauri::WebviewWindow,
 ) -> Result<Option<Vec<String>>, String> {
@@ -169,6 +192,14 @@ mod native {
     }
 
     pub fn choose(owner: usize) -> Result<Option<Vec<String>>, String> {
+        choose_kind(owner, false)
+    }
+
+    pub fn choose_executable(owner: usize) -> Result<Option<String>, String> {
+        choose_kind(owner, true).map(|paths| paths.and_then(|paths| paths.into_iter().next()))
+    }
+
+    fn choose_kind(owner: usize, executable: bool) -> Result<Option<Vec<String>>, String> {
         // COM objects and returned strings stay on this STA thread and are released
         // before its apartment is uninitialized. Show owns the modal message loop.
         unsafe {
@@ -184,6 +215,35 @@ mod native {
             let dialog: IFileOpenDialog =
                 CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER)
                     .map_err(|error| error.to_string())?;
+            if executable {
+                use windows::Win32::UI::Shell::FOS_FILEMUSTEXIST;
+                dialog
+                    .SetOptions(
+                        FOS_FORCEFILESYSTEM
+                            | FOS_PATHMUSTEXIST
+                            | FOS_FILEMUSTEXIST
+                            | FOS_NOCHANGEDIR,
+                    )
+                    .map_err(|e| e.to_string())?;
+                dialog
+                    .SetTitle(w!("选择第五人格游戏程序"))
+                    .map_err(|e| e.to_string())?;
+                dialog
+                    .SetFileTypes(&[COMDLG_FILTERSPEC {
+                        pszName: w!("游戏程序 (*.exe)"),
+                        pszSpec: w!("*.exe"),
+                    }])
+                    .map_err(|e| e.to_string())?;
+                if let Err(error) = dialog.Show(Some(HWND(owner as *mut _))) {
+                    if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
+                        return Ok(None);
+                    }
+                    return Err(error.to_string());
+                }
+                return paths(&dialog.GetResults().map_err(|e| e.to_string())?)
+                    .map(Some)
+                    .map_err(|e| e.to_string());
+            }
             let options = dialog.GetOptions().map_err(|error| error.to_string())?
                 | FOS_FORCEFILESYSTEM
                 | FOS_PATHMUSTEXIST

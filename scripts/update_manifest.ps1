@@ -21,7 +21,7 @@ $trustedComment = ($signatureText -split "`n" | Where-Object { $_.StartsWith('tr
 if (($trustedComment.TrimEnd("`r") -split "`t") -notcontains "version:$Version") {
     throw "Installer signature must contain signed version:$Version. Rebuild with Tauri CLI 2.12 or newer."
 }
-$assetName = "IdentityV-Assistant_${Version}_x64-setup.exe"
+$assetName = [Guid]::NewGuid().ToString("N") + ".exe"
 $assetPath = Join-Path $BundleDirectory $assetName
 Copy-Item -LiteralPath $installer -Destination $assetPath -Force
 Copy-Item -LiteralPath $signaturePath -Destination ($assetPath + ".sig") -Force
@@ -38,7 +38,7 @@ $manifest = [ordered]@{
     commit = $commit.Trim()
     source_clean = -not [bool]$changes
     platforms = @{ "windows-x86_64" = [ordered]@{
-        url = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/download/v$Version/$assetName"
+        url = "https://github.com/WaltomAdaam2/desktop-releases/releases/download/v$Version/$assetName"
         signature = $signature
         sha256 = $hash
         size = (Get-Item -LiteralPath $assetPath).Length

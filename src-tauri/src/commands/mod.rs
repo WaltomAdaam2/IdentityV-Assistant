@@ -12,7 +12,7 @@ pub fn open_project_repository() -> Result<(), String> {
             ShellExecuteW(
                 None,
                 w!("open"),
-                w!("https://github.com/WaltomAdaam2/IdentityV-Assistant"),
+                w!("https://github.com/WaltomAdaam2/desktop-releases/releases"),
                 PCWSTR::null(),
                 PCWSTR::null(),
                 SW_SHOWNORMAL,

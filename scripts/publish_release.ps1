@@ -24,16 +24,22 @@ if ($manifest.version -ne $version -or $manifest.commit -ne $commit -or -not $ma
     throw "Build artifacts are stale or were built with uncommitted changes. Run the build again from clean main."
 }
 $tag = "v$version"
-$repo = "WaltomAdaam2/IdentityV-Assistant"
+$repo = "WaltomAdaam2/desktop-releases"
+# Release tags belong to the distribution repository, never the private source repository.
+$releaseCommit = & gh api "repos/$repo/git/ref/heads/main" --jq '.object.sha'
+if ($LASTEXITCODE -ne 0 -or $releaseCommit -notmatch '^[0-9a-f]{40}$') {
+    throw "The public release repository must have an initialized main branch."
+}
 # Enumerate through a successful API request: a network failure must not look like an absent release.
 $releases = & gh api --paginate "repos/$repo/releases?per_page=100" --jq '.[].tag_name'
 if ($LASTEXITCODE -ne 0) { throw "Could not inspect existing releases." }
 if ($releases -contains $tag) { throw "$tag already exists (possibly a draft from a previous attempt). Inspect it manually; this script never overwrites releases." }
-$tags = & git ls-remote origin "refs/tags/$tag"
+$tags = & git ls-remote "https://github.com/$repo.git" "refs/tags/$tag"
 if ($LASTEXITCODE -ne 0 -or $tags) { throw "Cannot publish: tag exists or remote inspection failed." }
-$assetName = "IdentityV-Assistant_${version}_x64-setup.exe"
-$asset = Join-Path $bundle $assetName
 $platform = $manifest.platforms.'windows-x86_64'
+$assetName = ($platform.url -split '/')[-1]
+if ($assetName -cnotmatch '^[0-9a-f]{32}\.exe$') { throw "Installer filename must be a random lowercase hexadecimal ID." }
+$asset = Join-Path $bundle $assetName
 if ($platform.url -ne "https://github.com/$repo/releases/download/$tag/$assetName" -or
     (Get-Content -LiteralPath (Join-Path $bundle "SHA256SUMS.txt") -Raw).Trim() -ne ($platform.sha256 + "  " + $assetName) -or
     (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant() -ne $platform.sha256 -or
@@ -44,9 +50,12 @@ if ($platform.url -ne "https://github.com/$repo/releases/download/$tag/$assetNam
 $manifest.notes = $notes.Trim()
 $manifest.pub_date = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
-& gh release create $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo --target $commit --draft --title "v$version" --notes-file $NotesFile
+$isPrerelease = $version.Contains('-')
+$channelArguments = if ($isPrerelease) { @('--prerelease') } else { @() }
+& gh release create $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo --target $releaseCommit --draft --title "v$version" --notes-file $NotesFile @channelArguments
 if ($LASTEXITCODE -ne 0) { throw "Draft creation/upload failed or outcome is unknown. Inspect GitHub Releases before retrying. No existing release will be overwritten." }
-& gh release edit $tag --repo $repo --draft=false --latest
+$latestArgument = if ($isPrerelease) { '--latest=false' } else { '--latest=true' }
+& gh release edit $tag --repo $repo --draft=false $latestArgument
 if ($LASTEXITCODE -ne 0) { throw "Publishing did not confirm success. Inspect the existing draft/release on GitHub; do not create another one." }
 & gh release view $tag --repo $repo --json url,assets
 if ($LASTEXITCODE -ne 0) { throw "Release was published but final verification failed. Inspect it on GitHub." }
