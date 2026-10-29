@@ -445,8 +445,21 @@ pub async fn journal_list_packs() -> Result<JournalLibrary, String> {
         .await
         .map_err(|e| e.to_string())?
 }
+fn validate_zip_source(source: &Path) -> Result<(), String> {
+    if source.is_file()
+        && source
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s.eq_ignore_ascii_case("zip"))
+    {
+        Ok(())
+    } else {
+        Err("仅支持导入 ZIP 地图包，请选择一个或多个 .zip 文件".into())
+    }
+}
 #[tauri::command]
 pub async fn journal_import_pack(source_path: String) -> Result<JournalLibrary, String> {
+    validate_zip_source(Path::new(&source_path))?;
     tauri::async_runtime::spawn_blocking(move || import(&packs_root()?, Path::new(&source_path)))
         .await
         .map_err(|e| e.to_string())?
@@ -513,6 +526,19 @@ mod tests {
         fs::write(root.join("map.png"), b"png fixture").unwrap();
         fs::write(root.join("pack.json"), r#"{"packId":"test_pack","packName":"测试","seasonId":"s0","difficulty":"nightmare","maps":[{"index":1,"category":"triple","floors":{"1":"map.png","3":"map.png"}}]}"#).unwrap();
     }
+    #[test]
+    fn import_command_accepts_only_zip_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("pack.ZIP");
+        fs::write(&zip, b"test").unwrap();
+        assert!(validate_zip_source(&zip).is_ok());
+        assert!(validate_zip_source(dir.path()).is_err());
+        let json = dir.path().join("pack.json");
+        fs::write(&json, b"{}").unwrap();
+        assert!(validate_zip_source(&json).is_err());
+        assert!(validate_zip_source(&dir.path().join("missing.zip")).is_err());
+    }
+
     #[test]
     fn import_reload_and_reject_duplicate() {
         let dir = tempfile::tempdir().unwrap();

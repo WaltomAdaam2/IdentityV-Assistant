@@ -22,14 +22,32 @@ assert.equal(matchingMaps([], defaults).length, 0);
 console.log("Journal filter checks passed: split packages, sorted maps, exact counts, missing layers, aliases, and filters.");
 const importedSources = [];
 const library = { directory: "local", packs, errors: [] };
-const batch = await importJournalPacks(["folder", "broken.zip", "route.zip", "folder"], async (source) => {
+const batch = await importJournalPacks(["base.zip", "broken.zip", "route.zip", "base.zip"], async (source) => {
   importedSources.push(source);
   if (source === "broken.zip") throw new Error("Invalid ZIP");
   return library;
 });
-assert.deepEqual(importedSources, ["folder", "broken.zip", "route.zip"]);
+assert.deepEqual(importedSources, ["base.zip", "broken.zip", "route.zip"]);
 assert.equal(batch.imported, 2);
 assert.equal(batch.library, library);
 assert.deepEqual(batch.errors, ["broken.zip: Error: Invalid ZIP"]);
 assert.deepEqual(await importJournalPacks([]), { library: null, imported: 0, errors: [] });
-console.log("Journal batch import checks passed: mixed sources, deduplication, partial failure and empty selection.");
+console.log("Journal batch import checks passed: multiple ZIPs, deduplication, partial failure and empty selection.");
+
+// Exercise the actual page handler: layer clicks must not call the persisted-settings callback.
+const journalSource = await readFile(new URL("./src/Journal.tsx", import.meta.url), "utf8");
+const handlerSource = journalSource.slice(journalSource.indexOf("  const change ="), journalSource.indexOf("  const floorSwitch ="));
+const handlerJs = ts.transpileModule(handlerSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+const saved = [];
+let floor = "1";
+const settings = { ...defaults };
+const change = new Function("settings", "setFloor", "onSettingsChange", "setSelectedNumber", `${handlerJs}; return change;`)(settings, (next) => { floor = next; settings.floor = next; }, (next) => saved.push(next), () => {});
+change({ floor: "2" });
+assert.equal(floor, "2");
+assert.equal(saved.length, 0);
+change({ display: "route" });
+assert.equal(floor, "2");
+assert.equal(saved[0].floor, "1");
+assert.equal(saved[0].display, "route");
+assert.match(journalSource, /const \[floor, setFloor\] = useState\("1"\)/);
+console.log("Journal floor checks passed: temporary layer changes, persisted filters keep the 1F default.");

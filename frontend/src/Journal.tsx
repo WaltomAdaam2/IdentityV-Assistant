@@ -38,12 +38,14 @@ function Thumbnail({ image, name, zh }: { image: MapImage; name: string; zh: boo
   </div>;
 }
 
-export default function Journal({ language, settings, onSettingsChange }: {
+export default function Journal({ language, settings: savedSettings, onSettingsChange }: {
   language: Settings["app"]["language"];
   settings: JournalSettings;
   onSettingsChange: (settings: JournalSettings) => void;
 }) {
   const zh = language === "zh-CN";
+  const [floor, setFloor] = useState("1");
+  const settings = useMemo(() => ({ ...savedSettings, floor }), [savedSettings, floor]);
   const [library, setLibrary] = useState<JournalLibrary>({ directory: "", packs: [], errors: [] });
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
@@ -122,7 +124,8 @@ export default function Journal({ language, settings, onSettingsChange }: {
     if (patch.season || patch.difficulty || patch.door) setSelectedNumber(null);
     const next = { ...settings, ...patch };
     if (next.difficulty === "hard" && ["b1f", "3"].includes(next.floor)) next.floor = "1";
-    onSettingsChange(next);
+    setFloor(next.floor);
+    if (Object.keys(patch).some((key) => key !== "floor")) onSettingsChange({ ...next, floor: "1" });
   };
   const floorSwitch = () => <div className="journal-floor-switch" role="group" aria-label={zh ? "切换地图楼层" : "Switch map floor"}>
     {quickFloors.map(([floor, chinese, english]) => <button key={floor} type="button" disabled={!availableFloors.has(floor)} aria-pressed={settings.floor === floor} className={settings.floor === floor ? "primary" : ""} title={!availableFloors.has(floor) ? (zh ? "当前地图没有此楼层" : "This floor is unavailable for this map") : undefined} onClick={() => change({ floor })}>{zh ? chinese : english}</button>)}

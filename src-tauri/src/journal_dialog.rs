@@ -49,9 +49,8 @@ pub async fn journal_choose_pack_source(
 
 #[cfg(windows)]
 mod native {
-    use std::{cell::RefCell, rc::Rc};
     use windows::{
-        core::{implement, w, Interface, Ref, BOOL, HRESULT},
+        core::{w, HRESULT},
         Win32::{
             Foundation::{ERROR_CANCELLED, HWND},
             System::Com::{
@@ -64,18 +63,13 @@ mod native {
                     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
                 },
                 Shell::{
-                    Common::COMDLG_FILTERSPEC, FileOpenDialog, IFileDialog,
-                    IFileDialogControlEvents, IFileDialogControlEvents_Impl, IFileDialogCustomize,
-                    IFileDialogEvents, IFileDialogEvents_Impl, IFileOpenDialog, IShellItem,
-                    IShellItemArray, FDEOR_DEFAULT, FDESVR_DEFAULT, FDE_OVERWRITE_RESPONSE,
-                    FDE_SHAREVIOLATION_RESPONSE, FOS_ALLOWMULTISELECT, FOS_FORCEFILESYSTEM,
-                    FOS_NOCHANGEDIR, FOS_PATHMUSTEXIST, SIGDN_FILESYSPATH,
+                    Common::COMDLG_FILTERSPEC, FileOpenDialog, IFileOpenDialog, IShellItemArray,
+                    FOS_ALLOWMULTISELECT, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FOS_NOCHANGEDIR,
+                    FOS_PATHMUSTEXIST, FOS_STRICTFILETYPES, SIGDN_FILESYSPATH,
                 },
             },
         },
     };
-
-    const IMPORT_SELECTION: u32 = 100;
 
     fn paths(items: &IShellItemArray) -> windows::core::Result<Vec<String>> {
         unsafe {
@@ -89,92 +83,6 @@ mod native {
                     })
                 })
                 .collect()
-        }
-    }
-
-    // The standard Open button navigates into folders. A native custom button
-    // accepts the current shell selection, including mixed folders and ZIPs.
-    #[implement(IFileDialogEvents, IFileDialogControlEvents)]
-    struct SelectionEvents {
-        selected: Rc<RefCell<Option<Vec<String>>>>,
-    }
-
-    impl IFileDialogControlEvents_Impl for SelectionEvents_Impl {
-        fn OnButtonClicked(
-            &self,
-            customize: Ref<IFileDialogCustomize>,
-            id: u32,
-        ) -> windows::core::Result<()> {
-            if id == IMPORT_SELECTION {
-                let dialog: IFileOpenDialog = customize.ok()?.cast()?;
-                unsafe {
-                    let selected = paths(&dialog.GetSelectedItems()?)?;
-                    if !selected.is_empty() {
-                        *self.selected.borrow_mut() = Some(selected);
-                        dialog.Close(HRESULT(0))?;
-                    }
-                }
-            }
-            Ok(())
-        }
-        fn OnItemSelected(
-            &self,
-            _: Ref<IFileDialogCustomize>,
-            _: u32,
-            _: u32,
-        ) -> windows::core::Result<()> {
-            Ok(())
-        }
-        fn OnCheckButtonToggled(
-            &self,
-            _: Ref<IFileDialogCustomize>,
-            _: u32,
-            _: BOOL,
-        ) -> windows::core::Result<()> {
-            Ok(())
-        }
-        fn OnControlActivating(
-            &self,
-            _: Ref<IFileDialogCustomize>,
-            _: u32,
-        ) -> windows::core::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl IFileDialogEvents_Impl for SelectionEvents_Impl {
-        fn OnFileOk(&self, _: Ref<IFileDialog>) -> windows::core::Result<()> {
-            Ok(())
-        }
-        fn OnFolderChanging(
-            &self,
-            _: Ref<IFileDialog>,
-            _: Ref<IShellItem>,
-        ) -> windows::core::Result<()> {
-            Ok(())
-        }
-        fn OnFolderChange(&self, _: Ref<IFileDialog>) -> windows::core::Result<()> {
-            Ok(())
-        }
-        fn OnSelectionChange(&self, _: Ref<IFileDialog>) -> windows::core::Result<()> {
-            Ok(())
-        }
-        fn OnShareViolation(
-            &self,
-            _: Ref<IFileDialog>,
-            _: Ref<IShellItem>,
-        ) -> windows::core::Result<FDE_SHAREVIOLATION_RESPONSE> {
-            Ok(FDESVR_DEFAULT)
-        }
-        fn OnTypeChange(&self, _: Ref<IFileDialog>) -> windows::core::Result<()> {
-            Ok(())
-        }
-        fn OnOverwrite(
-            &self,
-            _: Ref<IFileDialog>,
-            _: Ref<IShellItem>,
-        ) -> windows::core::Result<FDE_OVERWRITE_RESPONSE> {
-            Ok(FDEOR_DEFAULT)
         }
     }
 
@@ -248,41 +156,28 @@ mod native {
                 | FOS_FORCEFILESYSTEM
                 | FOS_PATHMUSTEXIST
                 | FOS_NOCHANGEDIR
-                | FOS_ALLOWMULTISELECT;
+                | FOS_ALLOWMULTISELECT
+                | FOS_FILEMUSTEXIST
+                | FOS_STRICTFILETYPES;
             dialog
-                .SetTitle(w!("选择地图包 — Ctrl / Shift 多选文件夹或 ZIP"))
+                .SetTitle(w!("选择 ZIP 地图包 — Ctrl / Shift 可多选"))
                 .map_err(|error| error.to_string())?;
             dialog
                 .SetFileTypes(&[COMDLG_FILTERSPEC {
-                    pszName: w!("地图包（文件夹或 ZIP）"),
+                    pszName: w!("ZIP 地图包 (*.zip)"),
                     pszSpec: w!("*.zip"),
                 }])
-                .map_err(|error| error.to_string())?;
-            let customize: IFileDialogCustomize =
-                dialog.cast().map_err(|error| error.to_string())?;
-            customize
-                .AddPushButton(IMPORT_SELECTION, w!("导入所选项目"))
                 .map_err(|error| error.to_string())?;
             dialog
                 .SetOptions(options)
                 .map_err(|error| error.to_string())?;
-            let selected = Rc::new(RefCell::new(None));
-            let events: IFileDialogEvents = SelectionEvents {
-                selected: selected.clone(),
-            }
-            .into();
-            let cookie = dialog.Advise(&events).map_err(|error| error.to_string())?;
             // Keep the shell's remembered folder, grouping, sorting and view mode.
             let shown = dialog.Show(Some(HWND(owner as *mut _)));
-            let _ = dialog.Unadvise(cookie);
             if let Err(error) = shown {
                 if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
                     return Ok(None);
                 }
                 return Err(format!("打开文件选择器失败：{error}"));
-            }
-            if let Some(paths) = selected.borrow_mut().take() {
-                return Ok(Some(paths));
             }
             paths(&dialog.GetResults().map_err(|error| error.to_string())?)
                 .map(Some)
