@@ -233,3 +233,5 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
   .setting-control :is(input:not([type="checkbox"]), select) { width: 140px; }
   .settings-about .repository-link { max-width: 100%; overflow-wrap: anywhere; }
 }
+
+.nav-icon { width: 20px; height: 20px; }

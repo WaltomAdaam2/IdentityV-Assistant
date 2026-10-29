@@ -46,7 +46,8 @@
     "icon": ["icons/icon.ico"],
     "resources": {
       "../engine/dist/identityv-engine/": "engine/",
-      "../LICENSE": "LICENSE"
+      "../LICENSE": "LICENSE",
+      "../assets/icons/LUCIDE_LICENSE.txt": "licenses/LUCIDE_LICENSE.txt"
     },
     "windows": {
       "nsis": {

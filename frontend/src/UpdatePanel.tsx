@@ -162,7 +162,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
     <h2 id="update-title">{t.title}</h2>
     <SettingRow icon="refresh" title={t.prerelease} description={t.prereleaseHint} language={settings.app.language}><input type="checkbox" role="switch" disabled={busy} checked={settings.app.update_prereleases} onChange={(event) => onSettingsChange({ ...settings.app, update_prereleases: event.target.checked })} /></SettingRow>
     <SettingRow icon="cloud" title={t.source} description={t.sourceHint} language={settings.app.language}><select disabled={busy} value={source} onChange={(event) => onSettingsChange({ ...settings.app, update_source: event.target.value as "direct" | "proxy" })}><option value="direct">{t.direct}</option><option value="proxy">{t.proxy}</option></select></SettingRow>
-    <SettingRow icon="search" title={t.manual} description={t.manualHint} language={settings.app.language}><button disabled={(busy && !["downloading", "verifying", "installing"].includes(status.phase)) || !desktop || !loaded || (!listening && !connectionFailed)} onClick={() => { if (["ready", "downloading", "verifying", "installing"].includes(status.phase)) setShowPrompt(true); else check(); }}>{t.check}</button></SettingRow>
+    <SettingRow icon="updateCheck" title={t.manual} description={t.manualHint} language={settings.app.language}><button disabled={(busy && !["downloading", "verifying", "installing"].includes(status.phase)) || !desktop || !loaded || (!listening && !connectionFailed)} onClick={() => { if (["ready", "downloading", "verifying", "installing"].includes(status.phase)) setShowPrompt(true); else check(); }}>{t.check}</button></SettingRow>
     {!desktop && <p>{t.browser}</p>}
   </section>}</>;
 }

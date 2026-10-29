@@ -5,6 +5,7 @@ import { bridge } from "./bridge";
 import Journal from "./Journal";
 import UpdatePanel from "./UpdatePanel";
 import SettingRow from "./SettingRow";
+import Icon, { type IconName } from "./Icon";
 import { defaultJournalSettings } from "./journalData";
 import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog, type LogEntry, type LogLevel } from "./logs";
 import type {
@@ -617,14 +618,14 @@ const translations = {
   },
 } as const;
 
-const nav: Array<{ id: Page; icon: string }> = [
-  { id: "dashboard", icon: "⌂" },
-  { id: "tasks", icon: "✓" },
-  { id: "journal", icon: "▤" },
-  { id: "runtime", icon: "⌘" },
-  { id: "debug", icon: "⌕" },
-  { id: "logs", icon: "≡" },
-  { id: "settings", icon: "⚙" },
+const nav: Array<{ id: Page; icon: IconName }> = [
+  { id: "dashboard", icon: "dashboard" },
+  { id: "tasks", icon: "tasks" },
+  { id: "journal", icon: "journal" },
+  { id: "runtime", icon: "runtime" },
+  { id: "debug", icon: "debug" },
+  { id: "logs", icon: "logs" },
+  { id: "settings", icon: "settings" },
 ];
 const initialTasks: TaskItem[] = [
   {
@@ -1493,7 +1494,7 @@ export default function App() {
                 aria-current={page === item.id ? "page" : undefined}
                 onClick={() => navigate(item.id)}
               >
-                <span>{item.icon}</span>
+                <span><Icon name={item.icon} className="nav-icon" /></span>
                 {t.nav[item.id]}
               </button>
             ))}
@@ -2368,7 +2369,7 @@ function SettingsPage({
         <SettingRow icon="tray" title={language === "zh-CN" ? "最小化到托盘" : "Minimize to system tray"} description={language === "zh-CN" ? "最小化时隐藏到系统托盘；关闭窗口仍会退出" : "Hide in the tray when minimized. Closing the window still exits."} language={language}>
           <input type="checkbox" role="switch" checked={settings.app.minimize_to_tray} onChange={(event) => updateApp({ minimize_to_tray: event.target.checked })} />
         </SettingRow>
-        <SettingRow icon="window" title={language === "zh-CN" ? "界面缩放" : "Interface scale"} description={language === "zh-CN" ? "调整文字与控件的显示大小" : "Adjust the size of text and controls."} language={language}>
+        <SettingRow icon="scale" title={language === "zh-CN" ? "界面缩放" : "Interface scale"} description={language === "zh-CN" ? "调整文字与控件的显示大小" : "Adjust the size of text and controls."} language={language}>
           <select value={settings.app.ui_scale_percent} onChange={(event) => updateApp({ ui_scale_percent: Number(event.target.value) })}>{[75, 90, 100, 110, 125, 150].map((scale) => <option key={scale} value={scale}>{scale}%</option>)}</select>
         </SettingRow>
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
@@ -2417,8 +2418,8 @@ function SettingsPage({
         <SettingRow icon="folder" title={language === "zh-CN" ? "游戏程序路径" : "Game executable"} description={language === "zh-CN" ? "第五人格可执行文件的完整路径" : "Full path to the Identity V executable."} language={language}>
           <input value={settings.game_window.executable_path} placeholder="dwrg.exe" onChange={(event) => updateWindow({ executable_path: event.target.value })} />
         </SettingRow>
-        <SettingRow icon="play" title={language === "zh-CN" ? "选择或启动游戏" : "Select or launch game"} description={language === "zh-CN" ? "选择游戏程序，或启动已选中的程序" : "Choose the executable or launch the selected program."} language={language}><div><button disabled={settingsActionBusy} onClick={() => void desktopAction(async () => { const path = await bridge.chooseGameExecutable(); if (path) updateWindow({ executable_path: path }); })}>{language === "zh-CN" ? "浏览…" : "Browse…"}</button><button disabled={settingsActionBusy || !settings.game_window.executable_path.trim()} onClick={() => void desktopAction(() => bridge.launchGame(settings.game_window.executable_path))}>{language === "zh-CN" ? "启动游戏" : "Launch game"}</button></div></SettingRow>
-        <SettingRow icon="window" title={t.windowResolution} description={language === "zh-CN" ? "启动引擎时应用此游戏窗口分辨率" : "Apply this resolution when the engine starts."} language={language}>
+        <SettingRow icon="game" title={language === "zh-CN" ? "选择或启动游戏" : "Select or launch game"} description={language === "zh-CN" ? "选择游戏程序，或启动已选中的程序" : "Choose the executable or launch the selected program."} language={language}><div><button disabled={settingsActionBusy} onClick={() => void desktopAction(async () => { const path = await bridge.chooseGameExecutable(); if (path) updateWindow({ executable_path: path }); })}>{language === "zh-CN" ? "浏览…" : "Browse…"}</button><button disabled={settingsActionBusy || !settings.game_window.executable_path.trim()} onClick={() => void desktopAction(() => bridge.launchGame(settings.game_window.executable_path))}>{language === "zh-CN" ? "启动游戏" : "Launch game"}</button></div></SettingRow>
+        <SettingRow icon="resolution" title={t.windowResolution} description={language === "zh-CN" ? "启动引擎时应用此游戏窗口分辨率" : "Apply this resolution when the engine starts."} language={language}>
           <select value={settings.game_window.resolution} onChange={(event) => updateWindow({ resolution: event.target.value as Settings["game_window"]["resolution"] })}>
             {["2560x1440", "1920x1080", "1600x900", "1280x720"].map((value) => <option key={value} value={value}>{value.replace("x", " × ")}</option>)}
           </select>
@@ -2437,7 +2438,7 @@ function SettingsPage({
             placeholder="第五人格，Identity V"
           />
         </SettingRow>
-        <SettingRow icon="file" title={t.processNames} description={language === "zh-CN" ? "用于识别游戏进程，多个名称用逗号分隔" : "Identify game processes using comma-separated names."} language={language}>
+        <SettingRow icon="process" title={t.processNames} description={language === "zh-CN" ? "用于识别游戏进程，多个名称用逗号分隔" : "Identify game processes using comma-separated names."} language={language}>
           <input
             value={settings.game_window.process_names.join("，")}
             onChange={(event) =>
@@ -2446,7 +2447,7 @@ function SettingsPage({
             placeholder="dwrg.exe，IdentityV.exe"
           />
         </SettingRow>
-        <SettingRow icon="window" title={t.classNames} description={language === "zh-CN" ? "可选窗口类名；留空使用默认识别" : "Optional window classes. Leave empty for default detection."} language={language}>
+        <SettingRow icon="classes" title={t.classNames} description={language === "zh-CN" ? "可选窗口类名；留空使用默认识别" : "Optional window classes. Leave empty for default detection."} language={language}>
           <input
             value={settings.game_window.class_names.join("，")}
             onChange={(event) =>
@@ -2482,7 +2483,7 @@ function SettingsPage({
             <option value="mss">MSS</option>
           </select>
         </SettingRow>
-        <SettingRow icon="camera" title={t.idleFps} description={language === "zh-CN" ? "空闲时每秒捕获的画面数量" : "Number of frames captured per second while idle."} language={language}>
+        <SettingRow icon="fps" title={t.idleFps} description={language === "zh-CN" ? "空闲时每秒捕获的画面数量" : "Number of frames captured per second while idle."} language={language}>
           <input
             type="number"
             min="1"
@@ -2505,8 +2506,8 @@ function SettingsPage({
       </section>
       <section className="panel developer-panel">
         <h2>{t.recognition}</h2>
-        <SettingRow icon="folder" title={language === "zh-CN" ? "日志文件" : "Log files"} description={language === "zh-CN" ? "打开本机保存的每日运行日志" : "Open the daily log archives on this computer."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></SettingRow>
-        <SettingRow icon="search" title={t.threshold} description={language === "zh-CN" ? "仅用于开发者模板诊断，不影响任务内的识别规则" : "Used for template diagnostics only; task recognition rules are unchanged."} language={language}>
+        <SettingRow icon="logFolder" title={language === "zh-CN" ? "日志文件" : "Log files"} description={language === "zh-CN" ? "打开本机保存的每日运行日志" : "Open the daily log archives on this computer."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></SettingRow>
+        <SettingRow icon="threshold" title={t.threshold} description={language === "zh-CN" ? "仅用于开发者模板诊断，不影响任务内的识别规则" : "Used for template diagnostics only; task recognition rules are unchanged."} language={language}>
           <input
             type="number"
             min="0"
@@ -2518,7 +2519,7 @@ function SettingsPage({
             }
           />
         </SettingRow>
-        <SettingRow icon="file" title={t.verbose} description={language === "zh-CN" ? "在日志界面显示连接、截图与识别等详细事件" : "Show connection, capture and recognition details in the log viewer."} language={language}>
+        <SettingRow icon="verbose" title={t.verbose} description={language === "zh-CN" ? "在日志界面显示连接、截图与识别等详细事件" : "Show connection, capture and recognition details in the log viewer."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.debug.verbose_logs}
@@ -2527,7 +2528,7 @@ function SettingsPage({
             }
           />
         </SettingRow>
-        <SettingRow icon="camera" title={t.screenshots} description={language === "zh-CN" ? "将诊断截图保存到本机 AppData 目录" : "Save diagnostic captures in the local AppData folder."} language={language}>
+        <SettingRow icon="screenshots" title={t.screenshots} description={language === "zh-CN" ? "将诊断截图保存到本机 AppData 目录" : "Save diagnostic captures in the local AppData folder."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.debug.save_debug_screenshots}

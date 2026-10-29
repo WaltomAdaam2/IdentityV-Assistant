@@ -36,3 +36,6 @@ Upstream source and build instructions:
 The exact component versions and original notices are listed in the generated
 file. The included source archives, rather than these links alone, accompany
 the redistributed GEOS library.
+
+Interface icons use Lucide from the Iconify collection (https://github.com/iconify/icon-sets).
+Original ISC and MIT notices are included in `assets/icons/LUCIDE_LICENSE.txt`.
