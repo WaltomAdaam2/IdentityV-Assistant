@@ -76,6 +76,8 @@ fn route(url: &str, source: &str) -> Result<String, String> {
     match source {
         "direct" => Ok(url.into()),
         "proxy" => Ok(format!("{PROXY}{url}")),
+        "ghfast" => Ok(format!("https://ghfast.top/{url}")),
+        "ghproxy_net" => Ok(format!("https://ghproxy.net/{url}")),
         _ => Err("Unknown update source".into()),
     }
 }
@@ -610,6 +612,14 @@ mod tests {
         assert!(validate_asset(&url, "0.3.0").is_err());
         assert_eq!(route(&url, "direct").unwrap(), url);
         assert_eq!(route(&url, "proxy").unwrap(), format!("{PROXY}{url}"));
+        assert_eq!(
+            route(&url, "ghfast").unwrap(),
+            format!("https://ghfast.top/{url}")
+        );
+        assert_eq!(
+            route(&url, "ghproxy_net").unwrap(),
+            format!("https://ghproxy.net/{url}")
+        );
         assert!(route(&url, "other").is_err());
     }
 

@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+const source = await readFile(new URL("./src/UpdatePanel.tsx", import.meta.url), "utf8");
+const start = source.indexOf("    if (!loaded || !desktop || !listening || startupHandled.current");
+const end = source.indexOf("\n  }, [loaded", start);
+assert.ok(start > 0 && end > start);
+const effect = new Function("loaded", "desktop", "listening", "startupHandled", "settings", "promptCheck", "setCheckedPrereleases", "run", "bridge", "source", source.slice(start, end));
+const handled = { current: false };
+const settings = { app: { check_updates_on_start: false, update_prereleases: false } };
+let checks = 0;
+const run = () => effect(true, true, true, handled, settings, {}, () => {}, (action) => action(), { checkUpdate: () => checks++ }, "ghfast");
+run(); assert.equal(checks, 0);
+settings.app.check_updates_on_start = true;
+run(); assert.equal(checks, 1);
+run(); assert.equal(checks, 1);
+assert.ok(source.indexOf("title={t.autoCheck}") < source.indexOf("title={t.prerelease}"));
+console.log("Update startup checks passed: disabled, enabled, once per session, first settings row.");

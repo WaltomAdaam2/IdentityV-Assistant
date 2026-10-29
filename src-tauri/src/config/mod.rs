@@ -54,6 +54,19 @@ pub fn load() -> Result<Value, String> {
 fn migrate(settings: &mut Value) -> bool {
     let before = settings.clone();
     if let Some(app) = settings.get_mut("app").and_then(Value::as_object_mut) {
+        if !app
+            .get("check_updates_on_start")
+            .is_some_and(Value::is_boolean)
+        {
+            app.insert("check_updates_on_start".into(), Value::Bool(true));
+        }
+        if !app
+            .get("update_source")
+            .and_then(Value::as_str)
+            .is_some_and(|value| ["direct", "proxy", "ghfast", "ghproxy_net"].contains(&value))
+        {
+            app.insert("update_source".into(), json!("direct"));
+        }
         if !app.get("update_prereleases").is_some_and(Value::is_boolean) {
             app.insert("update_prereleases".into(), Value::Bool(false));
         }
@@ -132,6 +145,19 @@ pub fn save(settings: &Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migrates_update_preferences_and_preserves_disabled_startup_check() {
+        let mut settings =
+            json!({"app": {"check_updates_on_start": false, "update_source": "ghfast"}});
+        migrate(&mut settings);
+        assert_eq!(settings["app"]["check_updates_on_start"], false);
+        assert_eq!(settings["app"]["update_source"], "ghfast");
+        settings["app"] = json!({"update_source": "unknown"});
+        migrate(&mut settings);
+        assert_eq!(settings["app"]["check_updates_on_start"], true);
+        assert_eq!(settings["app"]["update_source"], "direct");
+    }
 
     #[test]
     fn bundled_default_configuration_is_valid_json() {
