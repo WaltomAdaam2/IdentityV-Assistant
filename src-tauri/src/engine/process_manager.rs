@@ -37,6 +37,35 @@ struct EngineProcess {
     stdin: ChildStdin,
 }
 
+struct PendingDiagnostic {
+    request_id: String,
+    result_event: &'static str,
+    sender: oneshot::Sender<Result<(), String>>,
+}
+
+impl PendingDiagnostic {
+    fn result(&self, message: &Value) -> Option<Result<(), String>> {
+        if message.get("request_id").and_then(Value::as_str) != Some(self.request_id.as_str()) {
+            return None;
+        }
+        match message.get("type").and_then(Value::as_str) {
+            Some("error") => Some(Err(message["message"]
+                .as_str()
+                .unwrap_or("Diagnostic failed")
+                .to_string())),
+            Some(kind) if kind == self.result_event => {
+                // A failed window lookup emits its explanation in the following error event.
+                if kind == "window_diagnostics" && message["found"] != true {
+                    None
+                } else {
+                    Some(Ok(()))
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
 struct EngineState {
     process: Option<EngineProcess>,
     process_generation: u64,
@@ -48,12 +77,15 @@ struct EngineState {
     last_error: Option<String>,
     pending_tasks: Vec<String>,
     active_task_id: Option<String>,
+    diagnostic: Option<PendingDiagnostic>,
+    diagnostic_autostop_generation: Option<u64>,
 }
 
 #[derive(Clone)]
 pub struct EngineSupervisor {
     inner: Arc<Mutex<EngineState>>,
     lifecycle: Arc<Mutex<()>>,
+    diagnostics: Arc<Mutex<()>>,
     updating: Arc<AtomicBool>,
 }
 
@@ -62,6 +94,7 @@ impl Default for EngineSupervisor {
         Self {
             updating: Arc::new(AtomicBool::new(false)),
             lifecycle: Arc::new(Mutex::new(())),
+            diagnostics: Arc::new(Mutex::new(())),
             inner: Arc::new(Mutex::new(EngineState {
                 process: None,
                 process_generation: 0,
@@ -73,6 +106,8 @@ impl Default for EngineSupervisor {
                 last_error: None,
                 pending_tasks: Vec::new(),
                 active_task_id: None,
+                diagnostic: None,
+                diagnostic_autostop_generation: None,
             })),
         }
     }
@@ -81,7 +116,69 @@ impl Default for EngineSupervisor {
 impl EngineSupervisor {
     pub async fn start(&self, app: AppHandle) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock().await;
+        // An explicit start adopts an engine temporarily started by diagnostics.
+        self.inner.lock().await.diagnostic_autostop_generation = None;
         self.start_locked(app).await
+    }
+
+    pub async fn run_diagnostic(&self, app: AppHandle, command: Value) -> Result<(), String> {
+        let result_event = match command["type"].as_str() {
+            Some("detect_window") => "window_diagnostics",
+            Some("capture_frame") => "debug_frame",
+            _ => return Err("Unsupported temporary diagnostic".into()),
+        };
+        let request_id = command["request_id"]
+            .as_str()
+            .ok_or("Diagnostic request ID is required")?
+            .to_string();
+        // Serializing these two short operations avoids one test shutting down another's engine.
+        let _diagnostics = self.diagnostics.lock().await;
+        let (sender, receiver) = oneshot::channel();
+        let (generation, sent) = {
+            let _lifecycle = self.lifecycle.lock().await;
+            let was_running = self.has_process().await;
+            self.start_locked(app).await?;
+            let generation = {
+                let mut state = self.inner.lock().await;
+                if !was_running {
+                    state.diagnostic_autostop_generation = Some(state.process_generation);
+                }
+                state.diagnostic = Some(PendingDiagnostic {
+                    request_id,
+                    result_event,
+                    sender,
+                });
+                state.process_generation
+            };
+            (generation, self.send(command).await)
+        };
+        let result = match sent {
+            Err(error) => Err(error),
+            Ok(()) => match tokio::time::timeout(Duration::from_secs(30), receiver).await {
+                Ok(Ok(result)) => result,
+                Ok(Err(_)) => Err("诊断已中断：自动化服务已关闭".into()),
+                Err(_) => Err("诊断超时：30 秒内未收到结果".into()),
+            },
+        };
+        let cleanup = self.finish_diagnostic(generation).await;
+        result.and(cleanup)
+    }
+
+    async fn finish_diagnostic(&self, generation: u64) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock().await;
+        let should_stop = {
+            let mut state = self.inner.lock().await;
+            if state.process_generation != generation {
+                return Ok(());
+            }
+            state.diagnostic = None;
+            state.diagnostic_autostop_generation.take() == Some(generation)
+        };
+        if should_stop {
+            // Use normal shutdown so Python restores the game window and releases inputs.
+            self.stop_locked().await?;
+        }
+        Ok(())
     }
 
     async fn start_locked(&self, app: AppHandle) -> Result<(), String> {
@@ -336,6 +433,7 @@ impl EngineSupervisor {
                     match result {
                         Ok(Some(status)) => {
                             state.process = None;
+                            state.diagnostic = None;
                             if state.status == "stopping" {
                                 state.status = "stopped".into();
                                 None
@@ -453,10 +551,28 @@ impl EngineSupervisor {
             }
             _ => {}
         }
+        if let Some(result) = state
+            .diagnostic
+            .as_ref()
+            .and_then(|pending| pending.result(message))
+        {
+            if let Some(pending) = state.diagnostic.take() {
+                let _ = pending.sender.send(result);
+            }
+        }
         true
     }
 
     pub async fn send(&self, command: Value) -> Result<(), String> {
+        let adopts_engine = matches!(
+            command["type"].as_str(),
+            Some("start_task" | "start_tasks" | "resume_task")
+        );
+        let _lifecycle = if adopts_engine {
+            Some(self.lifecycle.lock().await)
+        } else {
+            None
+        };
         let pending_tasks = task_queue_from_command(&command);
         if let Some(tasks) = &pending_tasks {
             if tasks.is_empty()
@@ -491,6 +607,9 @@ impl EngineSupervisor {
             .flush()
             .await
             .map_err(|error| error.to_string())?;
+        if adopts_engine {
+            state.diagnostic_autostop_generation = None;
+        }
         if let Some(tasks) = pending_tasks {
             state.pending_tasks = tasks;
             state.active_task_id = None;
@@ -598,6 +717,8 @@ impl EngineSupervisor {
             let mut state = self.inner.lock().await;
             // Discard buffered events from the process being stopped, including after restart.
             state.process_generation += 1;
+            state.diagnostic = None;
+            state.diagnostic_autostop_generation = None;
             let running = state.process.is_some();
             if running {
                 state.status = "stopping".into();
@@ -723,6 +844,8 @@ impl EngineSupervisor {
             state.status = "error".into();
             state.last_error = Some(message.to_string());
             state.process_generation += 1;
+            state.diagnostic = None;
+            state.diagnostic_autostop_generation = None;
             state.process.take()
         };
         if let Some(mut process) = process {
@@ -843,9 +966,11 @@ fn protocol_error(code: &str, message: &str) -> Value {
 mod tests {
     use super::{
         engine_command, installed_engine_path, task_queue_from_command, EngineProcess,
-        EngineSupervisor,
+        EngineSupervisor, PendingDiagnostic,
     };
     use serde_json::json;
+    use std::process::Stdio;
+    use tokio::{process::Command, sync::oneshot};
 
     #[test]
     fn installed_engine_uses_installation_path_and_launches_directly() {
@@ -982,6 +1107,149 @@ mod tests {
             drop(lifecycle);
             supervisor.stop().await.unwrap();
             assert_eq!(supervisor.snapshot().await.status, "stopped");
+        });
+    }
+
+    #[test]
+    fn diagnostic_waits_for_its_final_result_and_stop_cancels_the_wait() {
+        tauri::async_runtime::block_on(async {
+            let supervisor = EngineSupervisor::default();
+            let (sender, mut receiver) = oneshot::channel();
+            supervisor.inner.lock().await.diagnostic = Some(PendingDiagnostic {
+                request_id: "capture".into(),
+                result_event: "debug_frame",
+                sender,
+            });
+            for event in [
+                json!({"type": "window_diagnostics", "request_id": "capture", "found": true}),
+                json!({"type": "debug_frame", "request_id": "other"}),
+                json!({"type": "error", "request_id": "other", "message": "unrelated"}),
+            ] {
+                supervisor.apply_event(&event, 0).await;
+                assert!(matches!(
+                    receiver.try_recv(),
+                    Err(oneshot::error::TryRecvError::Empty)
+                ));
+            }
+            supervisor
+                .apply_event(&json!({"type": "debug_frame", "request_id": "capture"}), 1)
+                .await;
+            assert!(matches!(
+                receiver.try_recv(),
+                Err(oneshot::error::TryRecvError::Empty)
+            ));
+            supervisor
+                .apply_event(&json!({"type": "debug_frame", "request_id": "capture"}), 0)
+                .await;
+            assert_eq!(receiver.await.unwrap(), Ok(()));
+
+            let (sender, mut receiver) = oneshot::channel();
+            supervisor.inner.lock().await.diagnostic = Some(PendingDiagnostic {
+                request_id: "detect".into(),
+                result_event: "window_diagnostics",
+                sender,
+            });
+            supervisor
+                .apply_event(
+                    &json!({"type": "window_diagnostics", "request_id": "detect", "found": false}),
+                    0,
+                )
+                .await;
+            assert!(matches!(
+                receiver.try_recv(),
+                Err(oneshot::error::TryRecvError::Empty)
+            ));
+            supervisor
+                .apply_event(
+                    &json!({"type": "error", "request_id": "detect", "message": "No window"}),
+                    0,
+                )
+                .await;
+            assert_eq!(receiver.await.unwrap(), Err("No window".into()));
+
+            let (sender, receiver) = oneshot::channel();
+            supervisor.inner.lock().await.diagnostic = Some(PendingDiagnostic {
+                request_id: "cancel".into(),
+                result_event: "debug_frame",
+                sender,
+            });
+            supervisor.stop().await.unwrap();
+            assert!(receiver.await.is_err());
+        });
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture for diagnostic lifecycle"]
+    fn diagnostic_engine_fixture() {
+        use std::io::BufRead;
+        for line in std::io::stdin().lock().lines() {
+            if line.unwrap().contains("shutdown") {
+                return;
+            }
+        }
+    }
+
+    #[test]
+    fn diagnostics_stop_only_the_engine_they_started() {
+        tauri::async_runtime::block_on(async {
+            for case in [
+                "temporary",
+                "already_running",
+                "task_started",
+                "restarted",
+                "no_result",
+            ] {
+                let mut child = Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--ignored",
+                        "--exact",
+                        "engine::process_manager::tests::diagnostic_engine_fixture",
+                    ])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .kill_on_drop(true)
+                    .spawn()
+                    .unwrap();
+                let stdin = child.stdin.take().unwrap();
+                let supervisor = EngineSupervisor::default();
+                {
+                    let mut state = supervisor.inner.lock().await;
+                    state.process = Some(EngineProcess { child, stdin });
+                    state.status = "idle".into();
+                    if case != "already_running" {
+                        state.diagnostic_autostop_generation = Some(0);
+                    }
+                    if case == "restarted" {
+                        state.process_generation = 1;
+                    }
+                    if case == "no_result" {
+                        let (sender, _receiver) = oneshot::channel();
+                        state.diagnostic = Some(PendingDiagnostic {
+                            request_id: "timeout".into(),
+                            result_event: "debug_frame",
+                            sender,
+                        });
+                    }
+                }
+                if case == "task_started" {
+                    supervisor
+                        .send(json!({"type": "start_task", "task": "blackjack"}))
+                        .await
+                        .unwrap();
+                }
+                supervisor.finish_diagnostic(0).await.unwrap();
+                let should_keep_running =
+                    matches!(case, "already_running" | "task_started" | "restarted");
+                assert_eq!(
+                    supervisor.has_process().await,
+                    should_keep_running,
+                    "{case}"
+                );
+                if !should_keep_running {
+                    assert_eq!(supervisor.snapshot().await.status, "stopped");
+                }
+                supervisor.stop().await.unwrap();
+            }
         });
     }
 

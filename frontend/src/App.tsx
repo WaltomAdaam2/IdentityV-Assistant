@@ -1958,12 +1958,13 @@ function Debug({
   const t = translations[language].debug;
   const [templateName, setTemplateName] = useState("test/mock_template.pgm");
   const [busy, setBusy] = useState<string | null>(null);
-  const request = async (label: string, action: () => Promise<unknown>) => {
+  const request = async (label: string, action: () => Promise<unknown>, waitsForResult = false) => {
     setBusy(label);
     try {
       await action();
-      appendLog("info", translations[language].waitingEvent(label), "debug");
-      setNotice(translations[language].actionNotice(label));
+      const completed = language === "zh-CN" ? `${label}已完成` : `${label} completed`;
+      appendLog("info", waitsForResult ? completed : translations[language].waitingEvent(label), "debug");
+      setNotice(waitsForResult ? completed : translations[language].actionNotice(label));
     } catch (error) {
       const message = translations[language].actionFailed(
         label,
@@ -2007,7 +2008,7 @@ function Debug({
         <button
           className="primary"
           disabled={Boolean(busy)}
-          onClick={() => void request(t.detectWindow, bridge.detectWindow)}
+          onClick={() => void request(t.detectWindow, bridge.detectWindow, true)}
         >
           {t.detect}
         </button>
@@ -2075,7 +2076,7 @@ function Debug({
         <p>{t.previewHint}</p>
         <button
           disabled={Boolean(busy)}
-          onClick={() => void request(t.captureFrame, bridge.captureFrame)}
+          onClick={() => void request(t.captureFrame, bridge.captureFrame, true)}
         >
           {t.capture}
         </button>

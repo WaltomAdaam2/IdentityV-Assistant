@@ -12,13 +12,17 @@ async fn request(
     command_type: &str,
     extra: Value,
 ) -> Result<Value, String> {
-    supervisor.start(app).await?;
     let request_id = Uuid::new_v4().to_string();
     let mut command = json!({"type": command_type, "request_id": request_id});
     if let (Some(command), Some(extra)) = (command.as_object_mut(), extra.as_object()) {
         command.extend(extra.clone());
     }
-    supervisor.send(command).await?;
+    if matches!(command_type, "detect_window" | "capture_frame") {
+        supervisor.run_diagnostic(app, command).await?;
+    } else {
+        supervisor.start(app).await?;
+        supervisor.send(command).await?;
+    }
     Ok(json!({"requested": true, "request_id": request_id}))
 }
 
