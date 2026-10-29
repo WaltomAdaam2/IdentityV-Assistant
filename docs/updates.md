@@ -19,11 +19,11 @@ pnpm tauri build
 
 签名私钥默认位于 `%LOCALAPPDATA%\IdentityV-Assistant\release-keys\updater.key`。也可通过环境变量 `TAURI_SIGNING_PRIVATE_KEY` 指定安全存储中的原始私钥文件；加密私钥另设 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。脚本只临时加载路径，不打印私钥、不生成替代密钥。**备份私钥并限制访问，不上传到仓库或 Release；丢失或更换私钥会使旧客户端无法验证后续更新。** 仓库只保存对应公钥。
 
-只有获授权的维护者可以构建和发布新版本。公开仓库仅保存许可文件和 Release 附件，不放 README 或私有源码。随机文件名只改变下载附件名称，不隐藏安装后的应用名称。
+只有获授权的维护者可以构建和发布新版本。公开仓库仅保存许可文件和 Release 附件，不放 README 或私有源码。安装包使用产品名、版本号和平台组成的文件名。
 
 成功构建会在 `src-tauri/target/release/bundle/nsis/` 生成以下发布文件：
 
-- `<32位随机十六进制名称>.exe`：完整安装包。
+- `IdentityV-Assistant-<版本>-Windows-x64-Setup.exe`：完整安装包。
 - 同名 `.exe.sig`：更新签名。
 - `latest.json`：版本说明、平台 URL、签名、SHA-256、文件大小及构建提交。
 - `SHA256SUMS.txt`：手动校验清单。
@@ -50,6 +50,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1 
 
 ## 发布仓库与许可
 
-公开下载仓库为 `WaltomAdaam2/desktop-releases`，只保存 LICENSE 和发布附件，不包含 README 或私有源码。安装包使用随机32位十六进制文件名，实际文件名以 `latest.json` 和 `SHA256SUMS.txt` 为准。安装后的产品名称保持不变。
+公开下载仓库为 `WaltomAdaam2/desktop-releases`，只保存 LICENSE 和发布附件，不包含 README 或私有源码。安装包使用正常产品文件名，实际文件名以 `latest.json` 和 `SHA256SUMS.txt` 为准。旧版更新器若只支持随机文件名，需手动下载安装新版一次。Release 标题为版本号，正文仅列出安装包 SHA-256；应用内更新说明保存在 `latest.json`。
 
 从 v0.1.2 起，自有代码采用个人使用专有许可。安装包保留第三方许可文本，以及 GEOS/Shapely 对应源码与构建说明。历史 GPL 授权不变。
