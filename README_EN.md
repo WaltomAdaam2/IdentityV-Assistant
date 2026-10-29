@@ -4,7 +4,7 @@
 
 Identity V Assistant is a Windows desktop visual automation assistant for Identity V. It recognizes window screenshots and runs tasks through normal Windows input.
 
-> This is a **0.1.3 development version**. Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek have passed the supplied screenshot and logic checks. As requested, no live game match was run.
+> This is a **0.1.6 development version**. Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek have passed the supplied screenshot and logic checks. As requested, no live game match was run.
 
 ## Interface preview
 

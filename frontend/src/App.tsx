@@ -1,5 +1,6 @@
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { isTauri } from "@tauri-apps/api/core";
+import { version as appVersion } from "../package.json";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
 import Journal from "./Journal";
@@ -1505,13 +1506,13 @@ export default function App() {
               <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
               <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
             </div>}
-            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv0.1.3`}>
+            <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv${appVersion}`}>
               <span className={`local-status-dot ${engineState(snapshot)}`} />
               <span className="local-status-copy">
                 <strong>{t.localConsole}</strong>
                 <small>{t.localOnly}</small>
               </span>
-              <b>v0.1.3</b>
+              <b>v{appVersion}</b>
             </div>
           </div>
         </aside>
@@ -2560,7 +2561,7 @@ function About({ language }: { language: Language }) {
       <div className="about-details">
         <div>
           <span>{t.version}</span>
-          <strong>0.1.3</strong>
+          <strong>{appVersion}</strong>
         </div>
         <div>
           <span>{t.author}</span>
