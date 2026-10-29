@@ -9,6 +9,7 @@ import type {
 } from "./types";
 
 export const bridge = {
+  resetWindowSize: () => invoke<void>("reset_window_size"),
   chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
   openLogsDirectory: () => invoke<void>("open_logs_directory"),
   launchGame: (executablePath: string) => invoke<void>("launch_game", { executablePath }),

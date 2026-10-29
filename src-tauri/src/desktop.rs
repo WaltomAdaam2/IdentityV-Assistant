@@ -223,6 +223,7 @@ fn set_startup(_: bool) -> Result<(), String> {
 }
 
 pub fn quit(app: &AppHandle) {
+    crate::window_size::flush(app);
     let app = app.clone();
     let supervisor = app
         .state::<crate::engine::EngineSupervisor>()

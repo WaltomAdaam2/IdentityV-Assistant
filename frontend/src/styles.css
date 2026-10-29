@@ -52,7 +52,7 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
 
 .window-titlebar { position: fixed; top: 0; right: 0; left: 0; z-index: 100; display: grid; grid-template-columns: max-content minmax(60px, 1fr) max-content; align-items: stretch; height: 38px; color: var(--muted-strong); background: color-mix(in srgb, var(--surface-subtle) 94%, transparent); border-bottom: 1px solid var(--border); box-shadow: 0 1px 10px color-mix(in srgb, var(--shadow) 55%, transparent); user-select: none; }
 .window-title { display: flex; align-items: center; gap: 8px; min-width: 210px; padding: 0 12px; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
-.window-title-mark { display: inline-grid; place-items: center; width: 20px; height: 20px; color: var(--accent-ink); background: var(--accent); border-radius: 7px; font-size: 12px; font-weight: 900; }
+.window-title-mark { display: block; width: 20px; height: 20px; object-fit: contain; }
 .window-drag-space { min-width: 0; }
 .window-controls { display: flex; }
 .window-control { display: grid; width: 46px; height: 38px; padding: 0; place-items: center; color: var(--muted-strong); background: transparent; border: 0; border-radius: 0; box-shadow: none; }
@@ -64,7 +64,7 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .shell { display: flex; height: 100vh; min-height: 100vh; padding-top: 38px; overflow: hidden; }
 .sidebar { position: sticky; top: 38px; display: flex; flex: 0 0 214px; flex-direction: column; width: 214px; height: calc(100vh - 38px); padding: 18px 12px; overflow-y: auto; background: var(--surface-subtle); border-right: 1px solid var(--border); animation: sidebar-arrive 520ms var(--ease-out) backwards; }
 .brand { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 9px; margin-bottom: 23px; color: var(--title); font-size: 15px; font-weight: 700; }
-.brand-mark, .large-mark { display: inline-grid; place-items: center; color: var(--accent-ink); background: var(--accent); border-radius: 12px; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-weight: 900; }
+.brand-mark, .large-mark { display: inline-block; object-fit: contain; background: transparent; }
 .brand-mark { width: 26px; height: 26px; font-size: 17px; }
 .brand-mark { transition: transform .35s cubic-bezier(.2, 1.4, .3, 1); }
 .brand:hover .brand-mark { transform: rotate(-7deg) scale(1.08); }

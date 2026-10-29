@@ -18,6 +18,8 @@ import type {
   WindowInfo,
 } from "./types";
 
+const appIcon = new URL("../../src-tauri/icons/128x128@2x.png", import.meta.url).href;
+
 type Page =
   | "dashboard"
   | "tasks"
@@ -747,9 +749,7 @@ function WindowTitleBar({ language }: { language: Language }) {
   return (
     <header className="window-titlebar">
       <div className="window-title" data-tauri-drag-region>
-        <span className="window-title-mark" data-tauri-drag-region>
-          V
-        </span>
+        <img className="window-title-mark" src={appIcon} alt="" draggable={false} data-tauri-drag-region />
         <span data-tauri-drag-region>Identity V Assistant</span>
       </div>
       <div className="window-drag-space" data-tauri-drag-region />
@@ -1483,7 +1483,7 @@ export default function App() {
       <main className="shell">
         <aside className="sidebar">
           <div className="brand sidebar-card" title={t.about.name}>
-            <span className="brand-mark">V</span>
+            <img className="brand-mark" src={appIcon} alt="" draggable={false} />
             <span>{t.about.name}</span>
           </div>
           <nav style={{ "--nav-index": visibleNav.findIndex((item) => item.id === page) } as CSSProperties}>
@@ -2372,6 +2372,9 @@ function SettingsPage({
         <SettingRow icon="scale" title={language === "zh-CN" ? "界面缩放" : "Interface scale"} description={language === "zh-CN" ? "调整文字与控件的显示大小" : "Adjust the size of text and controls."} language={language}>
           <select value={settings.app.ui_scale_percent} onChange={(event) => updateApp({ ui_scale_percent: Number(event.target.value) })}>{[75, 90, 100, 110, 125, 150].map((scale) => <option key={scale} value={scale}>{scale}%</option>)}</select>
         </SettingRow>
+        <SettingRow icon="window" title={language === "zh-CN" ? "恢复窗口默认大小" : "Restore default window size"} description={language === "zh-CN" ? "恢复助手窗口为 1000 × 680，不改变界面缩放" : "Restore the assistant to 1000 × 680 without changing interface scale."} language={language}>
+          <button disabled={settingsActionBusy || !isTauri()} onClick={() => void desktopAction(bridge.resetWindowSize)}>{language === "zh-CN" ? "恢复默认" : "Restore default"}</button>
+        </SettingRow>
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
           <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select>
         </SettingRow>
@@ -2548,7 +2551,7 @@ function About({ language }: { language: Language }) {
   return (
     <section className="panel about settings-about">
       <div className="about-intro">
-        <img className="large-mark" src={new URL("../../assets/icons/app-icon.svg", import.meta.url).href} alt="" />
+        <img className="large-mark" src={appIcon} alt="" />
         <span className="eyebrow">IDENTITYV ASSISTANT</span>
         <h2>{t.name}</h2>
         <p>{t.description}</p>

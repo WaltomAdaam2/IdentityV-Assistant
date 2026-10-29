@@ -7,6 +7,7 @@ mod journal_dialog;
 mod logs;
 mod power;
 mod updates;
+mod window_size;
 
 use engine::EngineSupervisor;
 use serde_json::json;
@@ -48,10 +49,12 @@ pub fn run() {
         .manage(power::PowerManager::default())
         .manage(updates::UpdateManager::default())
         .manage(desktop::DesktopSettings::default())
+        .manage(window_size::WindowSizeState::default())
         .invoke_handler(tauri::generate_handler![
             commands::open_project_repository,
             desktop::launch_game,
             desktop::open_logs_directory,
+            window_size::reset_window_size,
             journal_dialog::choose_game_executable,
             updates::get_update_status,
             updates::check_update,
@@ -81,6 +84,7 @@ pub fn run() {
         .setup(|app| {
             logs::prune().map_err(std::io::Error::other)?;
             let settings = config::load().map_err(std::io::Error::other)?;
+            window_size::restore(app.handle()).map_err(std::io::Error::other)?;
             desktop::create_tray(app.handle())?;
             if let Err(error) = desktop::initialize(app.handle(), &settings) {
                 logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"DESKTOP_SETTINGS_FAILED","message":error,"recoverable":true,"details":{}}));
@@ -97,6 +101,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Resized(_)) {
+                window_size::resized(window);
+            }
             let minimize_to_tray = window.state::<desktop::DesktopSettings>().tray.load(std::sync::atomic::Ordering::Relaxed);
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
