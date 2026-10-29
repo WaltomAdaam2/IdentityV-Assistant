@@ -207,6 +207,10 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .setting-toggle input[type="checkbox"]:checked::after { transform: translateX(14px); background: var(--accent-ink); }
 .setting-toggle input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .setting-toggle input:disabled { opacity: .5; cursor: not-allowed; }
+.setting-toggle input[type="checkbox"], .switch span { transition: background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-base), transform var(--motion-base) var(--ease-spring); }
+.setting-toggle input[type="checkbox"]:hover:not(:disabled), .switch:hover input:not(:disabled) + span { box-shadow: 0 7px 16px color-mix(in srgb, var(--shadow) 70%, transparent); transform: translateY(-2px); }
+.setting-toggle input[type="checkbox"]:active:not(:disabled), .switch:active input:not(:disabled) + span { box-shadow: 0 2px 7px var(--shadow); transform: translateY(1px) scale(.965); transition-duration: 80ms; }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 3px; }
 .settings-about.about { position: static; width: 100%; min-height: 0; padding: 28px; transform: none; text-align: left; }
 .settings-about .about-intro { display: block; }
 .settings-about .about-intro > p { max-width: none; }
