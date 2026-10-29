@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><title>Launcher interaction test</title>
+<body><div id="root"></div><script type="module">
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+mockWindows("main");
+window.__launcherTest = { calls: [], newsFailure: true };
+mockIPC((command, args) => {
+  window.__launcherTest.calls.push({ command, args });
+  if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false } };
+  if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
+  if (command === "get_update_status") return { phase: "idle" };
+  if (command === "get_game_announcements") {
+    if (window.__launcherTest.newsFailure) return Promise.reject("Network unavailable");
+    return [{ title: "庄园活动公告", url: "https://id5.163.com/news/official/test.html", release_time: 1793203200 }];
+  }
+  return null;
+}, { shouldMockEvents: true });
+await import("../src/main.tsx");
+</script></body></html>

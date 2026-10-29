@@ -4,6 +4,7 @@ mod desktop;
 mod engine;
 mod journal;
 mod journal_dialog;
+mod launcher_news;
 mod logs;
 mod power;
 mod updates;
@@ -53,6 +54,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::open_project_repository,
             desktop::launch_game,
+            launcher_news::get_game_announcements,
+            launcher_news::open_game_announcement,
             desktop::open_logs_directory,
             window_size::reset_window_size,
             journal_dialog::choose_game_executable,

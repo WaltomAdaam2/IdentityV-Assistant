@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { UpdateInfo, UpdateStatus } from "./UpdatePanel";
+
 import type {
   DiagnosticRequest,
   EngineEvent,
@@ -8,11 +9,19 @@ import type {
   Settings,
 } from "./types";
 
+export interface Announcement {
+  title: string;
+  url: string;
+  release_time: number;
+}
+
 export const bridge = {
   resetWindowSize: () => invoke<void>("reset_window_size"),
   chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
   openLogsDirectory: () => invoke<void>("open_logs_directory"),
   launchGame: (executablePath: string) => invoke<void>("launch_game", { executablePath }),
+  getGameAnnouncements: () => invoke<Announcement[]>("get_game_announcements"),
+  openGameAnnouncement: (url: string) => invoke<void>("open_game_announcement", { url }),
   checkUpdate: (source: Settings["app"]["update_source"], prereleases = false) => invoke<UpdateInfo | null>("check_update", { source, prereleases }),
   downloadUpdate: (source: Settings["app"]["update_source"]) => invoke<void>("download_update", { source }),
   cancelUpdate: () => invoke<void>("cancel_update"),

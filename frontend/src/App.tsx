@@ -4,6 +4,7 @@ import { version as appVersion } from "../package.json";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
 import Journal from "./Journal";
+import GameLauncher from "./GameLauncher";
 import UpdatePanel from "./UpdatePanel";
 import SettingRow from "./SettingRow";
 import Icon, { type IconName } from "./Icon";
@@ -24,6 +25,7 @@ const appIcon = new URL("../../src-tauri/icons/128x128@2x.png", import.meta.url)
 type Page =
   | "dashboard"
   | "tasks"
+  | "launcher"
   | "journal"
   | "runtime"
   | "debug"
@@ -48,6 +50,7 @@ const translations = {
     nav: {
       dashboard: "概览",
       tasks: "任务",
+      launcher: "游戏启动",
       journal: "加页手记",
       runtime: "服务详情",
       debug: "捕捉诊断",
@@ -329,6 +332,7 @@ const translations = {
     nav: {
       dashboard: "Overview",
       tasks: "Tasks",
+      launcher: "Game launch",
       journal: "Journal",
       runtime: "Service details",
       debug: "Capture diagnostics",
@@ -624,6 +628,7 @@ const translations = {
 const nav: Array<{ id: Page; icon: IconName }> = [
   { id: "dashboard", icon: "dashboard" },
   { id: "tasks", icon: "tasks" },
+  { id: "launcher", icon: "game" },
   { id: "journal", icon: "journal" },
   { id: "runtime", icon: "runtime" },
   { id: "debug", icon: "debug" },
@@ -1438,6 +1443,7 @@ export default function App() {
         onCommand={sendEngineCommand}
       />
     ),
+    launcher: <GameLauncher language={language} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
     runtime: (
       <Runtime
@@ -1516,7 +1522,7 @@ export default function App() {
             </div>
           </div>
         </aside>
-        <section className="workspace" ref={workspaceRef}>
+        <section className={`workspace${page === "launcher" ? " workspace-launcher" : ""}`} ref={workspaceRef}>
           <header className="topbar">
             <div key={page} className="page-heading">
               <h1>{t.nav[page]}</h1>
