@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
 import Journal from "./Journal";
 import UpdatePanel from "./UpdatePanel";
+import SettingRow from "./SettingRow";
 import { defaultJournalSettings } from "./journalData";
 import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog, type LogEntry, type LogLevel } from "./logs";
 import type {
@@ -266,7 +267,6 @@ const translations = {
       gameWindowHint: "通过进程名、标题关键词和窗口类名定位游戏窗口。",
       windowResolution: "游戏分辨率",
       windowPosition: "窗口位置",
-      windowLayoutHint: "引擎开启时应用。无限制保留当前位置；关闭引擎恢复原窗口。",
       windowPositions: { center: "居中", unrestricted: "无限制", top_left: "左上", top_right: "右上", bottom_left: "左下", bottom_right: "右下" },
       titleKeywords: "窗口标题关键词",
       processNames: "进程名",
@@ -556,7 +556,6 @@ const translations = {
         "Find the game window by process name, title keywords, and window class.",
       windowResolution: "Game resolution",
       windowPosition: "Window position",
-      windowLayoutHint: "Applied while the engine runs. Unrestricted keeps the current position; shutdown restores the original window.",
       windowPositions: { center: "Center", unrestricted: "Unrestricted", top_left: "Top left", top_right: "Top right", bottom_left: "Bottom left", bottom_right: "Bottom right" },
       titleKeywords: "Window title keywords",
       processNames: "Process names",
@@ -2319,8 +2318,7 @@ function SettingsPage({
       <section className="panel">
         <h2>{t.general}</h2>
         <p>{t.generalHint}</p>
-        <label>
-          {t.theme}
+        <SettingRow icon="theme" title={t.theme} description={language === "zh-CN" ? "设置助手界面的外观" : "Choose the appearance of the assistant."} language={language}>
           <select
             value={settings.app.theme}
             onChange={(event) =>
@@ -2333,9 +2331,8 @@ function SettingsPage({
             <option value="light">{t.light}</option>
             <option value="dark">{t.dark}</option>
           </select>
-        </label>
-        <label>
-          {t.language}
+        </SettingRow>
+        <SettingRow icon="language" title={t.language} description={language === "zh-CN" ? "设置程序界面使用的语言" : "Choose the interface language."} language={language}>
           <select
             value={settings.app.language}
             onChange={(event) =>
@@ -2345,12 +2342,20 @@ function SettingsPage({
             <option value="zh-CN">简体中文</option>
             <option value="en-US">English</option>
           </select>
-        </label>
-        <label className="check-label"><input type="checkbox" role="switch" checked={settings.app.launch_on_login} onChange={(event) => updateApp({ launch_on_login: event.target.checked })} />{language === "zh-CN" ? "开机启动助手" : "Launch at sign-in"}</label>
-        <label className="check-label"><input type="checkbox" role="switch" checked={settings.app.minimize_to_tray} onChange={(event) => updateApp({ minimize_to_tray: event.target.checked })} />{language === "zh-CN" ? "最小化到托盘" : "Minimize to system tray"}</label>
-        <label>{language === "zh-CN" ? "界面缩放" : "Interface scale"}<select value={settings.app.ui_scale_percent} onChange={(event) => updateApp({ ui_scale_percent: Number(event.target.value) })}>{[75, 90, 100, 110, 125, 150].map((scale) => <option key={scale} value={scale}>{scale}%</option>)}</select></label>
-        <label>{language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"}<select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select></label>
-        <label className="check-label">
+        </SettingRow>
+        <SettingRow icon="power" title={language === "zh-CN" ? "开机启动助手" : "Launch at sign-in"} description={language === "zh-CN" ? "登录 Windows 后自动启动助手" : "Start the assistant when you sign in to Windows."} language={language}>
+          <input type="checkbox" role="switch" checked={settings.app.launch_on_login} onChange={(event) => updateApp({ launch_on_login: event.target.checked })} />
+        </SettingRow>
+        <SettingRow icon="tray" title={language === "zh-CN" ? "最小化到托盘" : "Minimize to system tray"} description={language === "zh-CN" ? "最小化时隐藏到系统托盘；关闭窗口仍会退出" : "Hide in the tray when minimized. Closing the window still exits."} language={language}>
+          <input type="checkbox" role="switch" checked={settings.app.minimize_to_tray} onChange={(event) => updateApp({ minimize_to_tray: event.target.checked })} />
+        </SettingRow>
+        <SettingRow icon="window" title={language === "zh-CN" ? "界面缩放" : "Interface scale"} description={language === "zh-CN" ? "调整文字与控件的显示大小" : "Adjust the size of text and controls."} language={language}>
+          <select value={settings.app.ui_scale_percent} onChange={(event) => updateApp({ ui_scale_percent: Number(event.target.value) })}>{[75, 90, 100, 110, 125, 150].map((scale) => <option key={scale} value={scale}>{scale}%</option>)}</select>
+        </SettingRow>
+        <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
+          <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select>
+        </SettingRow>
+        <SettingRow icon="play" title={t.launch} description={language === "zh-CN" ? "打开助手时自动启动自动化引擎" : "Start the automation engine when the assistant opens."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.app.launch_engine_on_start}
@@ -2358,9 +2363,8 @@ function SettingsPage({
               updateApp({ launch_engine_on_start: event.target.checked })
             }
           />
-          {t.launch}
-        </label>
-        <label className="check-label">
+        </SettingRow>
+        <SettingRow icon="moon" title={t.preventSystemSleep} description={language === "zh-CN" ? "助手打开期间阻止系统自动休眠" : "Prevent automatic system sleep while the assistant is open."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.app.prevent_system_sleep}
@@ -2368,9 +2372,8 @@ function SettingsPage({
               updateApp({ prevent_system_sleep: event.target.checked })
             }
           />
-          {t.preventSystemSleep}
-        </label>
-        <label className="check-label">
+        </SettingRow>
+        <SettingRow icon="monitor" title={t.preventDisplaySleep} description={language === "zh-CN" ? "助手打开期间保持屏幕亮起，阻止空闲自动锁屏" : "Keep the display awake and prevent idle locking while open."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.app.prevent_display_sleep}
@@ -2378,9 +2381,8 @@ function SettingsPage({
               updateApp({ prevent_display_sleep: event.target.checked })
             }
           />
-          {t.preventDisplaySleep}
-        </label>
-        <label className="check-label developer-toggle">
+        </SettingRow>
+        <SettingRow icon="code" title={t.developerMode} description={t.developerModeHint} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.app.developer_mode}
@@ -2388,32 +2390,26 @@ function SettingsPage({
               updateApp({ developer_mode: event.target.checked })
             }
           />
-          <span>
-            {t.developerMode}
-            <small>{t.developerModeHint}</small>
-          </span>
-        </label>
+        </SettingRow>
       </section>
       <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
-        <label>{language === "zh-CN" ? "游戏程序路径" : "Game executable"}<input value={settings.game_window.executable_path} placeholder="dwrg.exe" onChange={(event) => updateWindow({ executable_path: event.target.value })} /></label>
-        <div className="settings-action-row"><span>{language === "zh-CN" ? "选择或启动游戏" : "Select or launch game"}</span><div><button disabled={settingsActionBusy} onClick={() => void desktopAction(async () => { const path = await bridge.chooseGameExecutable(); if (path) updateWindow({ executable_path: path }); })}>{language === "zh-CN" ? "浏览…" : "Browse…"}</button><button disabled={settingsActionBusy || !settings.game_window.executable_path.trim()} onClick={() => void desktopAction(() => bridge.launchGame(settings.game_window.executable_path))}>{language === "zh-CN" ? "启动游戏" : "Launch game"}</button></div></div>
-        <label>
-          {t.windowResolution}
+        <SettingRow icon="folder" title={language === "zh-CN" ? "游戏程序路径" : "Game executable"} description={language === "zh-CN" ? "第五人格可执行文件的完整路径" : "Full path to the Identity V executable."} language={language}>
+          <input value={settings.game_window.executable_path} placeholder="dwrg.exe" onChange={(event) => updateWindow({ executable_path: event.target.value })} />
+        </SettingRow>
+        <SettingRow icon="play" title={language === "zh-CN" ? "选择或启动游戏" : "Select or launch game"} description={language === "zh-CN" ? "选择游戏程序，或启动已选中的程序" : "Choose the executable or launch the selected program."} language={language}><div><button disabled={settingsActionBusy} onClick={() => void desktopAction(async () => { const path = await bridge.chooseGameExecutable(); if (path) updateWindow({ executable_path: path }); })}>{language === "zh-CN" ? "浏览…" : "Browse…"}</button><button disabled={settingsActionBusy || !settings.game_window.executable_path.trim()} onClick={() => void desktopAction(() => bridge.launchGame(settings.game_window.executable_path))}>{language === "zh-CN" ? "启动游戏" : "Launch game"}</button></div></SettingRow>
+        <SettingRow icon="window" title={t.windowResolution} description={language === "zh-CN" ? "启动引擎时应用此游戏窗口分辨率" : "Apply this resolution when the engine starts."} language={language}>
           <select value={settings.game_window.resolution} onChange={(event) => updateWindow({ resolution: event.target.value as Settings["game_window"]["resolution"] })}>
             {["2560x1440", "1920x1080", "1600x900", "1280x720"].map((value) => <option key={value} value={value}>{value.replace("x", " × ")}</option>)}
           </select>
-        </label>
-        <label>
-          {t.windowPosition}
+        </SettingRow>
+        <SettingRow icon="position" title={t.windowPosition} description={language === "zh-CN" ? "启动引擎时放置游戏窗口的位置" : "Place the game window here when the engine starts."} language={language}>
           <select value={settings.game_window.position} onChange={(event) => updateWindow({ position: event.target.value as Settings["game_window"]["position"] })}>
             {Object.entries(t.windowPositions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-        </label>
-        <p>{t.windowLayoutHint}</p>
-        <label>
-          {t.titleKeywords}
+        </SettingRow>
+        <SettingRow icon="search" title={t.titleKeywords} description={language === "zh-CN" ? "用于查找游戏窗口，多个关键词用逗号分隔" : "Find the game window using comma-separated title keywords."} language={language}>
           <input
             value={settings.game_window.title_contains.join("，")}
             onChange={(event) =>
@@ -2421,9 +2417,8 @@ function SettingsPage({
             }
             placeholder="第五人格，Identity V"
           />
-        </label>
-        <label>
-          {t.processNames}
+        </SettingRow>
+        <SettingRow icon="file" title={t.processNames} description={language === "zh-CN" ? "用于识别游戏进程，多个名称用逗号分隔" : "Identify game processes using comma-separated names."} language={language}>
           <input
             value={settings.game_window.process_names.join("，")}
             onChange={(event) =>
@@ -2431,22 +2426,20 @@ function SettingsPage({
             }
             placeholder="dwrg.exe，IdentityV.exe"
           />
-        </label>
-        <label>
-          {t.classNames}
+        </SettingRow>
+        <SettingRow icon="window" title={t.classNames} description={language === "zh-CN" ? "可选窗口类名；留空使用默认识别" : "Optional window classes. Leave empty for default detection."} language={language}>
           <input
             value={settings.game_window.class_names.join("，")}
             onChange={(event) =>
               updateWindow({ class_names: keywords(event.target.value) })
             }
           />
-        </label>
+        </SettingRow>
       </section>
       <section className="panel developer-panel">
         <h2>{t.engineCapture}</h2>
         <p>{t.engineCaptureHint}</p>
-        <label>
-          {t.heartbeat}
+        <SettingRow icon="clock" title={t.heartbeat} description={language === "zh-CN" ? "检测自动化引擎连接状态的时间间隔" : "Interval between engine connection checks."} language={language}>
           <input
             type="number"
             min="0.5"
@@ -2458,9 +2451,8 @@ function SettingsPage({
               })
             }
           />
-        </label>
-        <label>
-          {t.captureBackend}
+        </SettingRow>
+        <SettingRow icon="camera" title={t.captureBackend} description={language === "zh-CN" ? "选择游戏画面的截图方式" : "Choose how game frames are captured."} language={language}>
           <select
             value={settings.capture.backend}
             onChange={(event) => updateCapture({ backend: event.target.value })}
@@ -2470,9 +2462,8 @@ function SettingsPage({
             <option value="dxcam">DXcam</option>
             <option value="mss">MSS</option>
           </select>
-        </label>
-        <label>
-          {t.idleFps}
+        </SettingRow>
+        <SettingRow icon="camera" title={t.idleFps} description={language === "zh-CN" ? "空闲时每秒捕获的画面数量" : "Number of frames captured per second while idle."} language={language}>
           <input
             type="number"
             min="1"
@@ -2482,8 +2473,8 @@ function SettingsPage({
               updateCapture({ idle_fps: Number(event.target.value) })
             }
           />
-        </label>
-        <label className="check-label">
+        </SettingRow>
+        <SettingRow icon="memory" title={t.memoryProtection} description={language === "zh-CN" ? "自动检测电脑总内存占用，超过 90% 时清理未使用缓存，可能略微影响脚本速度" : "Monitor total system memory; above 90%, release unused caches. This may briefly slow automation."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.engine.memory_protection}
@@ -2491,17 +2482,12 @@ function SettingsPage({
               updateEngine({ memory_protection: event.target.checked })
             }
           />
-          <span>
-            {t.memoryProtection}
-            <small>{t.memoryProtectionHint}</small>
-          </span>
-        </label>
+        </SettingRow>
       </section>
       <section className="panel developer-panel">
         <h2>{t.recognition}</h2>
-        <div className="settings-action-row"><span>{language === "zh-CN" ? "日志文件" : "Log files"}</span><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></div>
-        <label>
-          {t.threshold}
+        <SettingRow icon="folder" title={language === "zh-CN" ? "日志文件" : "Log files"} description={language === "zh-CN" ? "打开本机保存的每日运行日志" : "Open the daily log archives on this computer."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></SettingRow>
+        <SettingRow icon="search" title={t.threshold} description={language === "zh-CN" ? "仅用于开发者模板诊断，不影响任务内的识别规则" : "Used for template diagnostics only; task recognition rules are unchanged."} language={language}>
           <input
             type="number"
             min="0"
@@ -2512,8 +2498,8 @@ function SettingsPage({
               updateVision({ template_threshold: Number(event.target.value) })
             }
           />
-        </label>
-        <label className="check-label">
+        </SettingRow>
+        <SettingRow icon="file" title={t.verbose} description={language === "zh-CN" ? "在日志界面显示连接、截图与识别等详细事件" : "Show connection, capture and recognition details in the log viewer."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.debug.verbose_logs}
@@ -2521,9 +2507,8 @@ function SettingsPage({
               updateDebug({ verbose_logs: event.target.checked })
             }
           />
-          {t.verbose}
-        </label>
-        <label className="check-label">
+        </SettingRow>
+        <SettingRow icon="camera" title={t.screenshots} description={language === "zh-CN" ? "将诊断截图保存到本机 AppData 目录" : "Save diagnostic captures in the local AppData folder."} language={language}>
           <input
             type="checkbox" role="switch"
             checked={settings.debug.save_debug_screenshots}
@@ -2531,8 +2516,7 @@ function SettingsPage({
               updateDebug({ save_debug_screenshots: event.target.checked })
             }
           />
-          {t.screenshots}
-        </label>
+        </SettingRow>
       </section>
       <About language={language} />
     </section>
