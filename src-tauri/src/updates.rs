@@ -86,10 +86,11 @@ fn validate_asset(url: &str, version: &str) -> Result<(), String> {
         .strip_prefix(&prefix)
         .and_then(|name| name.strip_suffix(".exe"));
     if !name.is_some_and(|name| {
-        name.len() == 32
-            && name
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        name == format!("IdentityV-Assistant-{version}-Windows-x64-Setup")
+            || name.len() == 32
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     }) {
         return Err("Installer URL must match this project's release and version".into());
     }
@@ -586,6 +587,15 @@ mod tests {
     fn accepts_only_project_installers_and_known_routes() {
         let url = format!("{RELEASES}download/v0.2.0/0123456789abcdef0123456789abcdef.exe");
         assert!(validate_asset(&url, "0.2.0").is_ok());
+        let readable =
+            format!("{RELEASES}download/v0.2.0/IdentityV-Assistant-0.2.0-Windows-x64-Setup.exe");
+        assert!(validate_asset(&readable, "0.2.0").is_ok());
+        assert!(validate_asset(
+            &readable.replace("Assistant-0.2.0", "Assistant-0.3.0"),
+            "0.2.0"
+        )
+        .is_err());
+        assert!(validate_asset(&format!("{readable}?redirect=other"), "0.2.0").is_err());
         for bad in [
             url.replace("github.com/", "github.com.evil/"),
             url.replace("desktop-releases/", "other/"),

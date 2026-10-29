@@ -38,7 +38,7 @@ $tags = & git ls-remote "https://github.com/$repo.git" "refs/tags/$tag"
 if ($LASTEXITCODE -ne 0 -or $tags) { throw "Cannot publish: tag exists or remote inspection failed." }
 $platform = $manifest.platforms.'windows-x86_64'
 $assetName = ($platform.url -split '/')[-1]
-if ($assetName -cnotmatch '^[0-9a-f]{32}\.exe$') { throw "Installer filename must be a random lowercase hexadecimal ID." }
+if ($assetName -cne "IdentityV-Assistant-${version}-Windows-x64-Setup.exe") { throw "Installer filename must match the product, version and platform." }
 $asset = Join-Path $bundle $assetName
 if ($platform.url -ne "https://github.com/$repo/releases/download/$tag/$assetName" -or
     (Get-Content -LiteralPath (Join-Path $bundle "SHA256SUMS.txt") -Raw).Trim() -ne ($platform.sha256 + "  " + $assetName) -or
@@ -50,9 +50,11 @@ if ($platform.url -ne "https://github.com/$repo/releases/download/$tag/$assetNam
 $manifest.notes = $notes.Trim()
 $manifest.pub_date = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+$releaseBody = Join-Path $bundle "release-body.txt"
+[IO.File]::WriteAllText($releaseBody, ("SHA-256: " + $platform.sha256 + "`n"), [Text.UTF8Encoding]::new($false))
 $isPrerelease = $version.Contains('-')
 $channelArguments = if ($isPrerelease) { @('--prerelease') } else { @() }
-& gh release create $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo --target $releaseCommit --draft --title "v$version" --notes-file $NotesFile @channelArguments
+& gh release create $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo --target $releaseCommit --draft --title "v$version" --notes-file $releaseBody @channelArguments
 if ($LASTEXITCODE -ne 0) { throw "Draft creation/upload failed or outcome is unknown. Inspect GitHub Releases before retrying. No existing release will be overwritten." }
 $latestArgument = if ($isPrerelease) { '--latest=false' } else { '--latest=true' }
 & gh release edit $tag --repo $repo --draft=false $latestArgument

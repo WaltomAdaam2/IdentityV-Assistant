@@ -21,7 +21,7 @@ $trustedComment = ($signatureText -split "`n" | Where-Object { $_.StartsWith('tr
 if (($trustedComment.TrimEnd("`r") -split "`t") -notcontains "version:$Version") {
     throw "Installer signature must contain signed version:$Version. Rebuild with Tauri CLI 2.12 or newer."
 }
-$assetName = [Guid]::NewGuid().ToString("N") + ".exe"
+$assetName = "IdentityV-Assistant-${Version}-Windows-x64-Setup.exe"
 $assetPath = Join-Path $BundleDirectory $assetName
 Copy-Item -LiteralPath $installer -Destination $assetPath -Force
 Copy-Item -LiteralPath $signaturePath -Destination ($assetPath + ".sig") -Force

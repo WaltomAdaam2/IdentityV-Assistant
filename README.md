@@ -91,7 +91,7 @@ window capture + Windows input
 
 “加页手记”支持按赛季、难度、门型、楼层和纯净／速刷筛选地图，并显示全部匹配的缩略图。图片保持完整比例，地图区域随数量向下展开，通过页面滚动浏览。筛选偏好保存在 `config.json` 的 `journal` 字段；切换地图筛选不会重载游戏引擎设置。点击缩略图进入地图详情，可切换楼层和纯净／速刷显示；点击“进入地图”打开助手窗口内预览，地图等比完整显示，周边遮罩为 30% 不透明，地图区域黑底为 90% 不透明；黑底仅覆盖按原图比例缩放后的图片区域，四周保留 24px 安全边距。右上角 × 或第一次 Esc 返回详情，再按 Esc 返回列表。当前不提供自动识图或游戏悬浮地图。
 
-“导入地图包”使用 Windows 原生文件对话框。按 Ctrl／Shift 可同时选择多个文件夹和 ZIP，点击“导入所选项目”后自动识别类型并逐个导入；单个包失败不会阻断其余包，完成后显示成功数量及失败原因。支持系统目录导航、搜索和排序。优先使用根目录的 `pack.json`；根目录没有时，自动查找嵌套目录（最多 16 层）。找到多个包会提示选择更具体的文件夹，不会任意选一个。也可将有效地图包放到下方 `journal\packs\<packId>\` 后刷新。
+“导入地图包”使用 Windows 原生文件对话框，仅接受 ZIP。按 Ctrl／Shift 选择多个 ZIP 后点击“打开”，逐个导入；单个包失败不会阻断其余包，完成后显示成功数量及失败原因。支持根目录或嵌套目录中的 `pack.json`。也可将有效地图包放到 `journal\packs\<packId>\` 后刷新。楼层切换仅在当前页面生效，不保存设置；重新进入页面默认显示 1F。
 
 导入只复制描述文件引用的 PNG/JPEG/WebP 图片，不覆盖同名包，不修改源文件，不读取其他软件的安装或数据目录；暂不支持旧版 `manifest.json`。ZIP 会校验路径、链接、重复文件和解压大小。描述文件包含 `packId`、`packName`、`seasonId`、`difficulty`（`hard`/`nightmare`）和 `maps`；每张地图包含 `index`、`category`（`lf`/`rf`/`lr`/`triple`/`td`）、`floors` 和可选的 `display`。两种图片路径表按 `1`、`2`、`b1f` 楼层映射到包内相对路径，使用 `/` 分隔。`floors` 用于纯净图，`display` 用于速刷图。
 
@@ -157,7 +157,7 @@ pnpm install --frozen-lockfile
 pnpm tauri build
 ```
 
-安装包位于 `src-tauri\target\release\bundle\nsis\`，获授权发布时使用 `latest.json` 指向的随机名称 `.exe`。安装时可以选择 C 盘或其他路径。安装目录中包含 UI 主程序 `identityv-assistant.exe` 和 `engine/` 引擎目录（Python、Windows 截图库、OCR 模型、识别模板和默认配置），启动时直接读取，无需每次解压。**不要单独复制 UI EXE，分发请使用安装包。**
+安装包位于 `src-tauri\target\release\bundle\nsis\`，获授权发布时使用 `latest.json` 指向的 `IdentityV-Assistant-版本-Windows-x64-Setup.exe`。安装时可以选择 C 盘或其他路径。安装目录中包含 UI 主程序 `identityv-assistant.exe` 和 `engine/` 引擎目录（Python、Windows 截图库、OCR 模型、识别模板和默认配置），启动时直接读取，无需每次解压。**不要单独复制 UI EXE，分发请使用安装包。**
 
 安装向导提供中英文选择、欢迎页、专有许可、安装位置选择、安装进度和完成页，并集成开始菜单快捷方式与 Windows 卸载入口。后续安装新版时沿用标准升级流程。
 
