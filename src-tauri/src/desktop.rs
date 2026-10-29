@@ -238,6 +238,31 @@ pub fn quit(app: &AppHandle) {
     });
 }
 
+fn handle_tray_click(event: tauri::tray::TrayIconEvent, restore: impl FnOnce()) {
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+    if matches!(
+        event,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        } | TrayIconEvent::DoubleClick {
+            button: MouseButton::Left,
+            ..
+        }
+    ) {
+        restore();
+    }
+}
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     use tauri::{
         menu::{Menu, MenuItem},
@@ -249,14 +274,12 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("main")
         .tooltip("Identity V Assistant")
         .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            handle_tray_click(event, || show_main_window(tray.app_handle()));
+        })
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
-            }
+            "show" => show_main_window(app),
             "exit" => quit(app),
             _ => {}
         });
@@ -317,6 +340,39 @@ pub fn open_logs_directory() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn left_click_and_double_click_request_restore_but_right_click_does_not() {
+        use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+        let rect = tauri::Rect {
+            position: tauri::PhysicalPosition::new(0, 0).into(),
+            size: tauri::PhysicalSize::new(16, 16).into(),
+        };
+        let click = |button, button_state| TrayIconEvent::Click {
+            id: "main".into(),
+            position: tauri::PhysicalPosition::new(0.0, 0.0),
+            rect,
+            button,
+            button_state,
+        };
+        let double_click = |button| TrayIconEvent::DoubleClick {
+            id: "main".into(),
+            position: tauri::PhysicalPosition::new(0.0, 0.0),
+            rect,
+            button,
+        };
+        for (event, expected) in [
+            (click(MouseButton::Left, MouseButtonState::Up), true),
+            (double_click(MouseButton::Left), true),
+            (click(MouseButton::Left, MouseButtonState::Down), false),
+            (click(MouseButton::Right, MouseButtonState::Up), false),
+            (double_click(MouseButton::Right), false),
+        ] {
+            let mut restored = false;
+            handle_tray_click(event, || restored = true);
+            assert_eq!(restored, expected);
+        }
+    }
     use serde_json::json;
     #[test]
     fn validates_preferences_and_task_user_scope() {
