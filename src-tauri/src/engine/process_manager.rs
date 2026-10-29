@@ -218,9 +218,36 @@ impl EngineSupervisor {
         let supervisor = self.clone();
         tauri::async_runtime::spawn(async move {
             let mut ready_sender = Some(ready_sender);
-            let mut lines = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                match serde_json::from_str::<Value>(&line) {
+            let mut reader = BufReader::new(stdout);
+            let mut bytes = Vec::new();
+            loop {
+                bytes.clear();
+                match reader.read_until(b'\n', &mut bytes).await {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(error) => {
+                        crate::logs::emit(
+                            &app,
+                            protocol_error("IPC_READ_FAILED", &error.to_string()),
+                        );
+                        break;
+                    }
+                }
+                // A malformed event must not close the pipe and crash the child on its next write.
+                let line = match std::str::from_utf8(&bytes) {
+                    Ok(line) => line,
+                    Err(error) => {
+                        crate::logs::emit(
+                            &app,
+                            protocol_error(
+                                "IPC_ENCODING_ERROR",
+                                &format!("Engine output must be UTF-8: {error}"),
+                            ),
+                        );
+                        continue;
+                    }
+                };
+                match serde_json::from_str::<Value>(line) {
                     Ok(message) => {
                         if let Err(error) = validate_event(&message) {
                             let code = if error.starts_with("Unsupported IPC version") {

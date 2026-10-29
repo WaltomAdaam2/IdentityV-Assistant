@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 
@@ -33,19 +34,38 @@ def check(source: Path) -> None:
         print(result.stdout.strip())
         config = json.loads((install / "_internal/config/default.json").read_text(encoding="utf-8"))
         # Never match a real game window during the IPC smoke test.
-        marker = "package-test-" + uuid.uuid4().hex
+        marker = "不存在的打包测试窗口-" + uuid.uuid4().hex
         config["game_window"].update(process_names=[marker + ".exe"], title_contains=[marker], class_names=[marker])
         config_file = root / "config.json"
         config_file.write_text(json.dumps(config), encoding="utf-8")
-        shutdown = json.dumps({"version": 1, "type": "shutdown", "timestamp": "2026-01-01T00:00:00Z"}) + "\n"
-        result = subprocess.run([str(executable), "--config", str(config_file)], input=shutdown,
-                                cwd=root, env=env, capture_output=True, text=True, encoding="utf-8", timeout=30)
-        if result.returncode:
-            raise RuntimeError(result.stdout + result.stderr)
-        events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        commands = "".join(json.dumps({"version": 1, "type": command, "request_id": "中文请求-" + command,
+                                      "timestamp": "2026-01-01T00:00:00Z"}, ensure_ascii=False) + "\n"
+                           for command in ("detect_window", "capture_frame", "shutdown"))
+        with subprocess.Popen([str(executable), "--config", str(config_file)], cwd=root, env=env,
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW) as process:
+            try:
+                # Exercise idle heartbeats before non-ASCII request/response traffic.
+                time.sleep(6)
+                stdout, stderr = process.communicate(commands, timeout=30)
+            except BaseException:
+                process.kill()
+                process.wait()
+                raise
+            if process.returncode:
+                raise RuntimeError(stdout + stderr)
+        events = [json.loads(line) for line in stdout.splitlines() if line.strip()]
         if not any(event.get("type") == "ready" for event in events):
-            raise RuntimeError("Frozen engine did not send ready: " + result.stdout + result.stderr)
-        print("Installed engine: Unicode path, offline models, no Python PATH, NDJSON ready/shutdown passed.")
+            raise RuntimeError("Frozen engine did not send ready: " + stdout + stderr)
+        if sum(event.get("type") == "heartbeat" for event in events) < 2:
+            raise RuntimeError("Frozen engine did not sustain idle heartbeats")
+        if not any(event.get("type") == "window_diagnostics" and event.get("request_id") == "中文请求-detect_window" for event in events):
+            raise RuntimeError("Frozen engine did not preserve a Unicode diagnostic request")
+        if not any(event.get("code") == "WINDOW_NOT_FOUND" and marker in event.get("details", {}).get("title_contains", []) for event in events):
+            raise RuntimeError("Frozen engine did not preserve Unicode window details")
+        if not any(event.get("code") == "WINDOW_NOT_FOUND" and event.get("request_id") == "中文请求-capture_frame" for event in events):
+            raise RuntimeError("Frozen engine did not handle capture after window detection")
+        print("Installed engine: Unicode path/IPC, offline models, no Python PATH, hidden-process heartbeats/detect/capture/shutdown passed.")
 
 
 if __name__ == "__main__":

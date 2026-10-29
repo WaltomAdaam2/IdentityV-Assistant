@@ -11,6 +11,13 @@ from config.loader import load_config
 from core.resources import resource_root
 
 
+def configure_stdio() -> None:
+    # Frozen Python ignores PYTHONIOENCODING; the Rust IPC reader requires UTF-8.
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n", write_through=True)
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Identity V Assistant automation engine")
     parser.add_argument(
@@ -40,4 +47,5 @@ async def run() -> int:
 
 
 if __name__ == "__main__":
+    configure_stdio()
     raise SystemExit(asyncio.run(run()))
