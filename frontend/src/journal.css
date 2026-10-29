@@ -39,9 +39,15 @@
 .journal-back { position: absolute; left: 14px; top: 14px; }
 .journal-footer > div { display: grid; gap: 5px; }
 .journal-detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.journal-detail-footer > button { flex-shrink: 0; }
+.journal-detail-footer { flex-wrap: wrap; }
+.journal-footer > .journal-detail-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-left: auto; }
+.journal-detail-actions > button { flex-shrink: 0; }
+.journal-floor-switch { display: flex; align-items: center; gap: 4px; }
+.journal-floor-switch button { padding: 6px 10px; min-height: 32px; font-size: 12px; border-radius: 8px; white-space: nowrap; }
+.journal-preview-floors { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 6px 24px var(--shadow); }
+.journal-preview-status { padding: 16px; border-radius: 10px; background: var(--surface); color: var(--text); }
 .journal-full-preview { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / 30%); overscroll-behavior: contain; animation: journal-overlay-reveal var(--motion-base, 280ms) ease-out both; }
-.journal-full-preview > img { display: block; width: min(calc(100vw - 48px), calc((100vh - 48px) * var(--map-aspect-ratio, 1))); height: auto; max-height: calc(100vh - 48px); object-fit: contain; background: rgb(0 0 0 / 90%); animation: journal-preview-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) both; }
+.journal-full-preview > img { display: block; width: min(calc(100vw - 48px), calc((100vh - 128px) * var(--map-aspect-ratio, 1))); height: auto; max-height: calc(100vh - 128px); margin-bottom: 40px; object-fit: contain; background: rgb(0 0 0 / 90%); animation: journal-preview-reveal var(--motion-slow, 460ms) var(--ease-out, ease-out) both; }
 .journal-full-preview.is-closing { animation: journal-overlay-dismiss 220ms ease-in both; }
 .journal-full-preview.is-closing > img { animation: journal-preview-dismiss 220ms ease-in both; }
 .journal-preview-close { position: absolute; top: 16px; right: 16px; width: 42px; height: 42px; padding: 0; border-radius: 50%; background: var(--surface); color: var(--text); font-size: 28px; line-height: 1; }
