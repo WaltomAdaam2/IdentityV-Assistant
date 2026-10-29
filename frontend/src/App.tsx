@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bridge } from "./bridge";
@@ -808,6 +808,7 @@ export default function App() {
   const persistedSettingsRef = useRef("");
   const settingsSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [savedToast, setSavedToast] = useState<{ id: number; leaving: boolean } | null>(null);
+  const savedToastRef = useRef<HTMLDivElement>(null);
   engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
   const enabledTaskIds = tasks.filter((task) => task.enabled).map((task) => task.id).join(",");
@@ -1320,6 +1321,24 @@ export default function App() {
     }, 250);
     return () => { superseded = true; window.clearTimeout(timer); };
   }, [appendLog, settings, settingsLoaded, enabledTaskIds]);
+  useLayoutEffect(() => {
+    const workspace = workspaceRef.current;
+    const banner = workspace?.querySelector<HTMLElement>(".topbar");
+    const toast = savedToastRef.current;
+    if (!workspace || !banner || !toast) return;
+    let frame = 0;
+    const position = () => {
+      frame = 0;
+      toast.style.top = `${Math.max(workspace.getBoundingClientRect().top, banner.getBoundingClientRect().bottom) + 8}px`;
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(position); };
+    position();
+    workspace.addEventListener("scroll", schedule, { passive: true });
+    const resize = new ResizeObserver(schedule);
+    resize.observe(workspace);
+    resize.observe(banner);
+    return () => { workspace.removeEventListener("scroll", schedule); resize.disconnect(); cancelAnimationFrame(frame); };
+  }, [savedToast?.id]);
   useEffect(() => {
     if (!savedToast) return;
     const exit = window.setTimeout(() => setSavedToast((value) => value ? { ...value, leaving: true } : null), 3000);
@@ -1459,7 +1478,7 @@ export default function App() {
   return (
     <>
       <WindowTitleBar language={language} />
-      {savedToast && <div key={savedToast.id} className={`settings-saved-toast${savedToast.leaving ? " leaving" : ""}`} role="status"><span className="saved-check" aria-hidden="true">✓</span>{language === "zh-CN" ? "设置已保存" : "Settings saved"}</div>}
+      {savedToast && <div ref={savedToastRef} key={savedToast.id} className={`settings-saved-toast${savedToast.leaving ? " leaving" : ""}`} role="status"><span className="saved-check" aria-hidden="true">✓</span>{language === "zh-CN" ? "设置已保存" : "Settings saved"}</div>}
       <main className="shell">
         <aside className="sidebar">
           <div className="brand sidebar-card" title={t.about.name}>
@@ -2528,7 +2547,7 @@ function About({ language }: { language: Language }) {
   return (
     <section className="panel about settings-about">
       <div className="about-intro">
-        <span className="large-mark">V</span>
+        <img className="large-mark" src={new URL("../../assets/icons/app-icon.svg", import.meta.url).href} alt="" />
         <span className="eyebrow">IDENTITYV ASSISTANT</span>
         <h2>{t.name}</h2>
         <p>{t.description}</p>
