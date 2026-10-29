@@ -9,6 +9,8 @@ Push-Location (Join-Path $repoRoot "engine")
 try {
     & uv sync --locked --extra windows --extra ocr --extra build --extra dev
     if ($LASTEXITCODE -ne 0) { throw "Engine dependencies failed to install." }
+    & .\.venv\Scripts\python.exe (Join-Path $PSScriptRoot "collect_third_party_notices.py")
+    if ($LASTEXITCODE -ne 0) { throw "Third-party license collection failed." }
     & .\.venv\Scripts\python.exe -m PyInstaller --noconfirm engine.spec
     if ($LASTEXITCODE -ne 0) { throw "Engine packaging failed." }
     & .\.venv\Scripts\python.exe (Join-Path $PSScriptRoot "check_packaged_engine.py") "dist/identityv-engine"

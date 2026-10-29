@@ -10,6 +10,14 @@ import uuid
 
 
 def check(source: Path) -> None:
+    internal = source / "_internal"
+    if not (internal / "THIRD_PARTY_LICENSES.txt").is_file():
+        raise RuntimeError("Packaged third-party license notices are missing")
+    for name in ("geos-3.13.1.tar.bz2", "shapely-2.1.2.tar.gz", "SOURCES.txt"):
+        if not (internal / "third-party-sources" / name).is_file():
+            raise RuntimeError(f"Packaged LGPL corresponding source is missing: {name}")
+    if any("opencv_videoio_ffmpeg" in file.name.lower() for file in internal.rglob("*.dll")):
+        raise RuntimeError("Unused FFmpeg plugin must not be bundled")
     with tempfile.TemporaryDirectory(prefix="IdentityV 安装检查 ") as directory:
         root = Path(directory)
         install = root / "安装目录" / "engine"
