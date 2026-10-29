@@ -4,6 +4,20 @@
 pub async fn choose_game_executable(
     window: tauri::WebviewWindow,
 ) -> Result<Option<String>, String> {
+    choose_executable(window, false).await
+}
+
+#[tauri::command]
+pub async fn choose_login_component(
+    window: tauri::WebviewWindow,
+) -> Result<Option<String>, String> {
+    choose_executable(window, true).await
+}
+
+async fn choose_executable(
+    window: tauri::WebviewWindow,
+    login: bool,
+) -> Result<Option<String>, String> {
     #[cfg(windows)]
     {
         let owner = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
@@ -11,7 +25,7 @@ pub async fn choose_game_executable(
         std::thread::Builder::new()
             .name("game-executable-dialog".into())
             .spawn(move || {
-                let _ = send.send(native::choose_executable(owner));
+                let _ = send.send(native::choose_executable(owner, login));
             })
             .map_err(|e| e.to_string())?;
         receive.await.map_err(|e| e.to_string())?
@@ -100,14 +114,15 @@ mod native {
     }
 
     pub fn choose(owner: usize) -> Result<Option<Vec<String>>, String> {
-        choose_kind(owner, false)
+        choose_kind(owner, None)
     }
 
-    pub fn choose_executable(owner: usize) -> Result<Option<String>, String> {
-        choose_kind(owner, true).map(|paths| paths.and_then(|paths| paths.into_iter().next()))
+    pub fn choose_executable(owner: usize, login: bool) -> Result<Option<String>, String> {
+        choose_kind(owner, Some(login))
+            .map(|paths| paths.and_then(|paths| paths.into_iter().next()))
     }
 
-    fn choose_kind(owner: usize, executable: bool) -> Result<Option<Vec<String>>, String> {
+    fn choose_kind(owner: usize, executable: Option<bool>) -> Result<Option<Vec<String>>, String> {
         // COM objects and returned strings stay on this STA thread and are released
         // before its apartment is uninitialized. Show owns the modal message loop.
         unsafe {
@@ -123,7 +138,7 @@ mod native {
             let dialog: IFileOpenDialog =
                 CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER)
                     .map_err(|error| error.to_string())?;
-            if executable {
+            if let Some(login) = executable {
                 use windows::Win32::UI::Shell::FOS_FILEMUSTEXIST;
                 dialog
                     .SetOptions(
@@ -134,11 +149,15 @@ mod native {
                     )
                     .map_err(|e| e.to_string())?;
                 dialog
-                    .SetTitle(w!("选择第五人格游戏程序"))
+                    .SetTitle(if login {
+                        w!("选择 idv-login\\python-embed\\python.exe")
+                    } else {
+                        w!("选择第五人格游戏程序")
+                    })
                     .map_err(|e| e.to_string())?;
                 dialog
                     .SetFileTypes(&[COMDLG_FILTERSPEC {
-                        pszName: w!("游戏程序 (*.exe)"),
+                        pszName: w!("程序 (*.exe)"),
                         pszSpec: w!("*.exe"),
                     }])
                     .map_err(|e| e.to_string())?;

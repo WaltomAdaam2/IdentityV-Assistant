@@ -16,7 +16,24 @@
 .launcher-news li button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .launcher-news time { flex-shrink: 0; color: #c8c0b5; font-size: 11px; }
 .launcher-news .launcher-news-retry { padding: 6px 0; margin-top: 8px; color: #65dbff; }
-.launcher-actions { flex-shrink: 0; width: 220px; }
+.launcher-actions { position: relative; flex-shrink: 0; width: 220px; }
+.launcher-status { margin-bottom: 10px; color: #fff; font-size: 12px; text-align: right; text-shadow: 0 1px 3px #201d19; }
+.launcher-setup { position: absolute; z-index: 2; right: 0; bottom: calc(100% + 16px); width: min(360px, 65vw); max-height: 430px; overflow-y: auto; padding: 20px; border: 1px solid #ffffff30; border-radius: 12px; background: #201d19f5; box-shadow: 0 12px 40px #0006; }
+.launcher-setup-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.launcher-setup h2 { margin: 0; color: #fff; font-size: 16px; }
+.launcher-setup p { margin: 16px 0 8px; color: #eee8de; font-size: 12px; }
+.launcher-setup .launcher-setup-note { color: #c8c0b5; line-height: 1.6; }
+.launcher-setup-path { overflow-wrap: anywhere; margin-bottom: 8px; color: #c8c0b5; font-size: 11px; }
+.launcher-setup button { padding: 7px 10px; color: #fff; border: 1px solid #ffffff40; background: #ffffff12; font-size: 12px; }
+.launcher-setup button:hover:not(:disabled) { background: #ffffff25; }
+.launcher-setup-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.launcher-game-path { margin-bottom: 10px; overflow: hidden; color: #fff; text-shadow: 0 1px 3px #201d19; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 11px; }
+.launcher-game-error { padding: 10px 12px; margin-bottom: 10px; color: #fff; background: #572e26e6; border-radius: 8px; overflow-wrap: anywhere; font-size: 12px; }
+.launcher-launch-controls { display: flex; }
+.launcher-launch-controls .launcher-start { flex: 1; min-width: 0; border-radius: 30px 0 0 30px; }
+.launcher-choose { display: grid; flex: 0 0 48px; padding: 0; place-items: center; color: #072b37; background: #0fb5ea; border: 0; border-left: 1px solid #072b3733; border-radius: 0 30px 30px 0; }
+.launcher-choose svg { width: 20px; height: 20px; }
+.launcher-choose:hover:not(:disabled) { color: #072b37; background: #65dbff; }
 .launcher-start { width: 100%; min-height: 58px; color: #072b37; background: #0fb5ea; border: 0; border-radius: 30px; font-size: 22px; font-weight: 700; }
 .launcher-start:hover:not(:disabled) { background: #65dbff; color: #072b37; }
 .game-launcher :focus-visible { outline: 3px solid #fff; outline-offset: 4px; }

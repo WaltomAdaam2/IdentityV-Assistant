@@ -29,6 +29,36 @@ test("game launch is placed between tasks and journal", () => {
   }
 });
 
+test("launcher displays the located game and persists a manually selected executable", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    assert.match(browser("eval", "document.querySelector('.launcher-actions').textContent"), /C:.*dwrg\.exe/);
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    browser("find", "role", "button", "click", "--name", "选择游戏程序", "--exact");
+    browser("wait", "--text", "D:\\Games\\IdentityV\\dwrg.exe");
+    browser("wait", "--fn", "window.__launcherTest.calls.some(call => call.command === 'save_settings' && call.args.settings.game_window.executable_path === 'D:\\\\Games\\\\IdentityV\\\\dwrg.exe')");
+    browser("eval", "window.__launcherTest.selectedGamePath = 'D:\\\\Games\\\\Fever.exe'");
+    browser("find", "role", "button", "click", "--name", "选择游戏程序", "--exact");
+    browser("wait", "--text", "不能选择发烧平台");
+    browser("eval", "window.__launcherTest.selectedGamePath = 'D:\\\\Games\\\\IdentityV\\\\dwrg.exe'");
+    browser("find", "role", "button", "click", "--name", "选择游戏程序", "--exact");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.launcher-game-error'))")), false);
+    browser("eval", "window.__launcherTest.locationFailure = true");
+    browser("find", "role", "button", "click", "--name", "任务", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.game-launcher')");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "未找到第五人格");
+    browser("eval", "window.__launcherTest.locationFailure = false");
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    browser("find", "role", "button", "click", "--name", "选择游戏程序", "--exact");
+    assert.match(browser("eval", "document.querySelector('.launcher-game-path').textContent"), /D:.*dwrg\.exe/);
+  } finally {
+    browser("close");
+  }
+});
+
 test("announcements show a retry action when loading fails", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
@@ -45,4 +75,42 @@ test("announcements show a retry action when loading fails", () => {
   } finally {
     browser("close");
   }
+});
+
+test("launch waits for the component and exposes success and recoverable failure", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-start').disabled")), false);
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "正在启动");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-start').disabled")), true);
+    browser("eval", "window.__launcherTest.finishLaunch()");
+    browser("wait", "--text", "登录代理已就绪");
+    browser("wait", "--fn", "!document.querySelector('.launcher-start').disabled");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("eval", "window.__launcherTest.finishLaunch('登录组件退出，请重试')");
+    browser("wait", "--text", "登录组件退出，请重试");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-start').disabled")), false);
+  } finally { browser("close"); }
+});
+
+test("missing login component opens setup and accepts an installed component", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("eval", "window.__launcherTest.launcherStatus.component_path = null");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "请先配置官方登录组件");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "首次使用需本人登录");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'launch_game')")), false);
+    browser("find", "role", "button", "click", "--name", "官方下载", "--exact");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'open_login_component_download')")), true);
+    browser("find", "role", "button", "click", "--name", "选择登录组件", "--exact");
+    browser("wait", "--text", "D:\\idv-login\\python-embed\\python.exe");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'set_login_component' && call.args.executablePath === 'D:\\\\idv-login\\\\python-embed\\\\python.exe')")), true);
+    browser("find", "role", "button", "click", "--name", "关闭启动设置", "--exact");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.launcher-setup'))")), false);
+  } finally { browser("close"); }
 });

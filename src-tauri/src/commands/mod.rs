@@ -4,15 +4,20 @@ pub(crate) mod settings;
 
 #[tauri::command]
 pub fn open_project_repository() -> Result<(), String> {
+    open_url("https://github.com/WaltomAdaam2/desktop-releases/releases")
+}
+
+pub(crate) fn open_url(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
         use windows::core::{w, PCWSTR};
         use windows::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
+        let url: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
         let result = unsafe {
             ShellExecuteW(
                 None,
                 w!("open"),
-                w!("https://github.com/WaltomAdaam2/desktop-releases/releases"),
+                PCWSTR(url.as_ptr()),
                 PCWSTR::null(),
                 PCWSTR::null(),
                 SW_SHOWNORMAL,
@@ -20,7 +25,7 @@ pub fn open_project_repository() -> Result<(), String> {
         };
         if result.0 as isize <= 32 {
             return Err(format!(
-                "Windows could not open the repository (code {})",
+                "Windows could not open the link (code {})",
                 result.0 as isize
             ));
         }

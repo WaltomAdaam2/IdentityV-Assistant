@@ -3,12 +3,35 @@
 <body><div id="root"></div><script type="module">
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 mockWindows("main");
-window.__launcherTest = { calls: [], newsFailure: true };
+window.__launcherTest = { calls: [], newsFailure: true, selectedGamePath: "D:\\Games\\IdentityV\\dwrg.exe" };
+window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv-login\\python-embed\\python.exe", message: null };
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
   if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false } };
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { phase: "idle" };
+  if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
+  if (command === "set_login_component") {
+    window.__launcherTest.launcherStatus.component_path = args.executablePath;
+    return null;
+  }
+  if (command === "launch_game") {
+    window.__launcherTest.launcherStatus.phase = "starting";
+    return new Promise((resolve, reject) => {
+      window.__launcherTest.finishLaunch = (error) => {
+        window.__launcherTest.launcherStatus.phase = error ? "error" : "ready";
+        window.__launcherTest.launcherStatus.message = error || null;
+        if (error) reject(error); else resolve();
+      };
+    });
+  }
+  if (command === "locate_game") {
+    if (window.__launcherTest.locationFailure) return Promise.reject("未找到第五人格");
+    if (args.executablePath?.endsWith("Fever.exe")) return Promise.reject("不能选择发烧平台");
+    return args.executablePath || "C:\\Games\\IdentityV\\dwrg.exe";
+  }
+  if (command === "choose_game_executable") return window.__launcherTest.selectedGamePath;
+  if (command === "choose_login_component") return "D:\\idv-login\\python-embed\\python.exe";
   if (command === "get_game_announcements") {
     if (window.__launcherTest.newsFailure) return Promise.reject("Network unavailable");
     return [{ title: "庄园活动公告", url: "https://id5.163.com/news/official/test.html", release_time: 1793203200 }];

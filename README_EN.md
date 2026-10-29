@@ -50,6 +50,14 @@ Journal with a sample map pack:
 
 Menu clicks use wider randomized curves, sometimes starting away from the target before turning back, with smooth movement lasting about 0.18–0.85 seconds. New configurations default to ±14 pixels of click variation (previously ±6); existing values are retained and can be changed in task editors. Targets stay within a resolution-scaled area around the button center, including on monitors with negative coordinates.
 
+## Game launch (0.1.6)
+
+The Game launch tab sits between Tasks and Journal, shows official announcements, and locates the standard client `dwrg.exe`. Use its gear button to select a game or an installed [official idv-login v6.3.2-stable](https://github.com/KKeygen/idv-login/releases/tag/v6.3.2-stable). Select `python-embed\python.exe`, not the downloaded installer. The assistant does not run third-party installers automatically.
+
+The login component must be ready in process proxy mode before the assistant starts the game directly, without Fever. First use requires your own login. Accounts are kept by the component in the assistant's dedicated `%LOCALAPPDATA%\IdentityV-Assistant\login-data` directory; existing account data from another installation is not copied. The official component installs a login certificate and registers its URI scheme. Close any independently running idv-login before starting through the assistant. Relaunch the game after the component updates, restarts, or exits to restore its proxy.
+
+Exiting or updating the assistant stops only its own component and attempts to restore the previous URI registration. The game and pre-existing external components remain open; the game loses this proxy. Single and double left clicks on the tray icon restore the main window; right click retains the menu. Offline and simulated tests do not prove successful account authentication.
+
 ## Architecture
 
 ```text

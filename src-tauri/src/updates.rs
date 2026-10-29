@@ -402,6 +402,7 @@ pub async fn install_update(
     let supervisor = app.state::<crate::engine::EngineSupervisor>();
     let result = async {
         supervisor.prepare_update().await?;
+        app.state::<crate::launcher::Launcher>().shutdown().await?;
         app.state::<crate::power::PowerManager>()
             .apply(false, false)?;
         tauri::async_runtime::spawn_blocking(move || {
@@ -413,6 +414,7 @@ pub async fn install_update(
     .await;
     if let Err(error) = &result {
         supervisor.finish_update();
+        app.state::<crate::launcher::Launcher>().resume();
         if let Ok(settings) = crate::config::load() {
             let _ = app.state::<crate::power::PowerManager>().apply(
                 settings["app"]["prevent_system_sleep"]

@@ -1536,6 +1536,7 @@ dependencies = [
  "uuid",
  "windows",
  "windows-core",
+ "winreg",
  "zip",
 ]
 

@@ -4,6 +4,7 @@ mod desktop;
 mod engine;
 mod journal;
 mod journal_dialog;
+mod launcher;
 mod launcher_news;
 mod logs;
 mod power;
@@ -47,18 +48,24 @@ pub fn run() {
                 .build(),
         )
         .manage(EngineSupervisor::default())
+        .manage(launcher::Launcher::default())
         .manage(power::PowerManager::default())
         .manage(updates::UpdateManager::default())
         .manage(desktop::DesktopSettings::default())
         .manage(window_size::WindowSizeState::default())
         .invoke_handler(tauri::generate_handler![
             commands::open_project_repository,
-            desktop::launch_game,
+            launcher::manager::launch_game,
+            launcher::locate_game,
+            launcher::manager::get_launcher_status,
+            launcher::manager::set_login_component,
+            launcher::open_login_component_download,
             launcher_news::get_game_announcements,
             launcher_news::open_game_announcement,
             desktop::open_logs_directory,
             window_size::reset_window_size,
             journal_dialog::choose_game_executable,
+            journal_dialog::choose_login_component,
             updates::get_update_status,
             updates::check_update,
             updates::download_update,

@@ -1,10 +1,7 @@
 use serde_json::Value;
-use std::{
-    path::Path,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
 };
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
@@ -230,6 +227,12 @@ pub fn quit(app: &AppHandle) {
         .inner()
         .clone();
     tauri::async_runtime::spawn(async move {
+        if let Err(error) = app.state::<crate::launcher::Launcher>().shutdown().await {
+            crate::logs::emit(
+                &app,
+                serde_json::json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"LOGIN_CLEANUP_FAILED","message":error,"recoverable":false,"details":{}}),
+            );
+        }
         let _ = supervisor.stop().await;
         let _ = app
             .state::<crate::power::PowerManager>()
@@ -287,35 +290,6 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn launch_game(executable_path: Option<String>) -> Result<(), String> {
-    let settings = crate::config::load()?;
-    let path = executable_path.as_deref().unwrap_or_else(|| {
-        settings["game_window"]["executable_path"]
-            .as_str()
-            .unwrap_or("")
-    });
-    validate_executable(path)?;
-    std::process::Command::new(path)
-        .current_dir(Path::new(path).parent().unwrap())
-        .spawn()
-        .map_err(|e| format!("启动游戏失败：{e}"))?;
-    Ok(())
-}
-
-fn validate_executable(path: &str) -> Result<(), String> {
-    let path = Path::new(path);
-    if !path.is_absolute()
-        || !path.is_file()
-        || !path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
-    {
-        return Err("请选择存在的游戏 EXE 文件（绝对路径）".into());
-    }
     Ok(())
 }
 
@@ -387,6 +361,5 @@ mod tests {
         assert!(xml.contains("<RunLevel>HighestAvailable</RunLevel>"));
         assert!(xml.contains("C:\\a &amp; b\\app.exe"));
         assert_eq!(xml.matches("<UserId>S-1-5-21</UserId>").count(), 2);
-        assert!(validate_executable("relative.exe").is_err());
     }
 }

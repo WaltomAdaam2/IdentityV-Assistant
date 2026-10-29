@@ -1,6 +1,6 @@
 # Implement version 0.1.6 launcher
 
-Status: claimed
+Status: resolved
 Type: task
 
 ## Scope
@@ -23,7 +23,17 @@ Implement the full requirements in ../spec.md. Keep game/proxy state distinct fr
 - Upstream Windows release is an installer. Runtime integration must account for required elevation, initial process-mode migration, system CA/URI registration, fixed single-instance pipe, and ownership across upstream restarts.
 - User additionally requested left single/double tray clicks to restore the main window; tracked separately in issue 03.
 - Independent read-only review found one missing engine handshake version. Updated ENGINE_VERSION to 0.1.6, verified it matches package metadata, and ran existing IPC tests (3 passed). No other concrete defects reported for this slice.
+- Locator and direct-launch adapters implemented. A harmless compiled game fixture verifies executable, working directory, standalone arguments and child-only HTTP/HTTPS proxy; the initial direct-launch test failed before implementation.
+- Proxy lifecycle uses a held native process handle and socket PID verification. Five launcher Rust tests now pass, covering valid/rejected paths, direct launch, readiness, owned-only graceful shutdown, global mode refusal, early exit and timeout cleanup.
+- Browser selection tests cover persistence, rejecting a platform selection, reselecting the same valid path after an error, and recovery when that same path becomes available. Both reviewer-reported state-recovery defects were reproduced and fixed.
+- Independent review found no concrete defects in the process lifecycle slice. No official component, account, certificate or system proxy was exercised by the fixtures.
+- Main through 28230a1 was successfully pushed using the existing Windows proxy for that Git command only. No Git/system configuration changed.
+- User confirmed exit-time cleanup of the owned component, and instructed future choices to use recommendations without waiting for further answers.
 
 ## Verification
 
-Version/handshake metadata, TypeScript, cargo fmt, browser navigation/news tests, Rust library tests and IPC tests passed. Independent review findings resolved. Game discovery, proxy integration and live Windows/game verification remain pending.
+Version/handshake metadata, both TypeScript configs, cargo fmt, Vite production build and IPC tests passed. Rust suite: 45 passed, 6 explicitly ignored. Five browser interactions pass: navigation, location/selection recovery, news failure/retry, launch status/failure recovery, and missing-component setup/selection. Inspected launcher and setup screenshots at the minimum 1000x680 window size.
+
+The launcher is wired to both launch entry points and quit/update cleanup. A cancellation fixture proves shutdown can cancel readiness waiting. Dedicated configuration tests preserve account-shaped fixture data, disable component auto-launch, and refuse corrupted/global-recovery data. No real credentials are present in fixtures.
+
+Independent final review reported no findings after fixing restoration when upstream partially deletes the URI registration. Windows executable build (`cargo build --bin identityv-assistant --offline -j 2`) passed. Real official component startup, certificate/URI integration, account login, physical tray focus and real update installation remain unverified; no live game/account was used. No installer was installed and no release was published.

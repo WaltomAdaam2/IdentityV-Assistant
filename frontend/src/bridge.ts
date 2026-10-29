@@ -15,11 +15,22 @@ export interface Announcement {
   release_time: number;
 }
 
+export interface LauncherStatus {
+  phase: "idle" | "starting" | "ready" | "error" | "stopping";
+  component_path: string | null;
+  message: string | null;
+}
+
 export const bridge = {
   resetWindowSize: () => invoke<void>("reset_window_size"),
   chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
+  chooseLoginComponent: () => invoke<string | null>("choose_login_component"),
   openLogsDirectory: () => invoke<void>("open_logs_directory"),
   launchGame: (executablePath: string) => invoke<void>("launch_game", { executablePath }),
+  locateGame: (executablePath = "") => invoke<string>("locate_game", { executablePath }),
+  getLauncherStatus: () => invoke<LauncherStatus>("get_launcher_status"),
+  setLoginComponent: (executablePath: string) => invoke<void>("set_login_component", { executablePath }),
+  openLoginComponentDownload: () => invoke<void>("open_login_component_download"),
   getGameAnnouncements: () => invoke<Announcement[]>("get_game_announcements"),
   openGameAnnouncement: (url: string) => invoke<void>("open_game_announcement", { url }),
   checkUpdate: (source: Settings["app"]["update_source"], prereleases = false) => invoke<UpdateInfo | null>("check_update", { source, prereleases }),

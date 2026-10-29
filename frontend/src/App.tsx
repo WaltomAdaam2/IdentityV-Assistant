@@ -1443,7 +1443,8 @@ export default function App() {
         onCommand={sendEngineCommand}
       />
     ),
-    launcher: <GameLauncher language={language} />,
+    launcher: <GameLauncher language={language} executablePath={settings.game_window.executable_path}
+      onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
     runtime: (
       <Runtime

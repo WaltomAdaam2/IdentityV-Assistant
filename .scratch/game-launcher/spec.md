@@ -1,6 +1,6 @@
 # Version 0.1.6 game launcher
 
-Status: ready-for-agent
+Status: resolved
 
 ## Requested result
 
@@ -29,7 +29,7 @@ Status: ready-for-agent
 - Upstream h55 standalone arguments: --start_from_launcher=1 --is_multi_start.
 - Proxy is established before game launch, with HTTP_PROXY/HTTPS_PROXY inherited by the game.
 - Upstream exposes --uri idvlogin://start?game_id=h55, and account login remains subject to initial authentication and token expiry.
-- Integration/packaging approach remains under investigation; do not equate a spawned helper with successful proxy readiness or login.
+- Accepted integration: reuse an installed official v6.3.2-stable runtime with dedicated component data and process-mode proxy. The release installer is not executed automatically. Do not equate proxy readiness with successful login.
 
 ## Completion evidence required
 
@@ -44,3 +44,4 @@ Status: ready-for-agent
 
 - Completed source/reference discovery and repository-specific skill configuration approval.
 - Architecture scan recommends one launcher module shared by existing Settings launch and the new page, with one owner for helper cleanup.
+- Implementation complete; tests, build and independent review evidence recorded in issues/02-launcher.md. Tray behavior is recorded in issue 03. Live account/game, certificate/URI behavior and native tray focus are explicitly outside the offline verification result.
