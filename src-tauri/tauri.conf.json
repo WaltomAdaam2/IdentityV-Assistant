@@ -4,7 +4,7 @@
   "version": "0.1.6",
   "identifier": "io.github.identityv-assistant",
   "build": {
-    "beforeDevCommand": { "script": "node node_modules/vite/bin/vite.js", "cwd": "frontend" },
+    "beforeDevCommand": "node frontend/node_modules/vite/bin/vite.js frontend",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_release.ps1",
     "frontendDist": "../frontend/dist"
