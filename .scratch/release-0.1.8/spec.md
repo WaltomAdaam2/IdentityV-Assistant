@@ -1,6 +1,6 @@
 # Version 0.1.8: update feedback and reviewable releases
 
-Status: claimed
+Status: resolved
 
 - Work on `SNAPSHOT-v0.1.8`, created from main a9a2900. Preserve the user's pnpm 12 package-manager/lockfile changes outside commits.
 - Show current download speed and estimated remaining time to the right of the assistant installer progress bar. Use a short rolling sample, show unknown ETA before bytes arrive or while stalled, and reset on retry. Preserve cancellation and all integrity checks.
@@ -18,3 +18,7 @@ Use deterministic progress samples (steady, stalled, unknown size, reset), Rust 
 ## Work
 
 - [Implementation and delivery](issues/01-update-feedback.md)
+
+## Delivery
+
+Implementation, signed packaging, independent review, CI and Draft Release preparation are complete; see the issue's final evidence. PR merge and formal publication remain the user's review actions, not automated steps.
