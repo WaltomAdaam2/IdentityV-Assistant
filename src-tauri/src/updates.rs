@@ -315,22 +315,25 @@ pub async fn download_update(
             .parse()
             .map_err(|e| format!("Invalid URL: {e}"))?;
         manager.session.lock().unwrap().status.source = source;
-        update.download(
-            |length, _| {
-                let mut session = manager.session.lock().unwrap();
-                session.status.downloaded += length as u64;
-                if session.status.downloaded > info.size {
-                    if let Some(cancel) = session.cancel.take() {
-                        let _ = cancel.send(());
+        update
+            .download(
+                |length, _| {
+                    let mut session = manager.session.lock().unwrap();
+                    session.status.downloaded += length as u64;
+                    if session.status.downloaded > info.size {
+                        if let Some(cancel) = session.cancel.take() {
+                            let _ = cancel.send(());
+                        }
                     }
-                }
-                if last_report.elapsed() >= Duration::from_millis(100) {
-                    let _ = app.emit("update-status", session.status.clone());
-                    last_report = Instant::now();
-                }
-            },
-            || manager.report(&app, "verifying", None),
-        ).await.map_err(|e| e.to_string())
+                    if last_report.elapsed() >= Duration::from_millis(100) {
+                        let _ = app.emit("update-status", session.status.clone());
+                        last_report = Instant::now();
+                    }
+                },
+                || manager.report(&app, "verifying", None),
+            )
+            .await
+            .map_err(|e| e.to_string())
     };
     let result = tokio::select! {
         result = download => result,

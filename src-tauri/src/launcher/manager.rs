@@ -83,8 +83,8 @@ impl Launcher {
         }
         self.cancelled.store(false, Ordering::Relaxed);
         *self.update.lock().unwrap() = None;
-        let selected = install::cancellable(crate::update_source::resolve(source), &self.cancelled)
-            .await?;
+        let selected =
+            install::cancellable(crate::update_source::resolve(source), &self.cancelled).await?;
         let source = selected.as_str();
         let directory = directory()?;
         let python = runtime::component_path(&directory)?.ok_or("请先配置官方登录组件")?;
