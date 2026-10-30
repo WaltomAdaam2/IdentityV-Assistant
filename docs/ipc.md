@@ -19,6 +19,8 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | `capture_frame` | — | Save one debug frame |
 | `test_template` | `template` | Match one registered template |
 | `input_test` | `action` | Developer input test; first requires an explicit `set_enabled` action |
+| `reload_settings` | — | Reload the saved configuration |
+| `enable_window_layout` | — | Enable game window layout for explicit automation startup |
 
 ## Python to Rust
 
@@ -26,8 +28,6 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | --- | --- | --- |
 | `ready` | `engine_version` | Engine initialized |
 | `heartbeat` | `engine_status`, `task_status` | Liveness and lifecycle |
-| `task_state` | `state`, `previous_state`, `confidence` | Stable detected state |
-| `state_transition` | `from`, `to`, `confidence`, `duration_in_previous_state` | One event per transition |
 | `planned_action` | `action`, `input`, `target` | Action sent to the game |
 | `task_started` | `task_id` | Task selected from the queue |
 | `task_progress` | `task_id`, `stage`, `role`, `completed_cycles`, `infinite_loop` | Current task progress |
@@ -39,6 +39,11 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | `debug_frame` | `path`, dimensions, `state` | Safe local frame metadata |
 | `task_finished` | `reason`, `stats` | Final task result |
 | `error` | `code`, `message`, `recoverable`, `details` | Structured failure |
+| `login_stage` | `stage` | Login task progress |
+| `settings_reloaded` | — | Configuration reload completed |
+| `window_diagnostics` | diagnostic details | Window discovery results |
+| `template_match` | match details | Explicit template test result |
+| `window_health` | health details | Foreground and capture recovery status |
 
 Unknown message types may be logged and ignored for forward compatibility. A protocol version mismatch is an error.
 
@@ -50,6 +55,6 @@ The queue preserves the order supplied in `start_tasks`. A task that completes n
 
 `task_finished` with reason `window_recovery_timeout` means the 300-second foreground/capture recovery budget expired. The task and pending queue are cleared, and the engine remains available. Recovery entry and success are logged once, allowing manual refocus during the retry period.
 
-Timeouts, window loss, engine task errors, and a nonrecoverable error event pause the active task instead of silently advancing the queue. The active task and remaining entries are retained. `resume_task` starts the service again if it crashed, then re-enters the active task's screen router; it does not resume blind input from the old stage. F3 toggles engine startup/shutdown outside the IPC transport. Shutdown releases input and clears the task queue; it emits `task_finished` with `user_stopped`. Shortcut lifecycle logs use source `engine.lifecycle` and carry `engine_status` so the interface updates immediately.
+Other task timeouts, engine task errors, and a nonrecoverable error event pause the active task instead of silently advancing the queue. The active task and remaining entries are retained. `resume_task` starts the service again if it crashed, then re-enters the active task's screen router; it does not resume blind input from the old stage. F3 toggles engine startup/shutdown outside the IPC transport. Shutdown releases input and clears the task queue; it emits `task_finished` with `user_stopped`. Shortcut lifecycle logs use source `engine.lifecycle` and carry `engine_status` so the interface updates immediately.
 
 The frontend saves UI events through the Tauri `append_ui_log` command. Engine and UI events are appended to `%LOCALAPPDATA%\IdentityV-Assistant\logs\YYYY-MM-DD.jsonl`.

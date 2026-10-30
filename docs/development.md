@@ -1,56 +1,48 @@
 # Development
 
+**Language:** [中文](development_zh.md) | English · [README](../README_EN.md)
+
 ## Requirements
 
-- Windows 11 x86_64
-- Node.js LTS and pnpm
-- Rust stable with the MSVC toolchain
-- Python 3.12 or newer
-- uv (recommended)
-- Microsoft Edge WebView2 runtime
-
-## Install
+Windows 11 x64, Node.js 24, the pnpm version declared in the root `package.json`, Rust stable/MSVC with Visual Studio C++ build tools, Python 3.12+, uv, and Microsoft Edge WebView2. The build scripts install Python build dependencies and bundle a standalone engine; end users do not need Python.
 
 ```powershell
-pnpm install
-Set-Location engine
-uv sync --extra windows --extra dev
-Set-Location ..
-```
-
-## Run
-
-```powershell
+pnpm install --frozen-lockfile
+uv sync --project engine --extra windows --extra ocr --extra dev --extra build
 pnpm tauri dev
 ```
 
-Run the protocol engine directly:
+Development mode launches the real desktop application. Starting a task sends real game input; there is no default dry run. Set `IDENTITYV_PYTHON` to an explicit Python executable and `IDENTITYV_ENGINE_PATH` to `main.py` if automatic discovery is unsuitable.
 
-```powershell
-Set-Location engine
-uv run python main.py
+The engine can also be started directly with `uv run --project engine python engine/main.py`. Its stdin/stdout use [NDJSON](ipc.md), with one command per line, for example:
+
+```json
+{"version":1,"type":"ping","timestamp":"2026-01-01T00:00:00Z","request_id":"manual"}
 ```
-
-Each stdout line is NDJSON. Enter a command such as `{"version":1,"type":"ping","timestamp":"2026-01-01T00:00:00Z","request_id":"manual"}`.
-
-## Task lifecycle checks
-
-Use `start_task` or `start_tasks` through the Tauri command bridge when exercising the desktop application. Those commands start the Python service automatically if it is stopped. `start_tasks` retains the supplied ordering. F3 globally toggles engine startup/shutdown, serialized with the normal lifecycle commands. Window resolution and placement come from `game_window.resolution` and `game_window.position`, defaulting to `1600x900` and `top_right`. Layout changes apply once on the next heartbeat; `unrestricted` resizes without moving. Shutdown retains the original restoration snapshot. Task pause/resume remains available through task controls; pausing releases input and freezes task timers.
-
-For a nonrecoverable task failure, confirm that the active task and pending queue move to paused status, then resume manually. Resume reconstructs the task and routes from a fresh capture. Stop clears the active task and all pending entries.
-
-The repository's automated checks use supplied screenshots, fixtures, and mocked input paths. No live Identity V game session has been run for this release; do not treat passing local checks as live gameplay validation.
 
 ## Checks
 
 ```powershell
 pnpm typecheck
 pnpm build
-Set-Location engine
-uv run pytest
-Set-Location ..\src-tauri
-cargo fmt --check
-cargo test
+node --test frontend/tests/logs.test.mjs
+uv run --project engine pytest engine/tests
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Set `IDENTITYV_PYTHON` to an explicit Python executable and `IDENTITYV_ENGINE_PATH` to `main.py` when automatic development path discovery is unsuitable.
+The frontend browser tests use the real React UI with mocked Tauri IPC. See `frontend/tests/launcher.test.mjs`: start Vite on port 1420 and provide the `agent-browser` executable through `AGENT_BROWSER_BIN` if it is not on PATH. These tests are separate from native dialogs, installation, login, and gameplay. Do not treat fixture-based recognition, mocked input, or a successful build as live game validation.
+
+## Ownership and lifecycle
+
+- React edits settings and displays events; game decisions stay in Python.
+- Rust owns processes, configuration, map imports, update validation, and application shutdown.
+- Python owns capture, recognition, task routing, timers, and guarded input.
+
+`start_task` / `start_tasks` start a stopped engine automatically. F3 toggles the engine, serialized with other lifecycle commands. Explicit automation startup applies the configured game window layout; diagnostics do not. Pause releases input and freezes task timers. Resume captures a fresh screen. Stop clears the queue. A recoverable foreground/capture loss receives a bounded recovery period; see [feature logic](README_LOGIC_EN.md) and [IPC](ipc.md).
+
+Keep local work specifications and issues under `.scratch/` according to [the issue workflow](agents/issue-tracker.md). Record actual architectural decisions in `docs/adr/` and shared terms in `GLOSSARY.md`; avoid broad rewrites for local changes.
+
+## Packaging and publishing
+
+Use `pnpm tauri build` or `打包.bat` for a signed installer. Packaging alone never publishes a release. The signing key, clean-source checks, asset names, and release procedure are documented separately in [Updates and releases](updates_EN.md).

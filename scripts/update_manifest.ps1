@@ -38,7 +38,7 @@ $manifest = [ordered]@{
     commit = $commit.Trim()
     source_clean = -not [bool]$changes
     platforms = @{ "windows-x86_64" = [ordered]@{
-        url = "https://github.com/WaltomAdaam2/desktop-releases/releases/download/v$Version/$assetName"
+        url = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/download/v$Version/$assetName"
         signature = $signature
         sha256 = $hash
         size = (Get-Item -LiteralPath $assetPath).Length

@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
-const RELEASES: &str = "https://github.com/WaltomAdaam2/desktop-releases/releases/";
+const RELEASES: &str = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/";
 const PROXY: &str = "https://gh-proxy.com/";
 const MAX_INSTALLER_SIZE: u64 = 512 * 1024 * 1024;
 
@@ -145,7 +145,7 @@ async fn preview_version(
 ) -> Result<Option<semver::Version>, String> {
     // Only public metadata is sent to the selected route; no account token is used.
     let url = route(
-        "https://api.github.com/repos/WaltomAdaam2/desktop-releases/releases?per_page=100",
+        "https://api.github.com/repos/WaltomAdaam2/IdentityV-Assistant/releases?per_page=100",
         source,
     )?;
     let client = release_client().map_err(|e| e.to_string())?;
@@ -595,6 +595,24 @@ mod tests {
     }
 
     #[test]
+    fn source_repository_updates_reject_legacy_repository_assets() {
+        let installer = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/download/v0.1.7/IdentityV-Assistant-0.1.7-Windows-x64-Setup.exe";
+        assert!(validate_asset(installer, "0.1.7").is_ok());
+        assert!(validate_asset(
+            &installer.replace("/IdentityV-Assistant/", "/desktop-releases/"),
+            "0.1.7"
+        )
+        .is_err());
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(config["plugins"]["updater"]["endpoints"][0], "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/latest/download/latest.json");
+        assert_eq!(
+            config["bundle"]["homepage"],
+            "https://github.com/WaltomAdaam2/IdentityV-Assistant"
+        );
+    }
+
+    #[test]
     fn accepts_only_project_installers_and_known_routes() {
         let url = format!("{RELEASES}download/v0.2.0/0123456789abcdef0123456789abcdef.exe");
         assert!(validate_asset(&url, "0.2.0").is_ok());
@@ -609,7 +627,7 @@ mod tests {
         assert!(validate_asset(&format!("{readable}?redirect=other"), "0.2.0").is_err());
         for bad in [
             url.replace("github.com/", "github.com.evil/"),
-            url.replace("desktop-releases/", "other/"),
+            url.replace("IdentityV-Assistant/", "other/"),
             format!("{url}?redirect=other"),
             url.replace(".exe", ".zip"),
             url.replace("0123456789abcdef0123456789abcdef", "../installer"),

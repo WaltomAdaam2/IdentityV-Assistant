@@ -15,3 +15,9 @@ _Avoid_: acceleration proxy, automatic account login
 **Automation engine**:
 The Python process that recognizes game screens and performs configured visual tasks. Its lifecycle is separate from the login component.
 _Avoid_: game launcher, login component
+
+**Assistant update**:
+A signed installer update of this application, distinct from an update to the independently managed login component.
+
+**Migration bridge**:
+The one-time 0.1.7 release in the old download repository. Its old-repository manifest lets compatible existing clients install the same signed binary that switches future checks to the source repository.

@@ -1,10 +1,10 @@
 [package]
 name = "identityv-assistant"
-version = "0.1.6"
+version = "0.1.7"
 description = "Identity V external visual automation assistant"
 authors = ["Identity V Assistant contributors"]
 edition = "2021"
-license-file = "../LICENSE"
+license = "GPL-3.0-only"
 
 [lib]
 name = "identityv_assistant_lib"

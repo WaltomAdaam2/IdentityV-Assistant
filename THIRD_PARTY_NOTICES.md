@@ -1,15 +1,30 @@
 # Third-party components
 
-The proprietary license for this application's original code does not replace
-the licenses of third-party components. Their copyright notices, license texts,
-and license grants remain applicable. Earlier GPL-licensed releases retain
-their original license grants.
+Current first-party source and releases starting with v0.1.7 are licensed under
+GPL-3.0-only, Copyright (C) 2026 WaltomAdaam2. This does not replace third-party
+licenses, copyright notices or grants. Archived v0.1.0-v0.1.6 installers retain
+the notices distributed inside those binaries; copying a historical installer
+to a different release repository does not rewrite its contents or license.
 
 The installer includes `engine/_internal/THIRD_PARTY_LICENSES.txt`, generated
 from the installed Python dependencies, locked Rust crates, and production
 JavaScript packages. This conservatively includes some build-only dependencies.
 The Python runtime license and PyInstaller bootloader distribution exception
 are included. PyInstaller's exception permits distribution of non-free programs.
+
+The optional, independently installed login component is
+[KKeygen/idv-login](https://github.com/KKeygen/idv-login), currently integrated
+against [v6.3.2-stable](https://github.com/KKeygen/idv-login/tree/v6.3.2-stable).
+Its original [GPL v3 license](https://github.com/KKeygen/idv-login/blob/v6.3.2-stable/LICENSE),
+authors and notices remain applicable. The assistant does not claim authorship
+of its login protocol implementation. The component is downloaded separately;
+it is not embedded into the assistant's first-party code.
+
+Launcher artwork, Identity V names, logos and game screenshots belong to their
+respective rights holders. See [launcher artwork sources](frontend/public/launcher/SOURCES.md).
+The application's GPL grant does not relicense those materials or user-imported
+map packs. Map-pack authors retain their rights; obtain their permission before
+redistributing their work.
 
 The optional OpenCV FFmpeg video plugin is excluded from this installer; image
 processing and screen capture do not require it. Shapely includes GEOS under

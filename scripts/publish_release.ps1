@@ -24,12 +24,9 @@ if ($manifest.version -ne $version -or $manifest.commit -ne $commit -or -not $ma
     throw "Build artifacts are stale or were built with uncommitted changes. Run the build again from clean main."
 }
 $tag = "v$version"
-$repo = "WaltomAdaam2/desktop-releases"
-# Release tags belong to the distribution repository, never the private source repository.
-$releaseCommit = & gh api "repos/$repo/git/ref/heads/main" --jq '.object.sha'
-if ($LASTEXITCODE -ne 0 -or $releaseCommit -notmatch '^[0-9a-f]{40}$') {
-    throw "The public release repository must have an initialized main branch."
-}
+$repo = "WaltomAdaam2/IdentityV-Assistant"
+# Tags in the source repository identify the actual verified build commit.
+$releaseCommit = $commit
 # Enumerate through a successful API request: a network failure must not look like an absent release.
 $releases = & gh api --paginate "repos/$repo/releases?per_page=100" --jq '.[].tag_name'
 if ($LASTEXITCODE -ne 0) { throw "Could not inspect existing releases." }
@@ -51,10 +48,14 @@ $manifest.notes = $notes.Trim()
 $manifest.pub_date = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 $releaseBody = Join-Path $bundle "release-body.txt"
-[IO.File]::WriteAllText($releaseBody, ("SHA-256: " + $platform.sha256 + "`n"), [Text.UTF8Encoding]::new($false))
+$checksums = @($asset, ($asset + ".sig"), $manifestPath, (Join-Path $bundle "SHA256SUMS.txt")) | ForEach-Object {
+    (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + [IO.Path]::GetFileName($_)
+}
+$body = $notes.Trim() + "`n`n## SHA-256`n`n" + '```text' + "`n" + ($checksums -join "`n") + "`n" + '```' + "`n"
+[IO.File]::WriteAllText($releaseBody, $body, [Text.UTF8Encoding]::new($false))
 $isPrerelease = $version.Contains('-')
 $channelArguments = if ($isPrerelease) { @('--prerelease') } else { @() }
-& gh release create $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo --target $releaseCommit --draft --title "v$version" --notes-file $releaseBody @channelArguments
+& gh release create $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo --target $releaseCommit --draft --title "Identity V Assistant v$version" --notes-file $releaseBody @channelArguments
 if ($LASTEXITCODE -ne 0) { throw "Draft creation/upload failed or outcome is unknown. Inspect GitHub Releases before retrying. No existing release will be overwritten." }
 $latestArgument = if ($isPrerelease) { '--latest=false' } else { '--latest=true' }
 & gh release edit $tag --repo $repo --draft=false $latestArgument

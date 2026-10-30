@@ -304,7 +304,6 @@ const translations = {
       memoryProtectionHint: "系统内存超过 90% 时清理未使用缓存",
       recognition: "识别与诊断",
       threshold: "模板匹配阈值",
-      screenshots: "保存调试截图",
       autosave: "更改会自动保存",
     },
     about: {
@@ -594,7 +593,6 @@ const translations = {
       memoryProtectionHint: "Release unused caches when system memory usage exceeds 90%",
       recognition: "Recognition and diagnostics",
       threshold: "Template match threshold",
-      screenshots: "Save debug screenshots",
       autosave: "Changes are saved automatically",
     },
     about: {
@@ -2351,8 +2349,6 @@ function SettingsPage({
     setSettings({ ...settings, capture: { ...settings.capture, ...patch } });
   const updateVision = (patch: Partial<Settings["vision"]>) =>
     setSettings({ ...settings, vision: { ...settings.vision, ...patch } });
-  const updateDebug = (patch: Partial<Settings["debug"]>) =>
-    setSettings({ ...settings, debug: { ...settings.debug, ...patch } });
   const keywords = (value: string) =>
     value
       .split(/[,，]/)
@@ -2544,15 +2540,6 @@ function SettingsPage({
             }
           />
         </SettingRow>
-        <SettingRow icon="screenshots" title={t.screenshots} description={language === "zh-CN" ? "将诊断截图保存到本机 AppData 目录" : "Save diagnostic captures in the local AppData folder."} language={language}>
-          <input
-            type="checkbox" role="switch"
-            checked={settings.debug.save_debug_screenshots}
-            onChange={(event) =>
-              updateDebug({ save_debug_screenshots: event.target.checked })
-            }
-          />
-        </SettingRow>
       </section>
       <About language={language} />
     </section>
@@ -2580,7 +2567,7 @@ function About({ language }: { language: Language }) {
         </div>
         <div>
           <span>{t.license}</span>
-          <strong>{language === "zh-CN" ? "专有许可 · 仅限个人使用" : "Proprietary · Personal use only"}</strong>
+          <strong>{language === "zh-CN" ? "GNU GPL v3.0 only" : "GNU GPL v3.0 only"}</strong>
         </div>
         <div>
           <span>{t.stack}</span>
@@ -2589,7 +2576,7 @@ function About({ language }: { language: Language }) {
       </div>
       <a
         className="repository-link"
-        href="https://github.com/WaltomAdaam2/desktop-releases"
+        href="https://github.com/WaltomAdaam2/IdentityV-Assistant"
         target="_blank"
         rel="noreferrer"
         onClick={(event) => {
@@ -2599,7 +2586,7 @@ function About({ language }: { language: Language }) {
           void bridge.openRepository().catch((error) => setLinkError(String(error)));
         }}
       >
-        GitHub · WaltomAdaam2/desktop-releases{" "}
+        GitHub · WaltomAdaam2/IdentityV-Assistant{" "}
         <span aria-hidden="true">↗</span>
       </a>
       {linkError && <p className="form-error" role="alert">{language === "zh-CN" ? "无法打开浏览器：" : "Could not open browser: "}{linkError}</p>}

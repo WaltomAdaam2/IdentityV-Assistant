@@ -37,6 +37,9 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
+      - name: Test frontend logs
+        run: node --test frontend/tests/logs.test.mjs
+
       - name: Set up uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
         with:

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 // Probe a fixed public installer so all routes transfer identical content.
-const PROBE: &str = "https://github.com/WaltomAdaam2/desktop-releases/releases/download/v0.1.5/IdentityV-Assistant-0.1.5-Windows-x64-Setup.exe";
+const PROBE: &str = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/download/v0.1.5/IdentityV-Assistant-0.1.5-Windows-x64-Setup.exe";
 const SAMPLE_BYTES: usize = 256 * 1024;
 static SELECTED: Mutex<Option<(Instant, String)>> = Mutex::const_new(None);
 

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 PROTOCOL_VERSION = 1
-ENGINE_VERSION = "0.1.6"
+ENGINE_VERSION = "0.1.7"
 
 
 def timestamp() -> str:

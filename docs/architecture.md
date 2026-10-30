@@ -8,7 +8,7 @@ React and TypeScript render the desktop interface, collect settings, issue lifec
 
 ## Tauri core
 
-Rust owns the Python child process, NDJSON transport, configuration file access, crash detection, and application lifecycle. It forwards parsed messages through the `engine-event` Tauri event. It does not contain game state or task logic.
+Rust owns the Python child process, NDJSON transport, configuration file access, crash detection, and application lifecycle. It also validates map archives, manages assistant updates, and owns the separate login-component process and its download/install lifecycle. It forwards parsed messages through the `engine-event` Tauri event. It does not contain game state or task logic.
 
 ## Python engine
 
@@ -19,4 +19,6 @@ React UI -> Tauri commands -> Rust supervisor -> NDJSON stdin -> Python engine
 React UI <- engine-event  <- Rust parser     <- NDJSON stdout <- Python engine
 ```
 
-Login and gameplay require the game to be in the foreground and use SendInput with physical keyboard scan codes. Input failures propagate to task supervision; held inputs remain tracked until their release succeeds. The Rust supervisor writes complete engine events to dated AppData logs; the frontend sends its own UI events to the same archive.
+Automated login-screen interaction and gameplay require the game to be in the foreground and use SendInput with physical keyboard scan codes. Input failures propagate to task supervision; held inputs remain tracked until their release succeeds. The Rust supervisor writes complete engine events to dated AppData logs; the frontend sends its own UI events to the same archive.
+
+The independent login component handles login traffic, certificates, and URI registration; it is distinct from the screenshot/input engine. Its pinned compatibility contract is documented in [ADR 0001](adr/0001-game-launcher-and-login-component.md). React uses one application-level notice owner for asynchronous results so navigation does not discard feedback. Release tags and update assets live beside their source, with immutable historical installers and manifest metadata appropriate to each update endpoint.

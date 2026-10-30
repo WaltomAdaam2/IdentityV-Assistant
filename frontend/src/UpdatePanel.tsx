@@ -16,7 +16,7 @@ export interface UpdateStatus {
 }
 const initialStatus: UpdateStatus = { phase: "idle", info: null, downloaded: 0, total: null, error: null, source: "direct" };
 const skippedVersionKey = "identityv.update.dismissedVersion";
-const releaseUrl = "https://github.com/WaltomAdaam2/desktop-releases/releases";
+const releaseUrl = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases";
 const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
 const copy = {
   "zh-CN": {

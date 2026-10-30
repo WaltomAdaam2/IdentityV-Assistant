@@ -2,217 +2,84 @@
 
 **Language / 语言:** [中文](README.md) | English
 
-Identity V Assistant is a Windows desktop visual automation assistant for Identity V. It recognizes window screenshots and runs tasks through normal Windows input.
+A Windows desktop assistant for Identity V, with a game launcher, visual automation tasks and journal map browsing. The interface supports Chinese and English; settings and map packs stay on the local machine.
 
-> This is a **0.1.6 development version**. Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek have passed the supplied screenshot and logic checks. As requested, no live game match was run.
-
-## Interface preview
-
-Overview:
-
-![Overview](docs/images/overview.png)
-
-Journal with a sample map pack:
-
-![Journal](docs/images/journal.png)
+<p align="center">
+  <img src="docs/images/overview.png" alt="Identity V Assistant interface" width="850">
+</p>
 
 ## Features
 
-* React and TypeScript desktop interface in Chinese and English, with Chinese as the default
-* Tauri 2 process supervision and command bridge in Rust
-* Long-running Python engine with NDJSON IPC
-* Ready, heartbeat, log, state, action, metrics, and structured error events
-* Pause, resume, and stop controls for login, Blackjack, automatic hunter match, automatic hunter rank, and Hide and Seek
-* Pydantic-validated configuration loading and persistence
-* Live Windows discovery, client rectangle, response-state, and DPI diagnostics
-* Window-level capture for game windows covered by other windows or placed on another monitor
-* DXcam and MSS compatibility fallbacks
-* OpenCV template matching with configurable confidence
-* RapidOCR recognition of the game clock in a bounded screen area
-* State evidence, confirmation history, unknown-state, and recovery foundations
-* Foreground-checked SendInput for both login and gameplay, with physical scan codes for all supported keys and tracked cleanup on failure
-* Ten fixed-pixel home-screen recognition with an eight-match book click
-* An “Enter the home lobby” task that resumes from any recognized login screen, confirms two frames, selects the platform, dismisses popups, and waits for home
-* Blackjack resumes from a known home, matching, ready, game, or result screen, acts according to the detected role, and returns home
-* Automatic hunter match enters through Diary Deduction; automatic hunter rank enters through Rank Mode and Traditional Rank. Both share hunter gameplay behavior and attempt surrender after the displayed game clock reaches six minutes
-* Hide and Seek can take over from home, Chaos, mode selection, matching, ready, any known in-round, elimination, or result stage; it selects Bad Child and starts independent movement and camera loops as soon as the living HUD is confirmed
-* Each game task has its own indefinite-loop option; recognized matching, ready, elimination, and result waits have no timeout
-* Lost foreground, missing windows, or capture failures get a 300-second recovery period with manual refocusing allowed; expiry stops the task and clears its queue while leaving the engine running
-* Independent options prevent system sleep and display sleep; the display option also keeps the session active to reduce idle locking
-* Task card editors for login platform, login timeout, click delays and variation, camera turn scale, and looping; login settings are in the Enter the home lobby task editor and changes save automatically
-* Enabled task selection survives restarts; multiple enabled tasks run in list order, and starting a task starts a stopped automation service automatically
-* F3 globally starts or stops the engine; stopping releases input and clears the task queue
-* Game window settings support 2560×1440, 1920×1080, 1600×900, and 1280×720, with center, unrestricted, or any corner placement. Defaults are 1600×900 / top right. Changes apply while the engine runs; unrestricted keeps the current position and engine shutdown restores the original window. Oversized windows retain their selected size with the top-left corner visible
-* A nonrecoverable task error pauses the active task and retains its queue for manual rerouting; every active task row has Stop, which cancels the active task and clears the remaining queue
-* Optional memory protection that collects unused objects above 90% system memory use
-* Capture diagnostics, concise logs, and window settings available to regular users; logs support search, filtering, pagination, and page jumping
-* Python and Rust core test foundations
+- **Game launcher:** locate the official `dwrg.exe` client and coordinate direct launch with the independent [idv-login](https://github.com/KKeygen/idv-login) component, including setup, downloads, update confirmation and proxy status.
+- **Visual tasks:** lobby login, Blackjack, hunter match, hunter rank and Hide and Seek, with ordered execution, pause, resume, stop and optional match loops.
+- **Journal maps:** import multiple ZIP packs, filter by season, difficulty, doors, floor and base/route view, and open map details or an in-window preview.
+- **Window and input control:** capture the game window and send foreground-checked Windows input. Explicit engine startup applies window settings; shutdown attempts to restore the original window.
+- **Desktop controls:** global engine shortcut, close to tray, capture diagnostics, searchable logs and optional sleep/display controls.
+- **Updates:** direct GitHub access, three proxies and automatic source measurement, with confirmation and signature, version, SHA-256 and size verification.
 
-Menu clicks use wider randomized curves, sometimes starting away from the target before turning back, with smooth movement lasting about 0.18–0.85 seconds. New configurations default to ±14 pixels of click variation (previously ±6); existing values are retained and can be changed in task editors. Targets stay within a resolution-scaled area around the button center, including on monitors with negative coordinates.
-
-## Game launch (0.1.6)
-
-The Game launch tab sits between Tasks and Journal, shows official announcements, and locates the standard client `dwrg.exe`. Use its gear button to select a game or an installed [official idv-login v6.3.2-stable](https://github.com/KKeygen/idv-login/releases/tag/v6.3.2-stable). Select `python-embed\python.exe`, not the downloaded installer. The assistant does not run third-party installers automatically.
-
-The login component must be ready in process proxy mode before the assistant starts the game directly, without Fever. First use requires your own login. Accounts are kept by the component in the assistant's dedicated `%LOCALAPPDATA%\IdentityV-Assistant\login-data` directory; existing account data from another installation is not copied. The official component installs a login certificate and registers its URI scheme. Close any independently running idv-login before starting through the assistant. Relaunch the game after the component updates, restarts, or exits to restore its proxy.
-
-Exiting or updating the assistant stops only its own component and attempts to restore the previous URI registration. The game and pre-existing external components remain open; the game loses this proxy. Single and double left clicks on the tray icon restore the main window; right click retains the menu. Offline and simulated tests do not prove successful account authentication.
-
-## Architecture
-
-```text
-React / TypeScript GUI
-        |
-        | Tauri commands + events
-        v
-Rust lifecycle supervisor
-        |
-        | NDJSON over stdin/stdout
-        v
-Python visual automation engine
-        |
-        v
-window capture + Windows input
-```
-
-Automatic capture uses Windows Graphics Capture by default to read the game window's complete client area. Login and game tasks use foreground SendInput with physical keyboard scan codes. They check focus before input, track held keys through cleanup, and report failed sends instead of silently continuing. Templates and reference screenshots are under [`assets/templates/blackjack`](assets/templates/blackjack), [`assets/templates/hunter_match`](assets/templates/hunter_match), [`assets/templates/hunter_rank`](assets/templates/hunter_rank), and [`assets/templates/hide_seek`](assets/templates/hide_seek). Normal and ranked hunter tasks share the existing hunter HUD icon template.
-
-## Run tasks
-
-1. Open Identity V and this app.
-2. On Tasks, use the matching card's Edit control. The Enter the home lobby editor contains platform, maximum wait, and click controls; game-task editors contain looping and shared input controls.
-3. Enable the tasks you want and select Start enabled tasks. This starts the automation service when it is stopped; multiple tasks run in list order.
-4. Press F3 to start or stop the engine. Start tasks from the task page; use the task row controls to pause or resume a task.
-5. Stop on the active task row stops that task and clears the remaining queue. A nonrecoverable error retains the active task and remaining queue in a paused state until manual resume.
-
-The left sidebar shows the current stage, role, and completed cycle count. Indefinite looping is off by default. On start or resume, a task identifies the current screen and continues from a known stage. Recognized matching, ready, elimination, and result screens wait without a timeout; unknown screens, continuous loading, or unavailable usable window frames still have a 300-second limit. See the [state-machine guide](docs/state-machine.md) for the Hide and Seek stages and actions.
-
-Hunter match and rank randomly move, turn the camera, and use F, R, T, Space, Q, E, and both mouse buttons. Both Blackjack roles include Space, Q, and E. Hide and Seek starts WASD and random camera turns together on the confirmed living HUD, targeting 60.1–199.9° with the configured scale; actual angles depend on game sensitivity. F retries every 1–3 seconds while both loops continue until V-ready or fixed is recognized. At V-ready, V retries every 5–8 seconds until fixing succeeds. If V subsequently disappears while the living HUD is confirmed, the WASD loop continues while F, T, G start immediately with 0.3–0.7-second gaps, then Alt+1 repeats every 7–13 seconds until leaving play. The shortcut holds physical left Alt before pressing top-row 1, then releases 1 followed by Alt. Menu and camera movement ease in and out; login clicks leave the cursor at the clicked position instead of snapping it back.
-
-Engine shutdown cancels tasks, releases inputs, and restores the game window; the supervisor allows up to 10 seconds for cleanup. Normal logs show readable task stages; routine window diagnostics appear only with detailed logs enabled. Log updates are batched, runtime state changes no longer repeatedly save settings, and cached window discovery still checks current handle validity, focus, and geometry. Page changes, the navigation indicator, cards, task editors, and map previews use entrance and exit motion while respecting reduced-motion preferences; log rows do not animate individually. Launch engine on startup runs once at the next application launch. About is at the bottom of Settings, and its GitHub link opens in the Windows default browser.
-
-Prevent display sleep and idle lock keeps the display on and periodically sends F15 to refresh Windows' user-idle timer while the app is open. Turning the option off or closing the app stops this. Manual Win+L still locks the session, and device management policy can enforce a lock. A Windows [power request](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest) only keeps the display on; [idle-lock policy](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/interactive-logon-machine-inactivity-limit) follows user-input inactivity.
-
-## Local data
-
-Journal filters maps by season, difficulty, door type, floor, and base/route display, showing every matching thumbnail at its full aspect ratio. The map panel grows vertically with its contents and uses page scrolling. Filters are saved under `journal` in `config.json`; changing them does not reload game engine settings. Click a thumbnail for map details, with floor and base/route switching. Enter map opens a full-window preview inside the assistant: the complete map keeps its aspect ratio over a 30%-opaque backdrop, with a 90%-opaque black background confined to the scaled image bounds and a 24px safety margin on all sides. The upper-right × or the first Escape returns to details; a second Escape returns to the filtered list. Automatic recognition and game overlays are not included.
-
-Import map packs opens the native Windows ZIP picker. Use Ctrl/Shift to select multiple ZIP files and click Open. Each pack is imported independently; failures do not block remaining selections. Root and nested `pack.json` files are supported. Existing local packs can still be placed in `journal\packs\<packId>\` and refreshed. Floor changes are temporary; re-entering the page defaults to 1F.
-
-Import copies only referenced PNG/JPEG/WebP images, rejects duplicate IDs, preserves source files, and never reads another application's data directory. ZIP paths, links, duplicate entries, and expanded sizes are checked. Legacy `manifest.json` packs are not supported. The descriptor contains `packId`, `packName`, `seasonId`, `difficulty` (`hard`/`nightmare`), and `maps`. Each map has `index`, `category` (`lf`/`rf`/`lr`/`triple`/`td`), `floors`, and optional `display`. Both image tables map floor keys `1`, `2`, `b1f` to package-relative paths using `/`: `floors` supplies base maps and `display` supplies route maps.
-
-Settings and runtime data are stored under `%LOCALAPPDATA%\IdentityV-Assistant\`:
-
-```text
-config.json                  Settings and enabled tasks
-logs\YYYY-MM-DD.jsonl       Complete daily event archive
-debug\captures\            Manual diagnostic screenshots
-journal\packs\<packId>\    Journal map packs
-```
-
-Daily logs are kept for 30 days. Expired files are removed on startup and when the date changes. The Logs page shows only the current app session, retaining at most 99,000 entries with 1,000 per page. Clearing the page does not delete daily files. Verbose mode changes only what the page shows; disk logs remain complete.
-
-See [Architecture](docs/architecture.md) for layer boundaries and [IPC Protocol](docs/ipc.md) for message definitions.
+See [Feature logic](docs/README_LOGIC_EN.md) for behavior, recovery, component responsibilities and map formats; [Development](docs/development.md) for builds and checks; and [Updates](docs/updates_EN.md) for release migration and publishing.
 
 ## Requirements
 
-* Windows 11 x86_64
-* Node.js LTS and pnpm 11+
-* Rust stable with the MSVC toolchain
-* Python 3.12+
-* uv (recommended)
-* WebView2 Runtime
+- Windows 11 x64 and Microsoft Edge WebView2 Runtime.
+- An installed official Identity V client. Automation input requires the game in the foreground.
+- The launcher login proxy uses the independent official idv-login component. Initial login and expired credentials still require the user.
 
-## Install Dependencies
+Source builds also need Node.js 24, the pnpm version declared by the repository, Rust MSVC, Python 3.12, uv and Windows C++ build tools.
 
-```powershell
-pnpm install
-Set-Location engine
-uv sync --extra windows --extra ocr --extra dev
-Set-Location ..
-```
+## Install and start
 
-## Run
+1. Download `IdentityV-Assistant-<version>-Windows-x64-Setup.exe` from [Releases](https://github.com/WaltomAdaam2/IdentityV-Assistant/releases) and install it.
+2. Locate the game on the Game launcher page and configure the login component through its settings button. You can also start the game yourself before using visual tasks.
+3. Edit and enable tasks, then select Start enabled tasks. Multiple tasks run in list order.
+4. **F3** toggles the automation engine by default. Task-row buttons pause and resume; stopping a task clears the remaining queue.
 
-```powershell
-pnpm tauri dev
-```
+**Tasks send real keyboard and mouse input; there is no default dry-run mode.** Ordinary game launch does not apply the engine window layout. Login-component readiness does not prove account authentication, and offline tests or screenshot recognition do not prove live gameplay success.
 
-Run only the frontend:
+## Maps and local data
 
-```powershell
-pnpm dev
-```
+ZIP import supports multiple selections and continues after individual failures. Top notices show success counts and failure details, which also remain in logs. Map preferences save silently; the floor resets to 1F when the page is reopened.
 
-Run only the Python protocol engine:
+![Journal map browser](docs/images/journal.png)
 
-```powershell
-Set-Location engine
-uv run python main.py
-```
+Data lives under `%LOCALAPPDATA%\IdentityV-Assistant\`, including `config.json`, dated `logs\`, manual captures and `journal\packs\`. Upgrades retain this directory. See [Feature logic](docs/README_LOGIC_EN.md) for details and map-pack format.
 
-## One-click Windows installer build
-
-Install Node/pnpm, Rust/MSVC Build Tools and uv, then double-click **`打包.bat`** in the repository root. Use the same file after updating the source. It installs project dependencies, builds the engine and UI, and opens the installer output folder. Errors remain visible if a build fails.
-
-Alternatively, run from the repository root:
+## Build
 
 ```powershell
 pnpm install --frozen-lockfile
+uv sync --project engine --extra windows --extra ocr --extra dev --extra build
 pnpm tauri build
 ```
 
-Authorized publishers use the `IdentityV-Assistant-VERSION-Windows-x64-Setup.exe` installer referenced by `latest.json` in `src-tauri\target\release\bundle\nsis\`. Users can choose the installation drive and folder. The installation contains `identityv-assistant.exe` for the UI and an `engine/` directory with Python, native capture libraries, OCR models, templates and defaults. Startup reads these files directly without extracting them each time. **Use the complete installer; the UI executable alone is not portable.**
+Official signed builds require the original updater signing key. Third-party builds can configure their own signing, but cannot replace the official update chain. See [Development](docs/development.md). Installers are written to `src-tauri/target/release/bundle/nsis/`.
 
-The native wizard provides Chinese/English selection, a welcome page, the proprietary license, installation directory selection, progress and completion pages, Start Menu shortcuts and Windows uninstall integration. Updates use the standard installer upgrade flow.
+## Updates and repository migration
 
-Python is not required on the recipient's computer. The installer downloads Microsoft Edge WebView2 Runtime if missing. Settings, logs, captures and imported maps stay in `%LOCALAPPDATA%\IdentityV-Assistant\`, separate from installed files and release artifacts. The first build downloads dependencies and takes longer.
+Starting with 0.1.7, this repository hosts source, downloads and future updates. The old `desktop-releases` repository provides a one-time 0.1.7 bridge; whether an older client can use it depends on its updater capabilities. After the old repository is deleted, clients that have not migrated need a manual installation from this repository.
 
-The build runs an offline frozen-engine check for native dependencies, templates and OCR models; it does not test live gameplay. `pnpm tauri dev` continues to use the Python development environment.
+Updates are not downloaded or installed without confirmation. Proxy availability depends on third parties; switching sources retains all integrity checks. See [Updates and releases](docs/updates_EN.md).
 
-Release builds require the original updater signing key, defaulting to `%LOCALAPPDATA%\IdentityV-Assistant\release-keys\updater.key`. A successful build also generates `.sig`, `latest.json`, and `SHA256SUMS.txt`. Never upload the private key; losing it prevents trusted updates to existing clients. See [update and publishing instructions](docs/updates.md).
-
-Starting with v0.1.1, Settings → Software updates supports startup checks, direct GitHub downloads or a third-party China proxy, cancellation, and retries. Downloads must pass release signature, SHA-256, and file-size verification before installation. Checks never install updates automatically. Users of v0.1.0 and v0.1.1 must manually install v0.1.2 once to migrate to the public update repository. To publish, commit and push clean `main`, rebuild, then run `scripts/publish_release.ps1 -NotesFile <release-notes-file>`. Building alone never publishes.
-
-## Verification
-
-```powershell
-pnpm typecheck
-pnpm build
-
-Set-Location engine
-uv run pytest
-
-Set-Location ..\src-tauri
-cargo fmt --check
-cargo test
-```
-
-## Project Layout
+## Repository layout
 
 ```text
-frontend/       React GUI
-src-tauri/      Tauri shell and Python process supervisor
-engine/         Python automation engine
-assets/         Template and icon registry content
-config/         Default configuration
-docs/           Architecture and development documentation
-scripts/        Windows development helpers
+frontend/   React interface, settings editing and status display
+src-tauri/  Rust desktop shell, process lifecycle, imports and updates
+engine/     Python recognition, task decisions, capture and input
+assets/     Recognition assets and reference screenshots
+scripts/    Builds, packaging, license collection and publishing
+docs/       User guides, developer documentation and decisions
 ```
 
-## Planned Work
+## Credits
 
-* Calibrate screen recognition and input against live game sessions
-* Verify gameplay and results recognition in a live game environment
+- [KKeygen/idv-login](https://github.com/KKeygen/idv-login): independent login component, retaining upstream implementation and license.
+- [Tauri](https://github.com/tauri-apps/tauri) and [React](https://github.com/facebook/react): desktop shell and interface.
+- [OpenCV](https://github.com/opencv/opencv), [RapidOCR](https://github.com/RapidAI/RapidOCR) and [Windows Capture](https://github.com/NiiightmareXD/windows-capture): image processing, text recognition and window capture.
+- [Lucide](https://github.com/lucide-icons/lucide) / [Iconify](https://github.com/iconify/icon-sets): interface icons.
 
-Process hooks, memory access, anti-cheat bypass, kernel input, and network protocol manipulation are outside this project's design.
-
-## Settings and updates
-
-Settings use one row per option and switches for boolean preferences. Choose the game executable, launch at Windows logon, minimize to tray, UI scale, and engine shortcut (F3 by default), or open the logs folder. A three-second toast confirms successful saves. About information is at the bottom of Settings.
-
-Startup checks show new-version release notes with a per-version dismissal option. Settings offers the prerelease channel, GitHub/free proxy selection, and manual checks.
+Maintained by [WaltomAdaam2](https://github.com/WaltomAdaam2). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party licenses and bundled source archives, and [artwork sources](frontend/public/launcher/SOURCES.md) for game imagery. Game trademarks and imported maps retain their respective rights.
 
 ## License
 
-Starting with v0.1.2, first-party code uses a [proprietary personal-use license](LICENSE). Unauthorized redistribution and commercial use are prohibited. Existing GPL grants for historical versions remain unchanged. Window layout uses this project's independent Win32 implementation. Third-party dependencies and imported map packs retain their own licenses and rights notices.
+Current first-party source and versions starting with 0.1.7 use **GNU GPL v3.0 only (GPL-3.0-only)**. Copyright (C) 2026 WaltomAdaam2. See [LICENSE](LICENSE). Historical installers retain their included notices; this change does not relicense third-party materials.
