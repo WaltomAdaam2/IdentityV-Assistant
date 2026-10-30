@@ -22,3 +22,9 @@ Use deterministic progress samples (steady, stalled, unknown size, reset), Rust 
 ## Delivery
 
 Implementation, signed packaging, independent review, CI and Draft Release preparation are complete; see the issue's final evidence. PR merge and formal publication remain the user's review actions, not automated steps.
+
+## User follow-up (2026-10-31)
+
+The user supplied replacement overview/journal screenshots and requested a centered README header like the reference, using this project's identity, actual stack/license and working navigation. Apply it to both languages without altering the supplied pixels.
+
+The user subsequently explicitly authorized merging the PR after checks pass. This supersedes the earlier leave-PR-open decision. Keep the existing 0.1.8 release as a draft for the user's personal publication, retain its verified binary build commit, and permanently freeze SNAPSHOT-v0.1.8 immediately after merge. Complete all branch edits and verification records before merge.

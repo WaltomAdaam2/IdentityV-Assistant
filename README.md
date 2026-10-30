@@ -1,8 +1,35 @@
-# Identity V Assistant
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" alt="Identity V Assistant" width="128" height="128">
+</p>
 
-**语言 / Language:** 中文 | [English](README_EN.md)
+<h1 align="center">第五人格助手 Identity V Assistant</h1>
 
-Windows 桌面端的《第五人格》助手，提供游戏启动、视觉自动化任务和加页手记地图浏览。界面支持中文与英文，配置和地图保存在本机。
+<p align="center">
+  游戏启动 · 视觉自动化 · 加页手记地图<br>
+  基于 Tauri 2 + React + Rust + Python 构建的 Windows 桌面助手
+</p>
+
+<p align="center">
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/issues">反馈问题</a> · <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/releases">更新日志</a><br>
+  <a href="#安装与开始使用">快速开始</a> · <a href="docs/README_LOGIC.md">功能说明</a> · <a href="docs/development_zh.md">构建指南</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/releases"><img src="https://img.shields.io/github/v/release/WaltomAdaam2/IdentityV-Assistant?color=70815a" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-70815a" alt="License: GPL-3.0-only"></a>
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/stargazers"><img src="https://img.shields.io/github/stars/WaltomAdaam2/IdentityV-Assistant?style=social" alt="GitHub stars"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/React-18-61dafb?logo=react" alt="React 18">
+  <img src="https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri" alt="Tauri 2">
+  <img src="https://img.shields.io/badge/Rust-2021-dea584?logo=rust" alt="Rust edition 2021">
+  <img src="https://img.shields.io/badge/Python-3.12-3776ab?logo=python&logoColor=white" alt="Python 3.12">
+</p>
+
+<p align="center"><strong>中文</strong> · <a href="README_EN.md">English</a></p>
+
+---
 
 <p align="center">
   <img src="docs/images/overview.png" alt="Identity V Assistant 主界面" width="850">
