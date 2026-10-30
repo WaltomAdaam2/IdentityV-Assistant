@@ -3,16 +3,16 @@
 .workspace-launcher > .notice { flex-shrink: 0; }
 .page-content.page-launcher { display: flex; flex: 1; flex-direction: column; width: 100%; max-width: none; padding: 0; }
 .game-launcher { position: relative; display: flex; flex: 1; flex-direction: column; justify-content: space-between; min-height: 580px; padding: 36px; color: #fff; background: linear-gradient(0deg, #19150f66, transparent 52%), url('/launcher/background.jpg') center / cover; }
-.launcher-logo { align-self: flex-start; width: clamp(150px, 22%, 245px); height: auto; filter: brightness(0) invert(1) drop-shadow(0 2px 3px #201d1980); }
+.launcher-logo { align-self: flex-start; width: clamp(180px, 28%, 300px); height: auto; filter: drop-shadow(0 3px 8px #201d1980); }
 .launcher-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-top: 180px; }
-.launcher-news { flex: 1; min-width: 0; max-width: 470px; padding: 20px 22px; background: #201d19d9; border-radius: 12px; }
+.launcher-news { flex: 0 1 50%; min-width: 0; width: 50%; max-width: min(470px, 50%); padding: 20px 22px; background: #201d19d9; border-radius: 12px; }
 .launcher-news h2 { margin-bottom: 16px; color: #fff; font-size: 16px; }
 .launcher-news p { color: #e4dfd6; }
 .launcher-news-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .launcher-news button { padding: 0; color: #f3efe7; background: transparent; border: 0; border-radius: 2px; box-shadow: none; text-align: left; font-size: 12px; }
 .launcher-news button:hover:not(:disabled) { color: #65dbff; background: transparent; box-shadow: none; transform: none; }
-.launcher-news ul { display: grid; gap: 13px; margin: 0; padding: 0; list-style: none; }
-.launcher-news li { display: flex; align-items: baseline; gap: 16px; }
+.launcher-news ul { display: grid; grid-template-columns: minmax(0, 1fr); gap: 13px; margin: 0; padding: 0; list-style: none; }
+.launcher-news li { display: flex; align-items: baseline; min-width: 0; gap: 16px; }
 .launcher-news li button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .launcher-news time { flex-shrink: 0; color: #c8c0b5; font-size: 11px; }
 .launcher-news .launcher-news-retry { padding: 6px 0; margin-top: 8px; color: #65dbff; }
@@ -29,14 +29,19 @@
 .launcher-setup-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .launcher-game-path { margin-bottom: 10px; overflow: hidden; color: #fff; text-shadow: 0 1px 3px #201d19; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 11px; }
 .launcher-game-error { padding: 10px 12px; margin-bottom: 10px; color: #fff; background: #572e26e6; border-radius: 8px; overflow-wrap: anywhere; font-size: 12px; }
-.launcher-launch-controls { display: flex; }
+.launcher-launch-controls { display: flex; border-radius: 30px; transition: transform 180ms ease, box-shadow 180ms ease; }
+.launcher-launch-controls:hover { transform: translateY(-2px); box-shadow: 0 7px 16px #0003; }
+.game-launcher .launcher-launch-controls > button:hover:not(:disabled) { transform: none; box-shadow: none; }
+.game-launcher .launcher-launch-controls > button:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 2px 5px #072b3740; transition-duration: 70ms; }
 .launcher-launch-controls .launcher-start { flex: 1; min-width: 0; border-radius: 30px 0 0 30px; }
-.launcher-choose { display: grid; flex: 0 0 48px; padding: 0; place-items: center; color: #072b37; background: #0fb5ea; border: 0; border-left: 1px solid #072b3733; border-radius: 0 30px 30px 0; }
+.launcher-choose { display: grid; flex: 0 0 44px; padding: 0; place-items: center; color: #072b37; background: #0fb5ea; border: 0; border-left: 1px solid #072b3733; border-radius: 0 30px 30px 0; }
 .launcher-choose svg { width: 20px; height: 20px; }
 .launcher-choose:hover:not(:disabled) { color: #072b37; background: #65dbff; }
-.launcher-start { width: 100%; min-height: 58px; color: #072b37; background: #0fb5ea; border: 0; border-radius: 30px; font-size: 22px; font-weight: 700; }
+.launcher-start { width: 100%; min-height: 46px; color: #072b37; background: #0fb5ea; border: 0; border-radius: 30px; font-size: 18px; font-weight: 700; }
 .launcher-start:hover:not(:disabled) { background: #65dbff; color: #072b37; }
-.game-launcher :focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+.game-launcher button { outline: 0; }
+.game-launcher button:focus-visible { box-shadow: none; color: #65dbff; background-color: #ffffff20; }
+.game-launcher .launcher-launch-controls > button:focus-visible { color: #072b37; background-color: #65dbff; }
 @media (max-width: 1100px) {
   .game-launcher { padding: 28px; }
   .launcher-bottom { gap: 20px; }
@@ -44,6 +49,6 @@
 }
 @media (max-width: 750px) {
   .launcher-bottom { flex-direction: column; align-items: stretch; }
-  .launcher-news { max-width: none; }
+  .launcher-news { align-self: flex-start; }
   .launcher-actions { align-self: flex-end; }
 }

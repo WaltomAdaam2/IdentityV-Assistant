@@ -29,6 +29,31 @@ test("game launch is placed between tasks and journal", () => {
   }
 });
 
+test("long news stays within half the launcher and controls share hover movement", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("set", "viewport", "1000", "680");
+    browser("eval", "window.__launcherTest.newsFailure = false; window.__launcherTest.newsTitle = '第五人格超长活动公告'.repeat(25)");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    const layout = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => { const panel=document.querySelector('.launcher-news'); const row=panel.querySelector('li'); const button=row.querySelector('button'); return { panel:panel.getBoundingClientRect().width, page:document.querySelector('.game-launcher').getBoundingClientRect().width, right:panel.getBoundingClientRect().right, rowRight:row.getBoundingClientRect().right, clipped:button.scrollWidth>button.clientWidth, height:document.querySelector('.launcher-start').getBoundingClientRect().height }; })())")));
+    assert.ok(layout.panel <= layout.page / 2, JSON.stringify(layout));
+    assert.ok(layout.rowRight <= layout.right, JSON.stringify(layout));
+    assert.equal(layout.clipped, true);
+    assert.ok(layout.height <= 48);
+    browser("hover", ".launcher-start");
+    browser("wait", "--fn", "document.getAnimations().every(a => a.playState !== 'running')");
+    const tops = () => JSON.parse(JSON.parse(browser("eval", "JSON.stringify(Array.from(document.querySelectorAll('.launcher-launch-controls > button'), b => b.getBoundingClientRect().top))")));
+    assert.ok(Math.abs(tops()[0] - tops()[1]) < 0.5);
+    browser("mouse", "down", "left");
+    browser("wait", "--fn", "document.getAnimations().every(a => a.playState !== 'running')");
+    assert.ok(tops()[0] > tops()[1]);
+    browser("mouse", "up", "left");
+    browser("eval", "document.querySelector('.launcher-start').focus()");
+    assert.equal(JSON.parse(browser("eval", "getComputedStyle(document.querySelector('.launcher-start')).outlineWidth")), "0px");
+  } finally { browser("close"); }
+});
+
 test("launcher displays the located game and persists a manually selected executable", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);

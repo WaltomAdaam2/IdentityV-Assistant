@@ -34,7 +34,7 @@ mockIPC((command, args) => {
   if (command === "choose_login_component") return "D:\\idv-login\\python-embed\\python.exe";
   if (command === "get_game_announcements") {
     if (window.__launcherTest.newsFailure) return Promise.reject("Network unavailable");
-    return [{ title: "庄园活动公告", url: "https://id5.163.com/news/official/test.html", release_time: 1793203200 }];
+    return [{ title: window.__launcherTest.newsTitle || "庄园活动公告", url: "https://id5.163.com/news/official/test.html", release_time: 1793203200 }];
   }
   return null;
 }, { shouldMockEvents: true });
