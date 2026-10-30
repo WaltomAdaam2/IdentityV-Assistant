@@ -19,7 +19,8 @@ test("journal remembers map options silently but resets the temporary floor on r
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
     browser("find", "role", "button", "click", "--name", "加页手记", "--exact");
-    browser("wait", "--text", "地图筛选");
+    browser("wait", "--fn", "Boolean(document.querySelector('#journal-filter-body'))");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('#journal-filter-body').hidden")), false);
     browser("find", "role", "button", "click", "--name", "三开", "--exact");
     browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'save_settings' && c.args.settings.journal?.door === 'triple')");
     assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.settings-saved-toast'))")), false);
@@ -27,12 +28,31 @@ test("journal remembers map options silently but resets the temporary floor on r
     browser("find", "role", "button", "click", "--name", "二楼", "--exact");
     browser("wait", "500");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'save_settings')")), false);
+    browser("find", "role", "button", "click", "--name", "收起地图筛选", "--exact");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('#journal-filter-body').hidden")), true);
     browser("find", "role", "button", "click", "--name", "任务", "--exact");
     browser("wait", "--fn", "!document.querySelector('.journal')");
     browser("find", "role", "button", "click", "--name", "加页手记", "--exact");
     browser("wait", "--text", "地图筛选");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('#journal-filter-body').hidden")), false);
     assert.equal(JSON.parse(browser("eval", "Array.from(document.querySelectorAll('.journal-options button')).find(b => b.textContent === '一楼').getAttribute('aria-pressed')")), "true");
     assert.equal(JSON.parse(browser("eval", "Array.from(document.querySelectorAll('.journal-options button')).find(b => b.textContent === '三开').getAttribute('aria-pressed')")), "true");
+  } finally { browser("close"); }
+});
+
+test("developer mode reveals retained component details without losing normal launch results", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "运行日志", "--exact");
+    browser("wait", "--fn", "Boolean(document.querySelector('.logs-panel'))");
+    browser("eval", "(async () => { await window.__launcherTest.emitLog({source:'idv-login',message:'证书已存在且有效，跳过生成。'}); await window.__launcherTest.emitLog({source:'launcher',message:'登录代理检查通过，已启动游戏'}); })()");
+    browser("wait", "--text", "登录代理检查通过，已启动游戏");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.log-table').textContent.includes('证书已存在')")), false);
+    browser("find", "role", "button", "click", "--name", "设置", "--exact");
+    browser("eval", "Array.from(document.querySelectorAll('.setting-row')).find(row => row.textContent.includes('开发者模式')).querySelector('input').click()");
+    browser("find", "role", "button", "click", "--name", "运行日志", "--exact");
+    browser("wait", "--text", "证书已存在且有效，跳过生成。");
+    browser("wait", "--text", "登录代理检查通过，已启动游戏");
   } finally { browser("close"); }
 });
 

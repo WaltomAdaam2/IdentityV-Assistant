@@ -45,7 +45,8 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
 }) {
   const zh = language === "zh-CN";
   const [floor, setFloor] = useState("1");
-  const settings = useMemo(() => ({ ...savedSettings, floor }), [savedSettings, floor]);
+  const [collapsed, setCollapsed] = useState(false);
+  const settings = useMemo(() => ({ ...savedSettings, floor, collapsed }), [savedSettings, floor, collapsed]);
   const [library, setLibrary] = useState<JournalLibrary>({ directory: "", packs: [], errors: [] });
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
@@ -125,7 +126,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     const next = { ...settings, ...patch };
     if (next.difficulty === "hard" && ["b1f", "3"].includes(next.floor)) next.floor = "1";
     setFloor(next.floor);
-    if (Object.keys(patch).some((key) => key !== "floor")) onSettingsChange({ ...next, floor: "1" });
+    if (Object.keys(patch).some((key) => key !== "floor")) onSettingsChange({ ...next, floor: "1", collapsed: false });
   };
   const floorSwitch = () => <div className="journal-floor-switch" role="group" aria-label={zh ? "切换地图楼层" : "Switch map floor"}>
     {quickFloors.map(([floor, chinese, english]) => <button key={floor} type="button" disabled={!availableFloors.has(floor)} aria-pressed={settings.floor === floor} className={settings.floor === floor ? "primary" : ""} title={!availableFloors.has(floor) ? (zh ? "当前地图没有此楼层" : "This floor is unavailable for this map") : undefined} onClick={() => change({ floor })}>{zh ? chinese : english}</button>)}
@@ -154,7 +155,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
       <aside className="panel journal-filters">
         <div className="journal-filter-heading">
           <h2 aria-hidden={settings.collapsed}>{zh ? "地图筛选" : "Map filters"}</h2>
-          <button type="button" aria-expanded={!settings.collapsed} aria-controls="journal-filter-body" aria-label={zh ? (settings.collapsed ? "展开地图筛选" : "收起地图筛选") : (settings.collapsed ? "Expand filters" : "Collapse filters")} onClick={() => change({ collapsed: !settings.collapsed })}>{settings.collapsed ? "›" : "‹"}</button>
+          <button type="button" aria-expanded={!settings.collapsed} aria-controls="journal-filter-body" aria-label={zh ? (settings.collapsed ? "展开地图筛选" : "收起地图筛选") : (settings.collapsed ? "Expand filters" : "Collapse filters")} onClick={() => setCollapsed(!collapsed)}>{settings.collapsed ? "›" : "‹"}</button>
         </div>
         <div id="journal-filter-body" hidden={settings.collapsed}>
           <label className="journal-season">{zh ? "赛季" : "Season"}

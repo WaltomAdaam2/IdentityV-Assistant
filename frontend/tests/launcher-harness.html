@@ -2,12 +2,14 @@
 <html lang="zh-CN"><meta charset="utf-8"><title>Launcher interaction test</title>
 <body><div id="root"></div><script type="module">
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import { emit } from "@tauri-apps/api/event";
 mockWindows("main");
 window.__launcherTest = { calls: [], newsFailure: true, selectedGamePath: "D:\\Games\\IdentityV\\dwrg.exe" };
+window.__launcherTest.emitLog = (payload) => emit("engine-event", { type: "log", level: "info", data: { important: true }, ...payload });
 window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv-login\\python-embed\\python.exe", message: null };
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
-  if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false } };
+  if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
   if (command === "save_settings" && window.__launcherTest.saveFailure) return Promise.reject("快捷键已被占用或无法注册：Hotkey already registered: HotKey { mods: Modifiers(0x0), key: F3, id: 162 }");
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { phase: "idle" };

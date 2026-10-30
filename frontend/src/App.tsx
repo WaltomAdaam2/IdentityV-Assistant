@@ -290,7 +290,7 @@ const translations = {
       intervalJitter: "点击间隔随机范围（毫秒）",
       durationJitter: "按住时长随机范围（毫秒）",
       developerMode: "开发者模式",
-      developerModeHint: "显示服务详情与手动命令",
+      developerModeHint: "显示完整日志、服务详情与手动命令",
       developerSection: "开发者设置",
       developerSectionHint: "以下选项用于诊断和高级调整。",
       engineCapture: "服务与捕捉",
@@ -304,7 +304,6 @@ const translations = {
       memoryProtectionHint: "系统内存超过 90% 时清理未使用缓存",
       recognition: "识别与诊断",
       threshold: "模板匹配阈值",
-      verbose: "记录详细调试日志",
       screenshots: "保存调试截图",
       autosave: "更改会自动保存",
     },
@@ -581,7 +580,7 @@ const translations = {
       intervalJitter: "Click interval variation (ms)",
       durationJitter: "Click hold variation (ms)",
       developerMode: "Developer mode",
-      developerModeHint: "Show service details and manual commands",
+      developerModeHint: "Show full logs, service details and manual commands",
       developerSection: "Developer settings",
       developerSectionHint: "These options are intended for diagnostics and advanced tuning.",
       engineCapture: "Service and capture",
@@ -595,7 +594,6 @@ const translations = {
       memoryProtectionHint: "Release unused caches when system memory usage exceeds 90%",
       recognition: "Recognition and diagnostics",
       threshold: "Template match threshold",
-      verbose: "Record verbose debug logs",
       screenshots: "Save debug screenshots",
       autosave: "Changes are saved automatically",
     },
@@ -841,10 +839,10 @@ export default function App() {
       level: "info",
       message: translations[defaults.app.language].ready,
       source: "ui",
-      important: true,
+      important: false,
     },
   ]);
-  const [normalLogs, setNormalLogs] = useState(logs);
+  const [normalLogs, setNormalLogs] = useState(() => filterLogs(logs, "all", "", false));
   const pendingLogsRef = useRef<LogEntry[]>([]);
   const logFlushTimer = useRef<number | null>(null);
   const nextLogId = useRef(2);
@@ -1469,7 +1467,7 @@ export default function App() {
       />
     ),
     logs: (
-      <Logs language={language} entries={settings.debug.verbose_logs ? logs : normalLogs} verbose={settings.debug.verbose_logs} onClear={clearLogs} />
+      <Logs language={language} entries={settings.app.developer_mode ? logs : normalLogs} verbose={settings.app.developer_mode} onClear={clearLogs} />
     ),
     settings: (
       <SettingsPage
@@ -2427,12 +2425,12 @@ function SettingsPage({
       <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
-        <SettingRow icon="resolution" title={t.windowResolution} description={language === "zh-CN" ? "启动引擎时应用此游戏窗口分辨率" : "Apply this resolution when the engine starts."} language={language}>
+        <SettingRow icon="resolution" title={t.windowResolution} description={language === "zh-CN" ? "运行自动化任务时应用此游戏窗口分辨率" : "Apply this resolution when an automation task runs."} language={language}>
           <select value={settings.game_window.resolution} onChange={(event) => updateWindow({ resolution: event.target.value as Settings["game_window"]["resolution"] })}>
             {["2560x1440", "1920x1080", "1600x900", "1280x720"].map((value) => <option key={value} value={value}>{value.replace("x", " × ")}</option>)}
           </select>
         </SettingRow>
-        <SettingRow icon="position" title={t.windowPosition} description={language === "zh-CN" ? "启动引擎时放置游戏窗口的位置" : "Place the game window here when the engine starts."} language={language}>
+        <SettingRow icon="position" title={t.windowPosition} description={language === "zh-CN" ? "运行自动化任务时放置游戏窗口的位置" : "Place the game window here when an automation task runs."} language={language}>
           <select value={settings.game_window.position} onChange={(event) => updateWindow({ position: event.target.value as Settings["game_window"]["position"] })}>
             {Object.entries(t.windowPositions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
@@ -2524,15 +2522,6 @@ function SettingsPage({
             value={settings.vision.template_threshold}
             onChange={(event) =>
               updateVision({ template_threshold: Number(event.target.value) })
-            }
-          />
-        </SettingRow>
-        <SettingRow icon="verbose" title={t.verbose} description={language === "zh-CN" ? "在日志界面显示连接、截图与识别等详细事件" : "Show connection, capture and recognition details in the log viewer."} language={language}>
-          <input
-            type="checkbox" role="switch"
-            checked={settings.debug.verbose_logs}
-            onChange={(event) =>
-              updateDebug({ verbose_logs: event.target.checked })
             }
           />
         </SettingRow>

@@ -27,11 +27,17 @@ export function appendNormalLogBatch(current: LogEntry[], pending: LogEntry[]): 
 
 export function filterLogs(entries: LogEntry[], level: "all" | LogLevel, query: string, verbose: boolean): LogEntry[] {
   const search = query.toLocaleLowerCase();
-  return entries.filter((entry) =>
-    (verbose || (!entry.detailedOnly && (entry.important || entry.level === "warning" || entry.level === "error"))) &&
+  return entries.filter((entry) => {
+    // The launcher outcome summarizes these upstream startup instructions.
+    // Keep unknown messages (including sign-in prompts) and real failures visible.
+    const componentDetail = entry.source === "idv-login" && (
+      (entry.level === "info" && /^(正在初始化官方登录组件|本地配置已是最新|云端配置未变化|初始化内置浏览器|证书已存在且有效|由助手托管：跳过桌面快捷方式|mitmproxy .*模式已(?:启动|就绪)|已注册 idvlogin:\/\/ URI Scheme|当前使用进程代理模式，请通过桌面快捷方式启动游戏|如需设置全局代理，可在管理页面切换|拦截成功，您现在可以打开游戏了|登入账号且已经··进入游戏··后)/.test(entry.message)) ||
+      (entry.level === "warning" && entry.message === "如果您在之前已经打开了游戏，请关闭游戏后重新打开，否则工具不会生效！")
+    );
+    return (verbose || (!componentDetail && !entry.detailedOnly && (entry.important || entry.level === "warning" || entry.level === "error"))) &&
     (level === "all" || entry.level === level) &&
-    (!search || entry.message.toLocaleLowerCase().includes(search)),
-  );
+    (!search || entry.message.toLocaleLowerCase().includes(search));
+  });
 }
 
 export function progressLog(event: EngineEvent, stages: Record<string, string>, previous: Map<string, string>): string | null {

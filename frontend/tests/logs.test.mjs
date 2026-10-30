@@ -4,6 +4,27 @@ import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, p
 
 const entry = (id, patch = {}) => ({ id, at: "12:00:00", level: "info", message: "准备匹配", source: "hide_seek", important: true, ...patch });
 
+test("normal launcher logs keep the outcome and actionable issues while detailed logs retain startup chatter", () => {
+  const messages = [
+    "正在初始化官方登录组件（后台模式）", "本地配置已是最新 (HTTP 304)",
+    "云端配置未变化 (304): https://example.invalid/cloudRes.json", "初始化内置浏览器",
+    "证书已存在且有效，跳过生成。", "由助手托管：跳过桌面快捷方式创建",
+    "mitmproxy 常规代理模式已启动，监听端口 56385", "mitmproxy 代理模式已就绪！监听端口: 56385",
+    "已注册 idvlogin:// URI Scheme", "当前使用进程代理模式，请通过桌面快捷方式启动游戏。",
+    "如需设置全局代理，可在管理页面切换为全局模式。", "拦截成功，您现在可以打开游戏了。游戏将通过代理自动路由。",
+    "登入账号且已经··进入游戏··后，您可以关闭本工具。",
+  ];
+  const entries = messages.map((message, i) => entry(i, { source: "idv-login", message }));
+  entries.push(entry(20, { source: "idv-login", level: "warning", message: "如果您在之前已经打开了游戏，请关闭游戏后重新打开，否则工具不会生效！" }));
+  entries.push(entry(21, { source: "launcher", message: "登录代理检查通过，已启动游戏（耗时 8.7 秒）" }));
+  entries.push(entry(22, { source: "idv-login", level: "error", message: "证书已存在但无法读取" }));
+  entries.push(entry(23, { source: "idv-login", level: "warning", message: "登录凭证已过期，请重新登录" }));
+  entries.push(entry(24, { source: "idv-login", message: "请扫码登录" }));
+  assert.deepEqual(filterLogs(entries, "all", "", false).map((value) => value.id), [21, 22, 23, 24]);
+  assert.equal(filterLogs(entries, "all", "", true).length, entries.length);
+  assert.deepEqual(appendNormalLogBatch([], entries), filterLogs(appendLogBatch([], entries), "all", "", false));
+});
+
 test("batch append preserves order and newest 99,000 entries", () => {
   const current = Array.from({ length: 99_000 }, (_, index) => entry(99_000 - index));
   const pending = [entry(99_001), entry(99_002)];
