@@ -118,7 +118,8 @@ impl EngineSupervisor {
         let _lifecycle = self.lifecycle.lock().await;
         // An explicit start adopts an engine temporarily started by diagnostics.
         self.inner.lock().await.diagnostic_autostop_generation = None;
-        self.start_locked(app).await
+        self.start_locked(app).await?;
+        self.send(json!({"type": "enable_window_layout"})).await
     }
 
     pub async fn run_diagnostic(&self, app: AppHandle, command: Value) -> Result<(), String> {
@@ -665,7 +666,10 @@ impl EngineSupervisor {
         let result = if stopping {
             self.stop_locked_and_notify(&app).await
         } else {
-            self.start_locked(app.clone()).await
+            match self.start_locked(app.clone()).await {
+                Ok(()) => self.send(json!({"type": "enable_window_layout"})).await,
+                Err(error) => Err(error),
+            }
         };
         emit_status(&self.snapshot().await.status);
         result

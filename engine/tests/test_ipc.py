@@ -14,5 +14,6 @@ def test_command_validation_rejects_event_type() -> None:
         validate_envelope(event("ready"), commands_only=True)
 
 
-def test_reload_settings_is_a_valid_command() -> None:
-    validate_envelope(event("reload_settings", settings={}), commands_only=True)
+@pytest.mark.parametrize("command", ["reload_settings", "enable_window_layout"])
+def test_settings_and_layout_commands_are_valid(command: str) -> None:
+    validate_envelope(event(command, settings={}), commands_only=True)

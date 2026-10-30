@@ -2425,12 +2425,12 @@ function SettingsPage({
       <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
-        <SettingRow icon="resolution" title={t.windowResolution} description={language === "zh-CN" ? "运行自动化任务时应用此游戏窗口分辨率" : "Apply this resolution when an automation task runs."} language={language}>
+        <SettingRow icon="resolution" title={t.windowResolution} description={language === "zh-CN" ? "开启引擎时应用；单独启动游戏不应用" : "Apply when the engine is enabled, not when launching the game alone."} language={language}>
           <select value={settings.game_window.resolution} onChange={(event) => updateWindow({ resolution: event.target.value as Settings["game_window"]["resolution"] })}>
             {["2560x1440", "1920x1080", "1600x900", "1280x720"].map((value) => <option key={value} value={value}>{value.replace("x", " × ")}</option>)}
           </select>
         </SettingRow>
-        <SettingRow icon="position" title={t.windowPosition} description={language === "zh-CN" ? "运行自动化任务时放置游戏窗口的位置" : "Place the game window here when an automation task runs."} language={language}>
+        <SettingRow icon="position" title={t.windowPosition} description={language === "zh-CN" ? "开启引擎时应用；单独启动游戏不改变位置" : "Apply when the engine is enabled; game launch alone preserves placement."} language={language}>
           <select value={settings.game_window.position} onChange={(event) => updateWindow({ position: event.target.value as Settings["game_window"]["position"] })}>
             {Object.entries(t.windowPositions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>

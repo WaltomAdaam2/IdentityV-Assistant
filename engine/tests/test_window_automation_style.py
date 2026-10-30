@@ -32,8 +32,8 @@ def test_window_manager_delegates_current_options_and_restoration():
     assert len(calls) == 3
 
 
-@pytest.mark.parametrize("start_task", [False, True])
-def test_engine_only_applies_window_style_for_automation_tasks(start_task: bool) -> None:
+@pytest.mark.parametrize("start_mode", ["diagnostic", "engine", "task"])
+def test_window_layout_requires_explicit_engine_or_task_start(start_mode: str) -> None:
     heartbeat = asyncio.Event()
     task_started = asyncio.Event()
 
@@ -46,7 +46,10 @@ def test_engine_only_applies_window_style_for_automation_tasks(start_task: bool)
         async def messages(self):
             await heartbeat.wait()
             assert window.applied == 0
-            if start_task:
+            if start_mode == "engine":
+                yield {"type": "enable_window_layout"}
+                assert window.applied >= 1
+            if start_mode == "task":
                 yield {"type": "start_task", "task": "login_lobby"}
                 await task_started.wait()
             yield {"type": "shutdown"}
@@ -86,5 +89,5 @@ def test_engine_only_applies_window_style_for_automation_tasks(start_task: bool)
 
     asyncio.run(run())
 
-    assert (window.applied > 0) == start_task
+    assert (window.applied > 0) == (start_mode != "diagnostic")
     assert window.restored == 1

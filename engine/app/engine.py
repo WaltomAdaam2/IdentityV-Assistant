@@ -48,6 +48,7 @@ class AutomationEngine:
         self._developer_input_enabled = False
         self._window_health: str | None = None
         self._window_style_error: str | None = None
+        self._window_layout_enabled = False
         self._memory_pressure = False
         window = WindowsWindowManager(config.window)
         self.context = AutomationContext(
@@ -143,7 +144,7 @@ class AutomationEngine:
                 continue
 
     async def _ensure_window_style(self, window: WindowInfo | None) -> None:
-        if window is None or self.status not in (EngineStatus.RUNNING, EngineStatus.PAUSED):
+        if window is None or not self._window_layout_enabled:
             return
         apply_style = getattr(self.context.window, "apply_automation_style", None)
         if not callable(apply_style):
@@ -196,6 +197,9 @@ class AutomationEngine:
                 task_status=self.task_status,
                 **self._window_health_payload(window),
             )
+        elif command_type == "enable_window_layout":
+            self._window_layout_enabled = True
+            await self._ensure_window_style(self.context.window.find_window())
         elif command_type == "start_task":
             await self._start_task(str(command.get("task", "login_lobby")))
         elif command_type == "start_tasks":
@@ -515,6 +519,7 @@ class AutomationEngine:
             self._task_queue.clear()
         self._task_control = TaskControl()
         self._active_task_id = task_name
+        self._window_layout_enabled = True
         self.status, self.task_status = EngineStatus.RUNNING, "running"
         await self.emit("task_started", task_id=task_name)
         self._task_runner = asyncio.create_task(self._run_task(factories[task_name]()))

@@ -17,5 +17,5 @@ def event(event_type: str, **payload: Any) -> dict[str, Any]:
 
 COMMAND_TYPES = frozenset({
     "start_task", "start_tasks", "pause_task", "resume_task", "stop_task", "shutdown", "ping",
-    "detect_window", "capture_frame", "test_template", "input_test", "reload_settings",
+    "detect_window", "capture_frame", "test_template", "input_test", "reload_settings", "enable_window_layout",
 })
