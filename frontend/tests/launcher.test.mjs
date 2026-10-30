@@ -110,7 +110,8 @@ test("launch waits for the component and exposes success and recoverable failure
     assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-start').disabled")), false);
     browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
     browser("wait", "--text", "正在启动");
-    assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-start').disabled")), true);
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-start').disabled")), false);
+    assert.match(browser("eval", "document.querySelector('.launcher-start').textContent"), /取消启动/);
     browser("eval", "window.__launcherTest.finishLaunch()");
     browser("wait", "--text", "登录代理已就绪");
     browser("wait", "--fn", "!document.querySelector('.launcher-start').disabled");
@@ -130,12 +131,37 @@ test("missing login component opens setup and accepts an installed component", (
     browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
     browser("wait", "--text", "首次使用需本人登录");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'launch_game')")), false);
+    browser("eval", "window.__launcherTest.scanMissing = true");
+    browser("find", "role", "button", "click", "--name", "自动配置", "--exact");
+    browser("wait", "--text", "未找到官方组件");
     browser("find", "role", "button", "click", "--name", "官方下载", "--exact");
-    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'open_login_component_download')")), true);
+    browser("wait", "--text", "C:\\Assistant\\components\\idv-login\\v6.3.2-stable");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'configure_login_component' && call.args.download === true)")), true);
+    browser("eval", "window.__launcherTest.scanMissing = false");
+    browser("find", "role", "button", "click", "--name", "自动配置", "--exact");
+    browser("wait", "--text", "D:\\idv-login");
     browser("find", "role", "button", "click", "--name", "选择登录组件", "--exact");
     browser("wait", "--text", "D:\\idv-login\\python-embed\\python.exe");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'set_login_component' && call.args.executablePath === 'D:\\\\idv-login\\\\python-embed\\\\python.exe')")), true);
     browser("find", "role", "button", "click", "--name", "关闭启动设置", "--exact");
     assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.launcher-setup'))")), false);
+  } finally { browser("close"); }
+});
+
+test("a second click cancels launch and later health failure removes ready status", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("find", "role", "button", "click", "--name", "取消启动", "--exact");
+    browser("wait", "--text", "操作已取消");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(call => call.command === 'cancel_game_launch')")), true);
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("eval", "window.__launcherTest.finishLaunch()");
+    browser("wait", "--text", "登录代理已就绪");
+    browser("eval", "Object.assign(window.__launcherTest.launcherStatus, {phase:'error', message:'登录代理不可用'})");
+    browser("wait", "--text", "登录代理不可用");
+    assert.doesNotMatch(browser("eval", "document.querySelector('.launcher-status').textContent"), /已就绪/);
   } finally { browser("close"); }
 });

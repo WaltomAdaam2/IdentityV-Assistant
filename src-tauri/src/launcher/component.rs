@@ -1,8 +1,6 @@
 use std::{
     net::TcpListener,
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
@@ -19,7 +17,6 @@ pub(super) struct LoginRuntime {
 
 pub(super) struct ProxySession {
     process: OwnedProcess,
-    python: PathBuf,
     pub port: u16,
 }
 
@@ -33,11 +30,22 @@ impl ProxySession {
         Self::start_cancellable(runtime, program_data, timeout, &AtomicBool::new(false)).await
     }
 
+    #[cfg(test)]
     pub async fn start_cancellable(
         runtime: &LoginRuntime,
         program_data: &Path,
         timeout: Duration,
         cancelled: &AtomicBool,
+    ) -> Result<Self, String> {
+        Self::start_logged(runtime, program_data, timeout, cancelled, None).await
+    }
+
+    pub async fn start_logged(
+        runtime: &LoginRuntime,
+        program_data: &Path,
+        timeout: Duration,
+        cancelled: &AtomicBool,
+        app: Option<&tauri::AppHandle>,
     ) -> Result<Self, String> {
         if cancelled.load(Ordering::Relaxed) {
             return Err("登录组件启动已取消".into());
@@ -45,12 +53,9 @@ impl ProxySession {
         let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         drop(listener);
-        let process = OwnedProcess::spawn(&runtime.python, &runtime.script, port, program_data)?;
-        let session = Self {
-            process,
-            python: runtime.python.clone(),
-            port,
-        };
+        let process =
+            OwnedProcess::spawn(&runtime.python, &runtime.script, port, program_data, app)?;
+        let session = Self { process, port };
         let deadline = Instant::now() + timeout;
         let result = loop {
             if cancelled.load(Ordering::Relaxed) {
@@ -118,42 +123,16 @@ impl ProxySession {
         Ok(())
     }
 
-    pub fn stop(self) -> Result<(), String> {
+    pub fn stop(mut self) -> Result<(), String> {
         if !self.is_running() {
             return Ok(());
         }
-        // A short-lived Python process attaches to the component's hidden console.
-        // This leaves the assistant's own console/stdio untouched in GUI and test runs.
-        // Signal the dedicated console. The signal helper ignores the event;
-        // no game or external instance shares this console.
-        const SIGNAL: &str = "import ctypes,sys,time; k=ctypes.windll.kernel32; p=int(sys.argv[1]); k.FreeConsole(); attached=k.AttachConsole(p); handler=ctypes.WINFUNCTYPE(ctypes.c_int,ctypes.c_uint)(lambda event:1); k.SetConsoleCtrlHandler(handler,True); sent=attached and k.GenerateConsoleCtrlEvent(1,0); time.sleep(0.1); k.FreeConsole() if attached else None; sys.exit(0 if sent else 1)";
-        let mut signal = Command::new(&self.python)
-            .args(["-c", SIGNAL, &self.process.pid.to_string()])
-            .env_remove("PYTHONHOME")
-            .env_remove("PYTHONPATH")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(0x08000000)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let signal_status = loop {
-            if let Some(status) = signal.try_wait().map_err(|e| e.to_string())? {
-                break Some(status);
-            }
-            if Instant::now() >= deadline {
-                let _ = signal.kill();
-                let _ = signal.wait();
-                break None;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        };
+        let signal = self.process.request_stop();
         self.process.wait(6000);
         if self.is_running() {
             self.process.terminate()?;
             return Err(format!(
-                "登录组件未响应退出，已结束本助手持有的进程（退出信号：{signal_status:?}）"
+                "登录组件未响应退出，已结束本助手持有的进程（停止请求：{signal:?}）"
             ));
         }
         Ok(())
@@ -180,6 +159,7 @@ async fn local_json(client: &reqwest::Client, action: &str) -> Result<serde_json
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     #[tokio::test]
     async fn cancelling_startup_stops_the_owned_component_promptly() {
@@ -261,12 +241,26 @@ mod tests {
             .await
             .unwrap();
         assert!(owned.is_running());
+        assert_eq!(
+            std::fs::read_to_string(data.path().join("console-window")).unwrap(),
+            "0"
+        );
+        std::fs::write(data.path().join("unhealthy"), "fixture").unwrap();
+        assert!(
+            owned.verify_ready().await.is_err(),
+            "a live process alone is not a healthy proxy"
+        );
         owned.stop().unwrap();
         assert!(
             data.path().join("stopped").is_file(),
             "component must receive graceful shutdown"
         );
         assert!(external.is_running(), "other component must remain running");
+        external.process.terminate().unwrap();
+        assert!(
+            external.verify_ready().await.is_err(),
+            "manual exit must invalidate readiness"
+        );
         external.stop().unwrap();
         assert!(
             std::env::var_os("HTTP_PROXY") == before,

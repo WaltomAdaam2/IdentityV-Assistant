@@ -139,28 +139,34 @@ mod native {
                 CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER)
                     .map_err(|error| error.to_string())?;
             if let Some(login) = executable {
-                use windows::Win32::UI::Shell::FOS_FILEMUSTEXIST;
+                use windows::Win32::UI::Shell::{FOS_FILEMUSTEXIST, FOS_PICKFOLDERS};
                 dialog
                     .SetOptions(
                         FOS_FORCEFILESYSTEM
                             | FOS_PATHMUSTEXIST
-                            | FOS_FILEMUSTEXIST
+                            | if login {
+                                FOS_PICKFOLDERS
+                            } else {
+                                FOS_FILEMUSTEXIST
+                            }
                             | FOS_NOCHANGEDIR,
                     )
                     .map_err(|e| e.to_string())?;
                 dialog
                     .SetTitle(if login {
-                        w!("选择 idv-login\\python-embed\\python.exe")
+                        w!("选择包含“点我启动工具.bat”的 idv-login 文件夹")
                     } else {
                         w!("选择第五人格游戏程序")
                     })
                     .map_err(|e| e.to_string())?;
-                dialog
-                    .SetFileTypes(&[COMDLG_FILTERSPEC {
-                        pszName: w!("程序 (*.exe)"),
-                        pszSpec: w!("*.exe"),
-                    }])
-                    .map_err(|e| e.to_string())?;
+                if !login {
+                    dialog
+                        .SetFileTypes(&[COMDLG_FILTERSPEC {
+                            pszName: w!("程序 (*.exe)"),
+                            pszSpec: w!("*.exe"),
+                        }])
+                        .map_err(|e| e.to_string())?;
+                }
                 if let Err(error) = dialog.Show(Some(HWND(owner as *mut _))) {
                     if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
                         return Ok(None);

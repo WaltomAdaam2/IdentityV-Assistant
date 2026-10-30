@@ -16,7 +16,7 @@ export interface Announcement {
 }
 
 export interface LauncherStatus {
-  phase: "idle" | "starting" | "ready" | "error" | "stopping";
+  phase: "idle" | "starting" | "configuring" | "ready" | "error" | "stopping";
   component_path: string | null;
   message: string | null;
 }
@@ -30,7 +30,8 @@ export const bridge = {
   locateGame: (executablePath = "") => invoke<string>("locate_game", { executablePath }),
   getLauncherStatus: () => invoke<LauncherStatus>("get_launcher_status"),
   setLoginComponent: (executablePath: string) => invoke<void>("set_login_component", { executablePath }),
-  openLoginComponentDownload: () => invoke<void>("open_login_component_download"),
+  configureLoginComponent: (download: boolean) => invoke<void>("configure_login_component", { download }),
+  cancelGameLaunch: () => invoke<void>("cancel_game_launch"),
   getGameAnnouncements: () => invoke<Announcement[]>("get_game_announcements"),
   openGameAnnouncement: (url: string) => invoke<void>("open_game_announcement", { url }),
   checkUpdate: (source: Settings["app"]["update_source"], prereleases = false) => invoke<UpdateInfo | null>("check_update", { source, prereleases }),

@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import signal
 import ctypes
+import threading
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlsplit
 
@@ -14,6 +16,7 @@ args = parser.parse_args()
 root = Path(os.environ["PROGRAMDATA"])
 mode_file = root / "fixture-mode"
 mode = mode_file.read_text(encoding="utf-8") if mode_file.exists() else "process"
+(root / "console-window").write_text(str(ctypes.windll.kernel32.GetConsoleWindow()), encoding="ascii")
 if mode == "exit":
     raise SystemExit(3)
 
@@ -27,13 +30,14 @@ signal.signal(signal.SIGBREAK, stop)
 signal.signal(signal.SIGINT, stop)
 console_handler = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)(lambda event: stop(event) or 1)
 ctypes.windll.kernel32.SetConsoleCtrlHandler(console_handler, True)
+threading.Thread(target=lambda: (sys.stdin.readline(), stop()), daemon=True).start()
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         if path == "/_idv-login/health":
-            body = {"success": True, "status": "starting" if mode == "not-ready" else "ok", "version": "v6.3.2-stable"}
+            body = {"success": True, "status": "starting" if mode == "not-ready" or (root / "unhealthy").exists() else "ok", "version": "v6.3.2-stable"}
         elif path == "/_idv-login/proxy-mode":
             body = {"success": True, "mode": mode}
         else:

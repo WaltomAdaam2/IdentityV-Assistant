@@ -1,33 +1,68 @@
 use std::{
-    ffi::OsStr,
-    os::windows::{
-        ffi::OsStrExt,
-        io::{AsRawHandle, FromRawHandle, OwnedHandle},
-    },
+    io::{Read, Write},
+    os::windows::{io::AsRawHandle, process::CommandExt},
     path::Path,
+    process::{Child, Command, Stdio},
 };
-use windows::{
-    core::{PCWSTR, PWSTR},
-    Win32::{
-        Foundation::{CloseHandle, HANDLE, WAIT_TIMEOUT},
-        NetworkManagement::IpHelper::{
-            GetExtendedTcpTable, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
-        },
-        Networking::WinSock::AF_INET,
-        System::Threading::{
-            CreateProcessW, TerminateProcess, WaitForSingleObject, CREATE_NEW_CONSOLE,
-            CREATE_UNICODE_ENVIRONMENT, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW,
-        },
+use windows::Win32::{
+    Foundation::{HANDLE, WAIT_TIMEOUT},
+    NetworkManagement::IpHelper::{
+        GetExtendedTcpTable, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
     },
+    Networking::WinSock::AF_INET,
+    System::Threading::{TerminateProcess, WaitForSingleObject},
 };
 
 pub(super) struct OwnedProcess {
-    handle: OwnedHandle,
+    child: Child,
     pub pid: u32,
 }
 
-fn wide(value: &OsStr) -> Vec<u16> {
-    value.encode_wide().chain(Some(0)).collect()
+fn log_record(line: &[u8]) -> Option<serde_json::Value> {
+    let line = std::str::from_utf8(line)
+        .ok()?
+        .strip_prefix("IDV_ASSISTANT_LOG ")?;
+    let record: serde_json::Value = serde_json::from_str(line).ok()?;
+    let severity = record["level"].as_str()?;
+    let level = match severity {
+        "INFO" => "info",
+        "WARNING" => "warning",
+        "ERROR" | "CRITICAL" => "error",
+        _ => return None,
+    };
+    let message: String = record["message"].as_str()?.chars().take(4000).collect();
+    Some(
+        serde_json::json!({ "type": "log", "source": "idv-login", "timestamp": chrono::Utc::now().to_rfc3339(), "level": level,
+        "message": if severity == "CRITICAL" { format!("[CRITICAL] {message}") } else { message }, "data": {"important": true, "severity": severity} }),
+    )
+}
+
+fn drain(mut reader: impl Read + Send + 'static, app: Option<tauri::AppHandle>) {
+    std::thread::spawn(move || {
+        let mut buffer = [0u8; 4096];
+        let mut line = Vec::new();
+        let mut oversized = false;
+        while let Ok(count) = reader.read(&mut buffer) {
+            if count == 0 {
+                break;
+            }
+            for byte in &buffer[..count] {
+                if *byte == b'\n' {
+                    if !oversized {
+                        if let (Some(app), Some(record)) = (&app, log_record(&line)) {
+                            crate::logs::emit(app, record);
+                        }
+                    }
+                    line.clear();
+                    oversized = false;
+                } else if line.len() < 32768 {
+                    line.push(*byte);
+                } else {
+                    oversized = true;
+                }
+            }
+        }
+    });
 }
 
 impl OwnedProcess {
@@ -36,64 +71,51 @@ impl OwnedProcess {
         script: &Path,
         port: u16,
         program_data: &Path,
+        app: Option<&tauri::AppHandle>,
     ) -> Result<Self, String> {
         if !python.is_absolute() || !script.is_absolute() || !python.is_file() || !script.is_file()
         {
             return Err("登录组件运行文件不存在".into());
         }
-        let application = wide(python.as_os_str());
-        // Both arguments are existing Windows file paths, so neither can contain a quote.
-        let mut command = OsStr::new("\"").encode_wide().collect::<Vec<_>>();
-        command.extend(python.as_os_str().encode_wide());
-        command.extend(OsStr::new("\" \"").encode_wide());
-        command.extend(script.as_os_str().encode_wide());
-        command.extend(format!("\" --proxy-port {port}").encode_utf16());
-        command.push(0);
-        let cwd = wide(script.parent().ok_or("登录组件目录无效")?.as_os_str());
-        let mut environment: Vec<_> = std::env::vars_os()
-            .filter(|(key, _)| {
-                !["PROGRAMDATA", "PYTHONHOME", "PYTHONPATH"]
-                    .iter()
-                    .any(|name| key.eq_ignore_ascii_case(name))
-            })
-            .collect();
-        environment.push(("PROGRAMDATA".into(), program_data.as_os_str().to_owned()));
-        environment.sort_by_key(|(key, _)| key.to_string_lossy().to_uppercase());
-        let mut block = Vec::new();
-        for (key, value) in environment {
-            block.extend(key.encode_wide());
-            block.push(b'=' as u16);
-            block.extend(value.encode_wide());
-            block.push(0);
-        }
-        block.push(0);
-        let startup = STARTUPINFOW {
-            cb: std::mem::size_of::<STARTUPINFOW>() as u32,
-            dwFlags: STARTF_USESHOWWINDOW,
-            wShowWindow: 0,
-            ..Default::default()
+        let source = script.parent().ok_or("登录组件目录无效")?;
+        let bootstrap = program_data.join("assistant-bootstrap.py");
+        let entry = if script.extension().is_some_and(|ext| ext == "pyc") {
+            bootstrap.as_path()
+        } else {
+            script
         };
-        let mut process = PROCESS_INFORMATION::default();
-        unsafe {
-            CreateProcessW(
-                PCWSTR(application.as_ptr()),
-                Some(PWSTR(command.as_mut_ptr())),
-                None,
-                None,
-                false,
-                CREATE_NEW_CONSOLE | CREATE_UNICODE_ENVIRONMENT,
-                Some(block.as_ptr().cast()),
-                PCWSTR(cwd.as_ptr()),
-                &startup,
-                &mut process,
-            )
-            .map_err(|error| format!("无法启动登录组件：{error}"))?;
-            let _ = CloseHandle(process.hThread);
-            Ok(Self {
-                handle: OwnedHandle::from_raw_handle(process.hProcess.0),
-                pid: process.dwProcessId,
-            })
+        let mut child = Command::new(python)
+            .args(["-I", "-B", "-u"])
+            .arg(entry)
+            .args(["--proxy-port", &port.to_string()])
+            .current_dir(program_data)
+            .env("PROGRAMDATA", program_data)
+            .env("IDV_ASSISTANT_SRC", source)
+            .env("PYTHONIOENCODING", "utf-8")
+            .env_remove("PYTHONHOME")
+            .env_remove("PYTHONPATH")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|e| format!("无法启动登录组件：{e}"))?;
+        drain(child.stdout.take().ok_or("无法读取组件输出")?, app.cloned());
+        drain(
+            child.stderr.take().ok_or("无法读取组件错误输出")?,
+            app.cloned(),
+        );
+        Ok(Self {
+            pid: child.id(),
+            child,
+        })
+    }
+
+    pub fn request_stop(&mut self) -> Result<(), String> {
+        if let Some(mut input) = self.child.stdin.take() {
+            input.write_all(b"stop\n").map_err(|e| e.to_string())?;
         }
+        Ok(())
     }
 
     pub fn is_running(&self) -> bool {
@@ -101,12 +123,12 @@ impl OwnedProcess {
     }
 
     pub fn wait(&self, milliseconds: u32) -> windows::Win32::Foundation::WAIT_EVENT {
-        unsafe { WaitForSingleObject(HANDLE(self.handle.as_raw_handle()), milliseconds) }
+        unsafe { WaitForSingleObject(HANDLE(self.child.as_raw_handle()), milliseconds) }
     }
 
     pub fn terminate(&self) -> Result<(), String> {
         if self.is_running() {
-            unsafe { TerminateProcess(HANDLE(self.handle.as_raw_handle()), 1) }
+            unsafe { TerminateProcess(HANDLE(self.child.as_raw_handle()), 1) }
                 .map_err(|e| e.to_string())?;
             self.wait(2000);
         }
@@ -171,5 +193,20 @@ impl OwnedProcess {
 impl Drop for OwnedProcess {
     fn drop(&mut self) {
         let _ = self.terminate();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn forwards_supported_log_levels_and_marks_critical() {
+        assert!(log_record(br#"IDV_ASSISTANT_LOG {"level":"DEBUG","message":"skip"}"#).is_none());
+        let event =
+            log_record(br#"IDV_ASSISTANT_LOG {"level":"CRITICAL","message":"failed"}"#).unwrap();
+        assert_eq!(event["level"], "error");
+        assert_eq!(event["message"], "[CRITICAL] failed");
+        assert_eq!(event["data"]["important"], true);
+        assert!(log_record(b"unstructured stdout").is_none());
     }
 }

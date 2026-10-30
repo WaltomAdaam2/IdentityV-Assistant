@@ -22,8 +22,12 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
   const [statusError, setStatusError] = useState("");
   const [launchError, setLaunchError] = useState("");
   const [launching, setLaunching] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [setup, setSetup] = useState(false);
-  const busy = launching || status?.phase === "starting" || status?.phase === "stopping";
+  const starting = launching || status?.phase === "starting";
+  const installing = configuring || status?.phase === "configuring";
+  const busy = starting || installing || status?.phase === "stopping";
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -38,6 +42,13 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
     return () => { active = false; clearTimeout(timer); };
   }, []);
   const launch = async () => {
+    if (starting || installing) {
+      setCancelling(true);
+      try { await bridge.cancelGameLaunch(); }
+      catch (error) { setLaunchError(String(error)); }
+      finally { setCancelling(false); }
+      return;
+    }
     if (!status?.component_path) { setSetup(true); return; }
     setLaunching(true);
     setLaunchError("");
@@ -46,6 +57,17 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
       setStatus(await bridge.getLauncherStatus());
     } catch (error) { setLaunchError(String(error)); }
     finally { setLaunching(false); }
+  };
+  const configureComponent = async (download: boolean) => {
+    setConfiguring(true);
+    setLaunchError("");
+    try { await bridge.configureLoginComponent(download); }
+    catch (error) { setLaunchError(String(error)); }
+    finally {
+      try { setStatus(await bridge.getLauncherStatus()); }
+      catch (error) { setStatusError(String(error)); }
+      setConfiguring(false);
+    }
   };
   const chooseComponent = async () => {
     setChoosing(true);
@@ -120,16 +142,16 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
           <button disabled={choosing || locating || busy} onClick={() => void chooseGame()}>{zh ? "选择游戏程序" : "Choose game executable"}</button>
           <p>{zh ? "官方登录组件 · v6.3.2-stable" : "Official login component · v6.3.2-stable"}</p>
           <div className="launcher-setup-path" title={status?.component_path || undefined}>{status?.component_path || (zh ? "尚未设置" : "Not configured")}</div>
-          <div className="launcher-setup-buttons"><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void chooseComponent()}>{zh ? "选择登录组件" : "Choose component"}</button><button onClick={() => void bridge.openLoginComponentDownload().catch((error) => setLaunchError(String(error)))}>{zh ? "官方下载" : "Official download"}</button></div>
-          <p className="launcher-setup-note">{zh ? "安装后选择 python-embed 文件夹中的 python.exe。首次使用需本人登录，之后由组件保留账号。" : "After installation, choose python.exe in python-embed. Sign in yourself on first use; the component remembers accounts."}</p>
+          <div className="launcher-setup-buttons"><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void chooseComponent()}>{zh ? "选择登录组件" : "Choose component"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(true)}>{zh ? "官方下载" : "Official download"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(false)}>{zh ? "自动配置" : "Auto configure"}</button></div>
+          <p className="launcher-setup-note">{zh ? "自动配置会扫描已安装的组件。未找到时，官方下载会按设置中的下载源下载到助手程序目录并自动配置；也可手动选择包含“点我启动工具.bat”的文件夹。首次使用需本人登录，之后由组件保留账号。" : "Auto configure scans installed components. Official download uses your selected download source, extracts into the assistant directory and configures it. You can also select the folder containing the startup BAT. Sign in yourself on first use; the component remembers accounts."}</p>
           <p className="launcher-setup-note">{zh ? "组件会安装登录所需证书。退出助手会关闭自有代理；已打开的游戏会保留。" : "The component installs a certificate for login. Exiting the assistant closes its proxy and leaves the game open."}</p>
         </section>}
         <p className="launcher-game-path" title={gamePath} role="status">{locating ? (zh ? "正在定位游戏…" : "Locating game…") : gamePath || (zh ? "请选择游戏程序" : "Choose the game executable")}</p>
         {gameError && <p className="launcher-game-error" role="alert">{gameError}</p>}
-        <p className="launcher-status" role="status">{busy ? (zh ? "正在启动登录组件…" : "Starting login component…") : status?.phase === "ready" ? (zh ? "登录代理已就绪" : "Login proxy ready") : !status?.component_path ? (zh ? "请先配置官方登录组件" : "Set up the official login component") : (zh ? "直接启动第五人格" : "Launch Identity V directly")}</p>
-        {(launchError || statusError || status?.message) && <p className="launcher-game-error" role="alert">{launchError || statusError || status?.message}</p>}
+        <p className="launcher-status" role="status">{busy ? (status?.message || (zh ? "正在启动登录组件…" : "Starting login component…")) : status?.phase === "ready" ? (zh ? "登录代理已就绪" : "Login proxy ready") : !status?.component_path ? (zh ? "请先配置官方登录组件" : "Set up the official login component") : (zh ? "直接启动第五人格" : "Launch Identity V directly")}</p>
+        {(launchError || statusError || (!busy && status?.message)) && <p className="launcher-game-error" role="alert">{launchError || statusError || status?.message}</p>}
         <div className="launcher-launch-controls">
-          <button className="launcher-start" disabled={busy || choosing || locating || !gamePath || !status || !!statusError} onClick={() => void launch()}>{busy ? (zh ? "正在启动…" : "Starting…") : (zh ? "启动游戏" : "Launch game")}</button>
+          <button className="launcher-start" disabled={cancelling || status?.phase === "stopping" || (!starting && !installing && (choosing || locating || !gamePath || !status || !!statusError))} onClick={() => void launch()}>{cancelling ? (zh ? "正在取消…" : "Cancelling…") : installing ? (zh ? "取消配置" : "Cancel setup") : starting ? (zh ? "取消启动" : "Cancel launch") : (zh ? "启动游戏" : "Launch game")}</button>
           <button className="launcher-choose" onClick={() => setSetup((open) => !open)} aria-expanded={setup} aria-label={zh ? "启动设置" : "Launch settings"} title={zh ? "启动设置" : "Launch settings"}><Icon name="settings" /></button>
         </div>
       </div>

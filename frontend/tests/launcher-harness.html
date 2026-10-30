@@ -11,6 +11,12 @@ mockIPC((command, args) => {
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { phase: "idle" };
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
+  if (command === "cancel_game_launch") { window.__launcherTest.finishLaunch?.("操作已取消"); return null; }
+  if (command === "configure_login_component") {
+    if (!args.download && window.__launcherTest.scanMissing) return Promise.reject("未找到官方组件，请点击“官方下载”自动下载并配置");
+    window.__launcherTest.launcherStatus.component_path = args.download ? "C:\\Assistant\\components\\idv-login\\v6.3.2-stable" : "D:\\idv-login";
+    return null;
+  }
   if (command === "set_login_component") {
     window.__launcherTest.launcherStatus.component_path = args.executablePath;
     return null;

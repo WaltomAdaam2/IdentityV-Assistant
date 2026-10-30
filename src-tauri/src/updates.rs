@@ -72,7 +72,7 @@ impl UpdateManager {
     }
 }
 
-fn route(url: &str, source: &str) -> Result<String, String> {
+pub(crate) fn route(url: &str, source: &str) -> Result<String, String> {
     match source {
         "direct" => Ok(url.into()),
         "proxy" => Ok(format!("{PROXY}{url}")),

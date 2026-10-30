@@ -3,16 +3,13 @@ use std::path::{Path, PathBuf};
 #[cfg(windows)]
 mod component;
 #[cfg(windows)]
+mod install;
+#[cfg(windows)]
 pub(crate) mod manager;
 #[cfg(windows)]
 mod runtime;
 #[cfg(windows)]
 pub use manager::Launcher;
-
-#[tauri::command]
-pub fn open_login_component_download() -> Result<(), String> {
-    crate::commands::open_url("https://github.com/KKeygen/idv-login/releases/tag/v6.3.2-stable")
-}
 
 #[tauri::command]
 pub fn locate_game(executable_path: Option<String>) -> Result<String, String> {

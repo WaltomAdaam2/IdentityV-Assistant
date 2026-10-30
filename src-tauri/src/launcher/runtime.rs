@@ -10,6 +10,31 @@ use winreg::{enums::HKEY_CURRENT_USER, RegKey, RegValue};
 
 const URI_KEY: &str = r"Software\Classes\idvlogin";
 
+pub(super) fn managed_root() -> Result<PathBuf, String> {
+    Ok(std::env::current_exe()
+        .map_err(|e| e.to_string())?
+        .parent()
+        .ok_or("助手程序目录无效")?
+        .join("components/idv-login")
+        .join(SUPPORTED_VERSION))
+}
+
+pub(super) fn runtime_from_selection(path: PathBuf) -> Result<LoginRuntime, String> {
+    let python = if path.is_dir() {
+        path.join("python-embed/python.exe")
+    } else if path
+        .file_name()
+        .is_some_and(|name| name == "点我启动工具.bat")
+    {
+        path.parent()
+            .ok_or("组件目录无效")?
+            .join("python-embed/python.exe")
+    } else {
+        path
+    };
+    runtime_from_python(python)
+}
+
 pub(super) fn runtime_from_python(python: PathBuf) -> Result<LoginRuntime, String> {
     let root = python
         .parent()
@@ -29,9 +54,7 @@ pub(super) fn runtime_from_python(python: PathBuf) -> Result<LoginRuntime, Strin
         || !root.join("src/buildinfo.pyc").is_file()
         || !root.join("assets").is_dir()
     {
-        return Err(
-            "请选择已安装的 idv-login 中的 python-embed\\python.exe，不能选择下载的安装器".into(),
-        );
+        return Err("请选择包含“点我启动工具.bat”、python-embed 和 src 的 idv-login 文件夹".into());
     }
     Ok(LoginRuntime { python, script })
 }
@@ -49,40 +72,62 @@ fn command_python(command: &str) -> Option<PathBuf> {
 pub(super) fn component_path(directory: &Path) -> Result<Option<PathBuf>, String> {
     let preference = directory.join("launcher.json");
     if preference.is_file() {
-        let path: String =
-            serde_json::from_slice(&fs::read(preference).map_err(|e| e.to_string())?)
-                .map_err(|_| "登录组件设置损坏，请重新选择组件")?;
-        return Ok(Some(PathBuf::from(path)));
+        if let Ok(path) = fs::read(preference)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<String>(&bytes).ok())
+            .ok_or(())
+        {
+            if let Ok(runtime) = runtime_from_selection(PathBuf::from(path)) {
+                return Ok(Some(runtime.python));
+            }
+        }
     }
+    let mut roots = vec![managed_root()?];
+    if let Some(program_data) = std::env::var_os("PROGRAMDATA") {
+        let flag = PathBuf::from(program_data).join("idv-login/install_root.flag");
+        if fs::metadata(&flag).is_ok_and(|meta| meta.len() <= 4096) {
+            if let Ok(root) = fs::read_to_string(flag) {
+                roots.push(PathBuf::from(root.trim()));
+            }
+        }
+    }
+    roots.extend([
+        PathBuf::from(r"D:\ProgramData\IDV-Login"),
+        PathBuf::from(r"C:\ProgramData\IDV-Login"),
+    ]);
     let current_user = RegKey::predef(HKEY_CURRENT_USER);
     if let Ok(command) = current_user.open_subkey(format!(r"{URI_KEY}\shell\open\command")) {
         if let Ok(value) = command.get_value::<String, _>("") {
             if let Some(path) =
                 command_python(&value).filter(|path| runtime_from_python(path.clone()).is_ok())
             {
-                return Ok(Some(path));
+                if let Some(root) = path.parent().and_then(Path::parent) {
+                    roots.push(root.to_path_buf());
+                }
             }
         }
     }
-    // The official installer defaults to the user's Documents directory.
+    // Official fallback is Public Documents, not the current user's Documents.
     use windows::Win32::{
         System::Com::CoTaskMemFree,
-        UI::Shell::{FOLDERID_Documents, SHGetKnownFolderPath, KF_FLAG_DEFAULT},
+        UI::Shell::{FOLDERID_PublicDocuments, SHGetKnownFolderPath, KF_FLAG_DEFAULT},
     };
-    if let Ok(pointer) = unsafe { SHGetKnownFolderPath(&FOLDERID_Documents, KF_FLAG_DEFAULT, None) }
+    if let Ok(pointer) =
+        unsafe { SHGetKnownFolderPath(&FOLDERID_PublicDocuments, KF_FLAG_DEFAULT, None) }
     {
         let documents = unsafe { pointer.to_string() };
         unsafe {
             CoTaskMemFree(Some(pointer.0.cast()));
         }
         if let Ok(documents) = documents {
-            let path = PathBuf::from(documents).join("idv-login/python-embed/python.exe");
-            if runtime_from_python(path.clone()).is_ok() {
-                return Ok(Some(path));
-            }
+            roots.push(PathBuf::from(documents).join("IDV-Login"));
         }
     }
-    Ok(None)
+    Ok(roots.into_iter().find_map(|root| {
+        runtime_from_selection(root)
+            .ok()
+            .map(|runtime| runtime.python)
+    }))
 }
 
 pub(super) async fn verify_version(runtime: &LoginRuntime) -> Result<(), String> {
@@ -158,6 +203,7 @@ pub(super) fn prepare_data(program_data: &Path) -> Result<(), String> {
         "hosts_cleanup_v600_done",
         "nrpt_env_cleanup_v603_done",
         "config_fixed_0403",
+        "account_switching_wizard_632_offered",
     ] {
         config[flag] = json!(true);
     }
@@ -182,7 +228,12 @@ pub(super) fn prepare_data(program_data: &Path) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     file.sync_all().map_err(|e| e.to_string())?;
     drop(file);
-    fs::rename(pending, path).map_err(|e| e.to_string())
+    fs::rename(pending, path).map_err(|e| e.to_string())?;
+    fs::write(
+        program_data.join("assistant-bootstrap.py"),
+        include_str!("bootstrap.py"),
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn disable_autostart(value: &mut Value) {
@@ -292,6 +343,34 @@ fn read_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn component_selection_accepts_the_official_folder_and_bat_entry() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir_all(root.join("python-embed")).unwrap();
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("assets")).unwrap();
+        for name in [
+            "python-embed/python.exe",
+            "src/main.pyc",
+            "src/buildinfo.pyc",
+            "点我启动工具.bat",
+        ] {
+            fs::write(root.join(name), b"fixture").unwrap();
+        }
+        assert_eq!(
+            runtime_from_selection(root.to_path_buf()).unwrap().python,
+            root.join("python-embed/python.exe")
+        );
+        assert_eq!(
+            runtime_from_selection(root.join("点我启动工具.bat"))
+                .unwrap()
+                .script,
+            root.join("src/main.pyc")
+        );
+        assert!(runtime_from_selection(root.join("installer.exe")).is_err());
+    }
 
     #[test]
     fn dedicated_config_preserves_accounts_and_disables_automatic_game_launch() {

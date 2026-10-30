@@ -25,3 +25,13 @@ Type: task
 - Layout test reproduced the defect (470 px panel on an 816 px launcher; long row extended to x=3287; button height 58 px). It now passes: panel <= half width, title clipped, row inside panel, button <=48 px, unified hover movement, independent press and zero-width outline.
 - TypeScript passed. The 480x270 legacy image was rejected; final background is 1920x1080 and logo is the current colored game_library_logo without white filtering.
 - Folder/BAT selection test was red before runtime_from_selection and is now green. Download/setup implementation remains in progress.
+
+## Follow-up implementation
+
+- Official download and Auto configure are separate adjacent buttons. Auto configure scans/saves; Official download reuses a compatible runtime or downloads/extracts/configures the pinned package, including when the discovered version is unsupported.
+- Removed the two redundant Settings rows. Added startup/setup cancellation and phase text, real health polling, console-free managed bootstrap and important application-log forwarding.
+- Independent review found health-poll lock contention and unsupported-discovered-version blocking download. Both corrected; added lock-contention regression test.
+- Seven browser interaction tests passed; TypeScript and production Vite build passed (Vite needed normal host access because sandbox parent-directory enumeration was denied).
+- Rust full suite at this checkpoint: 48 passed / 6 ignored; subsequent lock-contention regression is being verified. Lifecycle fixture confirms no console window, graceful cancellation/exit, health loss and external process preservation.
+- Bootstrap tests: four passed using the actual extracted official embedded Python, including real module loading with the main login function stubbed. No real account login is claimed.
+- User requested package-only clean/recompile/launch; final native validation remains pending.

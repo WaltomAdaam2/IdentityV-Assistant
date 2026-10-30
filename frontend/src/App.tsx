@@ -2427,10 +2427,6 @@ function SettingsPage({
       <section className="panel developer-panel">
         <h2>{t.gameWindow}</h2>
         <p>{t.gameWindowHint}</p>
-        <SettingRow icon="folder" title={language === "zh-CN" ? "游戏程序路径" : "Game executable"} description={language === "zh-CN" ? "第五人格可执行文件的完整路径" : "Full path to the Identity V executable."} language={language}>
-          <input value={settings.game_window.executable_path} placeholder="dwrg.exe" onChange={(event) => updateWindow({ executable_path: event.target.value })} />
-        </SettingRow>
-        <SettingRow icon="game" title={language === "zh-CN" ? "选择或启动游戏" : "Select or launch game"} description={language === "zh-CN" ? "选择游戏程序，或启动已选中的程序" : "Choose the executable or launch the selected program."} language={language}><div><button disabled={settingsActionBusy} onClick={() => void desktopAction(async () => { const path = await bridge.chooseGameExecutable(); if (path) updateWindow({ executable_path: path }); })}>{language === "zh-CN" ? "浏览…" : "Browse…"}</button><button disabled={settingsActionBusy || !settings.game_window.executable_path.trim()} onClick={() => void desktopAction(() => bridge.launchGame(settings.game_window.executable_path))}>{language === "zh-CN" ? "启动游戏" : "Launch game"}</button></div></SettingRow>
         <SettingRow icon="resolution" title={t.windowResolution} description={language === "zh-CN" ? "启动引擎时应用此游戏窗口分辨率" : "Apply this resolution when the engine starts."} language={language}>
           <select value={settings.game_window.resolution} onChange={(event) => updateWindow({ resolution: event.target.value as Settings["game_window"]["resolution"] })}>
             {["2560x1440", "1920x1080", "1600x900", "1280x720"].map((value) => <option key={value} value={value}>{value.replace("x", " × ")}</option>)}

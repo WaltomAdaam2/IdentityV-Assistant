@@ -5,7 +5,7 @@ Date: 2026-10-29
 
 ## Context
 
-The launch page and Settings must locate and start the same Identity V client without the Fever platform. Login traffic requires a maintained protocol implementation. The automation engine has a separate lifecycle and must not own login sessions.
+The launch page must locate and start the Identity V client without the Fever platform. The redundant Settings launch/path controls were removed at the user's request. Login traffic requires a maintained protocol implementation. The automation engine has a separate lifecycle and must not own login sessions.
 
 ## Decision
 
@@ -26,3 +26,9 @@ On assistant exit or update, stop only the login component started by this assis
 Offline tests can verify discovery, process ownership, readiness, failures and cleanup, but cannot prove successful live account authentication. First login and expired credentials still require the user.
 
 The upstream Windows download is an installer, not the runtime. Discover or select an already installed official runtime and use a dedicated component data directory under the assistant's local data folder. Do not silently execute the installer. Pin the supported runtime version to v6.3.2-stable until a later version's contract has been reviewed. The upstream application also manages certificates and its URI handler; process proxy mode must not be described as having no system-level effects.
+
+## 2026-10-30 refinement
+
+The user requested automatic scan/configuration and in-app official downloads. Reuse the existing download-source selection, verify the fixed release and standalone unpacker by size/SHA-256, extract to staging and atomically publish under the assistant executable directory. Preserve existing installations and do not run installer scripts.
+
+Host the pinned runtime through an independent bootstrap stored in assistant data, without modifying the user's component files. Suppress upstream automatic shortcuts, first-use GUI and self-update/restart paths; retain the official main function, account/authentication behavior and cleanup. CREATE_NO_WINDOW plus private pipes replaces console signaling. Important structured logs flow into application logs, and a second click cancels startup/setup. Readiness always includes current health and exact process/port ownership.
