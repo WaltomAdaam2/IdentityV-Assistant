@@ -15,3 +15,8 @@ After minimizing to the tray, left single-click and double-click both show, rest
 - Left click no longer opens the tray menu; right click retains the existing menu. The menu Show command uses the same restoration function.
 - Both desktop tests passed. Independent read-only review reported no findings.
 - Native Windows mouse delivery and actual foreground focus have not been exercised; the unit test proves event routing, not OS behavior.
+
+## 2026-10-30 title-bar minimize
+
+- User requested the top-right minimize button always minimize to the taskbar. It now invokes a dedicated native command that bypasses tray hiding until the window is restored and focused. Other system minimize actions still respect the existing tray preference; the setting description states this exception.
+- Browser interaction test confirms the title-bar button invokes the taskbar command instead of the generic window minimize command. Rust compilation and existing tray-event tests passed. Independent static review found no new defect; actual taskbar restore in the elevated native window remains untested.

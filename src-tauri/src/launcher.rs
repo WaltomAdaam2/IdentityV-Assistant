@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 #[cfg(windows)]
 mod component;
 #[cfg(windows)]
+mod component_updates;
+#[cfg(windows)]
 mod install;
 #[cfg(windows)]
 pub(crate) mod manager;

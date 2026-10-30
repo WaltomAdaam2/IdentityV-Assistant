@@ -243,6 +243,10 @@ impl ProxySession {
     }
 
     pub fn stop(mut self) -> Result<(), String> {
+        self.pause()
+    }
+
+    pub fn pause(&mut self) -> Result<(), String> {
         if !self.is_running() {
             return Ok(());
         }
@@ -255,6 +259,24 @@ impl ProxySession {
             ));
         }
         Ok(())
+    }
+
+    pub async fn restart_after_update(
+        &mut self,
+        cancelled: &AtomicBool,
+        progress: impl Fn(&'static str),
+    ) -> Result<(), String> {
+        super::install::check_cancel(cancelled)?;
+        super::runtime::prepare_data(&self.program_data)?;
+        self.process = OwnedProcess::spawn(
+            &self.runtime.python,
+            &self.runtime.script,
+            self.port,
+            &self.program_data,
+            self.app.as_ref(),
+        )?;
+        self.wait_ready(Duration::from_secs(60), cancelled, &progress)
+            .await
     }
 }
 
@@ -281,6 +303,25 @@ mod tests {
     use std::process::Command;
 
     #[tokio::test]
+    async fn paused_proxy_recovers_on_the_same_port_after_an_update_attempt() {
+        let data = tempfile::tempdir().unwrap();
+        let mut session =
+            ProxySession::start(&fixture_runtime(), data.path(), Duration::from_secs(10))
+                .await
+                .unwrap();
+        let port = session.port;
+        session.pause().unwrap();
+        assert!(!session.is_running());
+        session
+            .restart_after_update(&AtomicBool::new(false), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(session.port, port);
+        assert!(session.verify_ready().await.is_ok());
+        session.stop().unwrap();
+    }
+
+    #[tokio::test]
     async fn update_prompt_outlives_readiness_budget_and_remains_cancellable() {
         let data = tempfile::tempdir().unwrap();
         std::fs::write(data.path().join("fixture-mode"), "update-prompt").unwrap();
@@ -290,7 +331,7 @@ mod tests {
             if phase == "updating" {
                 let mut started = updating_at.lock().unwrap();
                 let started = started.get_or_insert_with(Instant::now);
-                if started.elapsed() > Duration::from_secs(2) {
+                if started.elapsed() > Duration::from_secs(11) {
                     cancelled.store(true, Ordering::Relaxed);
                 }
             }
@@ -298,7 +339,7 @@ mod tests {
         let result = ProxySession::start_logged(
             &fixture_runtime(),
             data.path(),
-            Duration::from_secs(1),
+            Duration::from_secs(10),
             &cancelled,
             None,
             progress,

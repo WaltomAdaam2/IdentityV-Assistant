@@ -46,17 +46,16 @@ class ManagedLoginTests(unittest.TestCase):
                     sys.modules["logutil"].logger.remove()
                 os.chdir(cwd)
 
-    def test_managed_start_keeps_updates_and_requests_owned_restart_without_shortcuts(self):
+    def test_managed_start_delegates_update_prompts_but_keeps_rollback_and_owned_restart(self):
         update, hotfix, rollback, finder = Mock(), Mock(), Mock(), Mock()
         upstream = types.SimpleNamespace(handle_update=update, handle_exit=Mock(), hotfixmgr=types.SimpleNamespace(handle_if_needed=hotfix, pre_start_check_and_rollback_if_needed=rollback, install_import_hook=finder), genv=Mock())
         with patch.object(bootstrap, "emit"), patch.object(bootstrap, "stage") as stage, patch.object(bootstrap.os, "_exit", side_effect=SystemExit) as exit_process:
             bootstrap.adapt(upstream)
             upstream.setup_shortcuts()
             upstream.handle_update("release")
-            update.assert_called_once_with("release")
+            update.assert_not_called()
             upstream.hotfixmgr.handle_if_needed()
-            hotfix.assert_called_once_with()
-            stage.assert_any_call("updating")
+            hotfix.assert_not_called()
             self.assertIs(upstream.hotfixmgr.pre_start_check_and_rollback_if_needed, rollback)
             self.assertIs(upstream.hotfixmgr.install_import_hook, finder)
             with self.assertRaises(SystemExit):

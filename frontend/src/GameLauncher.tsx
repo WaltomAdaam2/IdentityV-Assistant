@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
-import { bridge, type Announcement, type LauncherStatus } from "./bridge";
+import { useEffect, useRef, useState } from "react";
+import { bridge, type Announcement, type LauncherStatus, type ComponentUpdateInfo } from "./bridge";
+import ComponentUpdateDialog from "./ComponentUpdateDialog";
 import type { Settings } from "./types";
 import Icon from "./Icon";
 import "./launcher.css";
 
-export default function GameLauncher({ language, executablePath, onExecutableChange }: {
+export default function GameLauncher({ language, appSettings, onAppSettingsChange, executablePath, onExecutableChange }: {
   language: Settings["app"]["language"];
   executablePath: string;
   onExecutableChange: (path: string) => void;
+  appSettings: Settings["app"];
+  onAppSettingsChange: (app: Settings["app"]) => void;
 }) {
   const zh = language === "zh-CN";
   const [news, setNews] = useState<Announcement[]>([]);
@@ -25,10 +28,15 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
   const [configuring, setConfiguring] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [setup, setSetup] = useState(false);
-  const starting = launching || status?.phase === "starting";
+  const [updateInfo, setUpdateInfo] = useState<ComponentUpdateInfo | null>(null);
+  const [updateError, setUpdateError] = useState("");
+  const [updatePhase, setUpdatePhase] = useState<"checking" | "applying" | "idle">("idle");
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const continueAfterUpdate = useRef(false);
+  const starting = launching || (updatePhase === "checking" && continueAfterUpdate.current) || status?.phase === "starting";
   const installing = configuring || status?.phase === "configuring";
-  const busy = starting || installing || status?.phase === "stopping";
-  const proxyPhase = cancelling ? "stopping" : statusError ? "error" : status?.proxy_phase || status?.phase || "checking";
+  const busy = starting || installing || updatePhase !== "idle" || status?.phase === "stopping";
+  const proxyPhase = cancelling ? "stopping" : updatePhase !== "idle" ? "updating" : statusError ? "error" : status?.proxy_phase || status?.phase || "checking";
   const proxyLabels: Record<string, [string, string]> = {
     idle: ["登录代理未启动", "Login proxy stopped"],
     starting: ["正在启动代理", "Starting proxy"],
@@ -67,14 +75,50 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
       return;
     }
     if (!status?.component_path) { setSetup(true); return; }
+    if (appSettings.check_component_updates_on_launch) {
+      await checkUpdates(true);
+    } else { await startGame(); }
+  };
+  const startGame = async () => {
     setLaunching(true);
     setLaunchError("");
     setStatus((previous) => previous && { ...previous, phase: "starting", proxy_phase: "starting", message: null });
+    let message = "";
+    try { await bridge.launchGame(gamePath); }
+    catch (error) { message = String(error); }
+    try { setStatus(await bridge.getLauncherStatus()); }
+    catch (error) { setStatusError(String(error)); }
+    setLaunchError(message);
+    setLaunching(false);
+  };
+  const checkUpdates = async (forLaunch: boolean) => {
+    continueAfterUpdate.current = forLaunch;
+    setUpdatePhase("checking"); setUpdateError(""); setUpdateInfo(null); setLaunchError("");
+    if (!forLaunch) setUpdateOpen(true);
     try {
-      await bridge.launchGame(gamePath);
-      setStatus(await bridge.getLauncherStatus());
-    } catch (error) { setLaunchError(String(error)); }
-    finally { setLaunching(false); }
+      const info = await bridge.checkLoginUpdates(appSettings.update_source);
+      setUpdateInfo(info);
+      if (info.release_url || info.hotfixes.length || !forLaunch) setUpdateOpen(true);
+      else { setUpdatePhase("idle"); continueAfterUpdate.current = false; await startGame(); }
+    } catch (error) {
+      if (String(error).includes("取消")) { continueAfterUpdate.current = false; setLaunchError(String(error)); }
+      else { setUpdateError(String(error)); setUpdateOpen(true); }
+    } finally { setUpdatePhase("idle"); }
+  };
+  const closeUpdate = (resume = false) => {
+    setUpdateOpen(false);
+    const pending = continueAfterUpdate.current;
+    continueAfterUpdate.current = false;
+    if (pending && resume) void startGame();
+  };
+  const applyHotfixes = async () => {
+    setUpdatePhase("applying"); setUpdateError("");
+    try {
+      await bridge.applyLoginHotfixes(appSettings.update_source);
+      setUpdateInfo((info) => info && {...info, hotfixes: []});
+      if (continueAfterUpdate.current) closeUpdate(true);
+    } catch (error) { setUpdateInfo(null); setUpdateError(String(error)); }
+    finally { setUpdatePhase("idle"); }
   };
   const configureComponent = async (download: boolean) => {
     setConfiguring(true);
@@ -137,6 +181,9 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
     catch { setLinkError(true); }
   };
   return <section className="game-launcher" aria-label={zh ? "游戏启动" : "Game launch"}>
+    {updateOpen && <ComponentUpdateDialog info={updateInfo} error={updateError} phase={updatePhase} source={appSettings.update_source} language={language} continuing={continueAfterUpdate.current}
+      onSource={(source) => onAppSettingsChange({...appSettings, update_source: source})} onClose={() => closeUpdate()} onContinue={() => closeUpdate(true)} onCheck={() => void checkUpdates(continueAfterUpdate.current)} onApply={() => void applyHotfixes()}
+      onDownload={() => void bridge.openLoginUpdate(appSettings.update_source).catch((error) => setUpdateError(String(error)))} />}
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />
     <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message || undefined}>
       <span className={`dot ${proxyDot}`} aria-hidden="true" />{proxyLabel}
@@ -166,6 +213,8 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
           <div className="launcher-setup-buttons"><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void chooseComponent()}>{zh ? "选择登录组件" : "Choose component"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(true)}>{zh ? "官方下载" : "Official download"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(false)}>{zh ? "自动配置" : "Auto configure"}</button></div>
           <p className="launcher-setup-note">{zh ? "自动配置会扫描已安装的组件。未找到时，官方下载会按设置中的下载源下载到助手程序目录并自动配置；也可手动选择包含“点我启动工具.bat”的文件夹。首次使用需本人登录，之后由组件保留账号。" : "Auto configure scans installed components. Official download uses your selected download source, extracts into the assistant directory and configures it. You can also select the folder containing the startup BAT. Sign in yourself on first use; the component remembers accounts."}</p>
           <p className="launcher-setup-note">{zh ? "组件会安装登录所需证书。退出助手会关闭自有代理；已打开的游戏会保留。" : "The component installs a certificate for login. Exiting the assistant closes its proxy and leaves the game open."}</p>
+          <label className="check-label"><input type="checkbox" checked={appSettings.check_component_updates_on_launch} disabled={busy} onChange={(event) => onAppSettingsChange({...appSettings, check_component_updates_on_launch: event.target.checked})} />{zh ? "启动游戏时自动检查组件更新" : "Check component updates when launching the game"}</label>
+          <button disabled={busy || !status?.component_path} onClick={() => void checkUpdates(false)}>{zh ? "检查组件更新" : "Check component updates"}</button>
         </section>}
         <p className="launcher-game-path" title={gamePath} role="status">{locating ? (zh ? "正在定位游戏…" : "Locating game…") : gamePath || (zh ? "请选择游戏程序" : "Choose the game executable")}</p>
         {gameError && <p className="launcher-game-error" role="alert">{gameError}</p>}

@@ -61,9 +61,13 @@ pub fn run() {
             launcher::manager::set_login_component,
             launcher::manager::configure_login_component,
             launcher::manager::cancel_game_launch,
+            launcher::manager::check_login_updates,
+            launcher::manager::apply_login_hotfixes,
+            launcher::manager::open_login_update,
             launcher_news::get_game_announcements,
             launcher_news::open_game_announcement,
             desktop::open_logs_directory,
+            desktop::minimize_to_taskbar,
             window_size::reset_window_size,
             journal_dialog::choose_game_executable,
             journal_dialog::choose_login_component,
@@ -117,10 +121,14 @@ pub fn run() {
                 window_size::resized(window);
             }
             let minimize_to_tray = window.state::<desktop::DesktopSettings>().tray.load(std::sync::atomic::Ordering::Relaxed);
+            let taskbar_minimize = &window.state::<desktop::DesktopSettings>().taskbar_minimize;
+            if matches!(event, tauri::WindowEvent::Focused(true)) && !window.is_minimized().unwrap_or(false) {
+                taskbar_minimize.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 desktop::quit(window.app_handle());
-            } else if matches!(event, tauri::WindowEvent::Resized(_)) && minimize_to_tray && window.is_minimized().unwrap_or(false) {
+            } else if matches!(event, tauri::WindowEvent::Resized(_)) && minimize_to_tray && !taskbar_minimize.load(std::sync::atomic::Ordering::Relaxed) && window.is_minimized().unwrap_or(false) {
                 let _ = window.hide();
             }
         })

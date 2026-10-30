@@ -55,6 +55,15 @@ fn migrate(settings: &mut Value) -> bool {
     let before = settings.clone();
     if let Some(app) = settings.get_mut("app").and_then(Value::as_object_mut) {
         if !app
+            .get("check_component_updates_on_launch")
+            .is_some_and(Value::is_boolean)
+        {
+            app.insert(
+                "check_component_updates_on_launch".into(),
+                Value::Bool(true),
+            );
+        }
+        if !app
             .get("check_updates_on_start")
             .is_some_and(Value::is_boolean)
         {

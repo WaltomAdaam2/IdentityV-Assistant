@@ -687,6 +687,7 @@ const defaults: Settings = {
     prevent_system_sleep: false,
     prevent_display_sleep: false,
     check_updates_on_start: true,
+    check_component_updates_on_launch: true,
     update_source: "direct",
   },
   engine: {
@@ -765,7 +766,7 @@ function WindowTitleBar({ language }: { language: Language }) {
           type="button"
           aria-label={labels.minimize}
           title={labels.minimize}
-          onClick={() => runWindowAction(() => appWindow.minimize())}
+          onClick={() => runWindowAction(bridge.minimizeToTaskbar)}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M3 8.5h10" />
@@ -1443,7 +1444,7 @@ export default function App() {
         onCommand={sendEngineCommand}
       />
     ),
-    launcher: <GameLauncher language={language} executablePath={settings.game_window.executable_path}
+    launcher: <GameLauncher language={language} appSettings={settings.app} onAppSettingsChange={(app) => setSettings((current) => ({...current, app}))} executablePath={settings.game_window.executable_path}
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
     runtime: (
@@ -2375,7 +2376,7 @@ function SettingsPage({
         <SettingRow icon="power" title={language === "zh-CN" ? "开机启动助手" : "Launch at sign-in"} description={language === "zh-CN" ? "登录 Windows 后自动启动助手" : "Start the assistant when you sign in to Windows."} language={language}>
           <input type="checkbox" role="switch" checked={settings.app.launch_on_login} onChange={(event) => updateApp({ launch_on_login: event.target.checked })} />
         </SettingRow>
-        <SettingRow icon="tray" title={language === "zh-CN" ? "最小化到托盘" : "Minimize to system tray"} description={language === "zh-CN" ? "最小化时隐藏到系统托盘；关闭窗口仍会退出" : "Hide in the tray when minimized. Closing the window still exits."} language={language}>
+        <SettingRow icon="tray" title={language === "zh-CN" ? "最小化到托盘" : "Minimize to system tray"} description={language === "zh-CN" ? "系统最小化时隐藏到托盘；右上角最小化按钮始终保留在任务栏，关闭窗口仍会退出" : "System minimize hides in the tray. The title-bar minimize button always uses the taskbar; closing still exits."} language={language}>
           <input type="checkbox" role="switch" checked={settings.app.minimize_to_tray} onChange={(event) => updateApp({ minimize_to_tray: event.target.checked })} />
         </SettingRow>
         <SettingRow icon="scale" title={language === "zh-CN" ? "界面缩放" : "Interface scale"} description={language === "zh-CN" ? "调整文字与控件的显示大小" : "Adjust the size of text and controls."} language={language}>

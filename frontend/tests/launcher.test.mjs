@@ -36,6 +36,48 @@ test("journal remembers map options silently but resets the temporary floor on r
   } finally { browser("close"); }
 });
 
+test("component updates check at game launch only and share the dialog source choice", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("wait", "--text", "游戏启动");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'check_login_updates')")), false);
+    browser("eval", "window.__launcherTest.hasHotfix = true");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'check_login_updates')")), false);
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "测试热更新");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'launch_game')")), false);
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('dialog[open]').classList.contains('update-dialog')")), true);
+    browser("select", "#component-update-source", "proxy");
+    browser("find", "role", "button", "click", "--name", "应用热更新", "--exact");
+    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'apply_login_hotfixes' && c.args.source === 'proxy')");
+    browser("wait", "--text", "取消启动");
+    browser("eval", "window.__launcherTest.finishLaunch()");
+    browser("wait", "--text", "登录代理已就绪");
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    browser("find", "role", "button", "click", "--name", "检查组件更新", "--exact");
+    browser("wait", "--text", "组件已是最新版本");
+    browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
+    browser("uncheck", "input[type=checkbox]:not([role=switch])");
+    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'save_settings' && c.args.settings.app.check_component_updates_on_launch === false)");
+    browser("find", "role", "button", "click", "--name", "关闭启动设置", "--exact");
+    browser("eval", "window.__launcherTest.calls = []; window.__launcherTest.hasHotfix = true");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "取消启动");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'check_login_updates')")), false);
+  } finally { browser("close"); }
+});
+
+test("title bar minimize explicitly requests the taskbar", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "最小化", "--exact");
+    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'minimize_to_taskbar')");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'plugin:window|minimize')")), false);
+  } finally { browser("close"); }
+});
+
 test("game launch is placed between tasks and journal", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);

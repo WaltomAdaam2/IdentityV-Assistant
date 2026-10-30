@@ -1,5 +1,6 @@
 use super::{
     component::ProxySession,
+    component_updates::{self, CheckedUpdate, ComponentUpdateInfo},
     install, launch_direct, locate_game,
     runtime::{self, SchemeSnapshot},
 };
@@ -46,6 +47,7 @@ pub struct Launcher {
     status: Mutex<LauncherStatus>,
     closing: AtomicBool,
     cancelled: AtomicBool,
+    update: Mutex<Option<CheckedUpdate>>,
 }
 
 impl Default for Launcher {
@@ -61,6 +63,7 @@ impl Default for Launcher {
             }),
             closing: AtomicBool::new(false),
             cancelled: AtomicBool::new(false),
+            update: Mutex::new(None),
         }
     }
 }
@@ -73,6 +76,114 @@ fn directory() -> Result<PathBuf, String> {
 }
 
 impl Launcher {
+    pub async fn check_updates(&self, source: &str) -> Result<ComponentUpdateInfo, String> {
+        let _operation = self.operation.try_lock().map_err(|_| "组件操作正在进行")?;
+        if self.closing.load(Ordering::Relaxed) {
+            return Err("助手正在退出或更新".into());
+        }
+        self.cancelled.store(false, Ordering::Relaxed);
+        *self.update.lock().unwrap() = None;
+        let directory = directory()?;
+        let python = runtime::component_path(&directory)?.ok_or("请先配置官方登录组件")?;
+        let runtime = runtime::runtime_from_python(python)?;
+        install::cancellable(runtime::verify_version(&runtime), &self.cancelled).await?;
+        let info = component_updates::check(
+            &runtime,
+            &directory.join("login-data"),
+            source,
+            &self.cancelled,
+        )
+        .await?;
+        *self.update.lock().unwrap() = Some(CheckedUpdate {
+            runtime,
+            info: info.clone(),
+        });
+        Ok(info)
+    }
+
+    pub async fn apply_hotfixes(&self, source: &str, app: &tauri::AppHandle) -> Result<(), String> {
+        crate::updates::route("https://github.com/", source)?;
+        let _operation = self.operation.try_lock().map_err(|_| "组件操作正在进行")?;
+        if self.closing.load(Ordering::Relaxed) {
+            return Err("助手正在退出或更新".into());
+        }
+        let mut checked = self
+            .update
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or("请先检查组件更新")?;
+        let directory = directory()?;
+        if runtime::component_path(&directory)?.as_ref() != Some(&checked.runtime.python) {
+            return Err("组件路径已改变，请重新检查更新".into());
+        }
+        if checked.info.hotfixes.is_empty() {
+            return Ok(());
+        }
+        let mut owned = self.owned.lock().await;
+        if self.closing.load(Ordering::Relaxed) {
+            return Err("助手正在退出或更新".into());
+        }
+        self.report_proxy("updating");
+        let was_running = owned
+            .as_ref()
+            .is_some_and(|component| component.session.is_running());
+        let mut result = async {
+            if let Some(mut component) = owned.take() {
+                let (component, result) = tokio::task::spawn_blocking(move || {
+                    let result = component.session.pause();
+                    (component, result)
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+                *owned = Some(component);
+                result?;
+            } else {
+                runtime::ensure_can_start()?;
+            }
+            let data = directory.join("login-data");
+            runtime::prepare_data(&data)?;
+            component_updates::apply(&checked, &data, source, &self.closing).await
+        }
+        .await;
+        if was_running && !self.closing.load(Ordering::Relaxed) {
+            if let Some(component) = owned
+                .as_mut()
+                .filter(|component| !component.session.is_running())
+            {
+                self.report_proxy("restarting");
+                if let Err(recovery) = component
+                    .session
+                    .restart_after_update(&self.closing, |phase| self.report_proxy(phase))
+                    .await
+                {
+                    result = Err(match result {
+                        Err(error) => format!("{error}；代理恢复失败：{recovery}"),
+                        Ok(()) => recovery,
+                    });
+                }
+            }
+        }
+        self.report(
+            if owned.is_some() && result.is_ok() {
+                "ready"
+            } else if result.is_err() {
+                "error"
+            } else {
+                "idle"
+            },
+            result.as_ref().err().cloned(),
+        );
+        if result.is_ok() {
+            checked.info.hotfixes.clear();
+            *self.update.lock().unwrap() = Some(checked);
+        }
+        crate::logs::emit(
+            app,
+            serde_json::json!({"type":"log", "source":"idv-login", "timestamp":chrono::Utc::now().to_rfc3339(), "level":if result.is_ok() {"info"} else {"error"}, "message":result.as_ref().err().cloned().unwrap_or_else(|| "官方热更新已应用".into()), "data":{"important":true}}),
+        );
+        result
+    }
     fn report(&self, phase: &'static str, message: Option<String>) {
         let mut status = self.status.lock().unwrap();
         status.phase = phase;
@@ -337,6 +448,36 @@ impl Launcher {
     pub fn resume(&self) {
         self.closing.store(false, Ordering::Relaxed);
     }
+}
+
+#[tauri::command]
+pub async fn check_login_updates(
+    manager: tauri::State<'_, Launcher>,
+    source: String,
+) -> Result<ComponentUpdateInfo, String> {
+    manager.check_updates(&source).await
+}
+
+#[tauri::command]
+pub async fn apply_login_hotfixes(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Launcher>,
+    source: String,
+) -> Result<(), String> {
+    manager.apply_hotfixes(&source, &app).await
+}
+
+#[tauri::command]
+pub fn open_login_update(
+    manager: tauri::State<'_, Launcher>,
+    source: String,
+) -> Result<(), String> {
+    let update = manager.update.lock().unwrap();
+    let url = update
+        .as_ref()
+        .and_then(|update| update.info.release_url.as_deref())
+        .ok_or("请重新检查官方新版")?;
+    crate::commands::open_url(&crate::updates::route(url, &source)?)
 }
 
 pub fn start_monitor(app: tauri::AppHandle) {

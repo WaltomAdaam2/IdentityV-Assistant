@@ -67,17 +67,13 @@ def adapt(upstream):
     upstream.setup_shortcuts = skip
     upstream.handle_error_and_exit = fail
     upstream.hotfixmgr.restart_self = managed_restart
-    def with_stage(original, phase):
-        def run(*args, **kwargs):
-            stage(phase)
-            try:
-                return original(*args, **kwargs)
-            finally:
-                stage("initializing")
-        return run
+    def managed_updates(*_args, **_kwargs):
+        # The assistant checks at game launch and applies only the snapshot the
+        # user confirmed. Do not open a second Qt prompt or start a countdown.
+        return None
 
-    upstream.handle_update = with_stage(upstream.handle_update, "updating")
-    upstream.hotfixmgr.handle_if_needed = with_stage(upstream.hotfixmgr.handle_if_needed, "updating")
+    upstream.handle_update = managed_updates
+    upstream.hotfixmgr.handle_if_needed = managed_updates
 
 
 def main():

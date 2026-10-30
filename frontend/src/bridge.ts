@@ -22,7 +22,19 @@ export interface LauncherStatus {
   message: string | null;
 }
 
+export interface ComponentUpdateInfo {
+  current_version: string;
+  version: string;
+  notes: string;
+  release_url: string | null;
+  hotfixes: { target_module: string; target_commit: string; note: string }[];
+}
+
 export const bridge = {
+  minimizeToTaskbar: () => invoke<void>("minimize_to_taskbar"),
+  checkLoginUpdates: (source: Settings["app"]["update_source"]) => invoke<ComponentUpdateInfo>("check_login_updates", {source}),
+  applyLoginHotfixes: (source: Settings["app"]["update_source"]) => invoke<void>("apply_login_hotfixes", {source}),
+  openLoginUpdate: (source: Settings["app"]["update_source"]) => invoke<void>("open_login_update", {source}),
   resetWindowSize: () => invoke<void>("reset_window_size"),
   chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
   chooseLoginComponent: () => invoke<string | null>("choose_login_component"),

@@ -12,6 +12,8 @@ mockIPC((command, args) => {
   if (command === "get_update_status") return { phase: "idle" };
   if (command === "journal_list_packs") return { directory: "fixture", packs: [], errors: [] };
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
+  if (command === "check_login_updates") return {current_version: "v6.3.2-stable", version: "v6.3.2-stable", notes: "", release_url: null, hotfixes: window.__launcherTest.hasHotfix ? [{target_module: "fixture", target_commit: "abcdef1234567", note: "测试热更新"}] : []};
+  if (command === "apply_login_hotfixes") { window.__launcherTest.hasHotfix = false; return null; }
   if (command === "cancel_game_launch") { window.__launcherTest.finishLaunch?.("操作已取消"); return null; }
   if (command === "configure_login_component") {
     if (!args.download && window.__launcherTest.scanMissing) return Promise.reject("未找到官方组件，请点击“官方下载”自动下载并配置");

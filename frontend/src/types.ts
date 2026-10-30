@@ -140,6 +140,7 @@ export interface Settings {
     prevent_system_sleep: boolean;
     prevent_display_sleep: boolean;
     check_updates_on_start: boolean;
+    check_component_updates_on_launch: boolean;
     update_prereleases: boolean;
     update_source: "direct" | "proxy" | "ghfast" | "ghproxy_net";
   };
