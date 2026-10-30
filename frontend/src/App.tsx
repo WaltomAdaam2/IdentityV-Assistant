@@ -839,7 +839,7 @@ export default function App() {
       level: "info",
       message: translations[defaults.app.language].ready,
       source: "ui",
-      important: false,
+      important: true,
     },
   ]);
   const [normalLogs, setNormalLogs] = useState(() => filterLogs(logs, "all", "", false));
@@ -848,12 +848,21 @@ export default function App() {
   const nextLogId = useRef(2);
   const [notice, setNotice] = useState<string | null>(null);
   const [visibleNotice, setVisibleNotice] = useState<string | null>(null);
+  const [noticeHovered, setNoticeHovered] = useState(false);
+  const [noticeFocused, setNoticeFocused] = useState(false);
+  const noticeHeld = noticeHovered || noticeFocused;
   useEffect(() => {
     if (notice) { setVisibleNotice(notice); return; }
+    if (noticeHeld) return;
     const timer = window.setTimeout(() => setVisibleNotice(null),
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 180);
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 600);
     return () => window.clearTimeout(timer);
-  }, [notice]);
+  }, [notice, noticeHeld]);
+  useEffect(() => {
+    if (!notice || noticeHeld) return;
+    const timer = window.setTimeout(() => setNotice(null), 1000);
+    return () => window.clearTimeout(timer);
+  }, [notice, noticeHeld]);
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
   const [frame, setFrame] = useState<CaptureFrame | null>(null);
   const [diagnosticError, setDiagnosticError] = useState<EngineEvent | null>(
@@ -1000,6 +1009,7 @@ export default function App() {
         savedEngineSettingsRef.current = JSON.stringify(engineSettings);
         setSettings(hydrated);
         setSettingsLoaded(true);
+        appendLog("info", hydrated.app.language === "zh-CN" ? "配置加载完成" : "Configuration loaded", "settings", true);
       })
       .catch(() => undefined);
     let dispose: (() => void) | undefined;
@@ -1442,6 +1452,7 @@ export default function App() {
       />
     ),
     launcher: <GameLauncher language={language} appSettings={settings.app} onAppSettingsChange={(app) => setSettings((current) => ({...current, app}))} executablePath={settings.game_window.executable_path}
+      onLog={(message) => appendLog("info", message, "launcher", true)}
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
     runtime: (
@@ -1533,9 +1544,13 @@ export default function App() {
             </div>
           </header>
           {visibleNotice && (
-            <div key={visibleNotice} className={`notice${notice ? "" : " notice-leave"}`} role="status">
+            <div key={visibleNotice} className={`notice${notice ? "" : " notice-leave"}`} role="status"
+              onMouseEnter={() => { setNoticeHovered(true); setNotice(visibleNotice); }}
+              onMouseLeave={() => setNoticeHovered(false)}
+              onFocusCapture={() => { setNoticeFocused(true); setNotice(visibleNotice); }}
+              onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setNoticeFocused(false); }}>
               <span>{visibleNotice}</span>
-              <button aria-label={t.closeNotice} onClick={() => setNotice(null)}>
+              <button aria-label={t.closeNotice} onClick={() => { setNotice(null); setVisibleNotice(null); setNoticeHovered(false); setNoticeFocused(false); }}>
                 ×
               </button>
             </div>

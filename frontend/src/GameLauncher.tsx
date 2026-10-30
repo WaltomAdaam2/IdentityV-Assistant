@@ -5,10 +5,11 @@ import type { Settings } from "./types";
 import Icon from "./Icon";
 import "./launcher.css";
 
-export default function GameLauncher({ language, appSettings, onAppSettingsChange, executablePath, onExecutableChange }: {
+export default function GameLauncher({ language, appSettings, onAppSettingsChange, executablePath, onExecutableChange, onLog }: {
   language: Settings["app"]["language"];
   executablePath: string;
   onExecutableChange: (path: string) => void;
+  onLog: (message: string) => void;
   appSettings: Settings["app"];
   onAppSettingsChange: (app: Settings["app"]) => void;
 }) {
@@ -78,6 +79,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
     await checkUpdates(true);
   };
   const startGame = async () => {
+    onLog(zh ? "正在准备游戏并检查登录代理…" : "Preparing the game and checking the login proxy…");
     setLaunching(true);
     setLaunchError("");
     setStatus((previous) => previous && { ...previous, phase: "starting", proxy_phase: "starting", message: null });
@@ -90,6 +92,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
     setLaunching(false);
   };
   const checkUpdates = async (forLaunch: boolean) => {
+    if (forLaunch) onLog(zh ? "正在检查登录组件更新…" : "Checking login component updates…");
     continueAfterUpdate.current = forLaunch;
     setUpdatePhase("checking"); setUpdateError(""); setUpdateInfo(null); setLaunchError("");
     if (!forLaunch) setUpdateOpen(true);

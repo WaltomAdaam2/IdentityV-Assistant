@@ -56,6 +56,44 @@ test("developer mode reveals retained component details without losing normal la
   } finally { browser("close"); }
 });
 
+test("normal logs show startup and a concise game launch sequence", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "运行日志", "--exact");
+    browser("wait", "--fn", "Boolean(document.querySelector('.log-table'))");
+    assert.equal(JSON.parse(browser("eval", "document.querySelectorAll('.log-row').length")), 2);
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "取消启动");
+    browser("eval", "window.__launcherTest.emitLog({source:'launcher',message:'登录代理检查通过，已启动游戏'}); window.__launcherTest.finishLaunch()");
+    browser("find", "role", "button", "click", "--name", "运行日志", "--exact");
+    browser("wait", "--text", "登录代理检查通过，已启动游戏");
+    assert.equal(JSON.parse(browser("eval", "document.querySelectorAll('.log-row').length")), 5);
+  } finally { browser("close"); }
+});
+
+test("notices fade after a second and hovering during fade rescues them", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("wait", "--text", "游戏启动");
+    const result = JSON.parse(JSON.parse(browser("eval", `(async () => {
+      const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+      await window.__launcherTest.emitLog({type:'error', code:'WINDOW_NOT_FOUND', message:'停止请求已发送', recoverable:true});
+      await delay(1200);
+      const notice = document.querySelector('.notice');
+      const fading = !!notice && Number(getComputedStyle(notice).opacity) < 1;
+      notice?.dispatchEvent(new MouseEvent('mouseover', {bubbles:true, relatedTarget:document.body}));
+      await delay(900);
+      const held = !!document.querySelector('.notice') && Number(getComputedStyle(notice).opacity) === 1;
+      notice?.dispatchEvent(new MouseEvent('mouseout', {bubbles:true, relatedTarget:document.body}));
+      await delay(1800);
+      return JSON.stringify({fading, held, removed:!document.querySelector('.notice')});
+    })()`)));
+    assert.deepEqual(result, {fading:true, held:true, removed:true});
+  } finally { browser("close"); }
+});
+
 test("component updates check at game launch only and share the dialog source choice", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
@@ -104,6 +142,7 @@ test("launcher fits the window with a long error banner and open launch settings
     browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
     browser("wait", "--text", "活动与公告");
     browser("eval", "window.__launcherTest.saveFailure = true");
+    browser("eval", "new MutationObserver((_, observer) => { const notice = document.querySelector('.notice'); if (notice) { notice.dispatchEvent(new MouseEvent('mouseover', {bubbles:true, relatedTarget:document.body})); observer.disconnect(); } }).observe(document.body, {childList:true, subtree:true})");
     browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
     browser("find", "role", "button", "click", "--name", "选择游戏程序", "--exact");
     browser("wait", "--text", "Hotkey already registered");

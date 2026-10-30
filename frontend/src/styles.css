@@ -118,20 +118,19 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .dot { width: 7px; height: 7px; background: var(--muted); border-radius: 50%; }
 .dot.running { background: var(--safe); box-shadow: 0 0 8px color-mix(in srgb, var(--safe) 48%, transparent); }
 .dot.error { background: var(--danger); }.dot.starting, .dot.stopping { background: var(--warning); }.dot.paused { background: #9e8ffc; }
-.notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; margin: 18px 32px -2px; color: var(--title); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 12px; font-size: 13px; animation: notice-drop 300ms cubic-bezier(.2, 1.25, .36, 1) both; }
+.notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; margin: 18px 32px -2px; color: var(--title); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 12px; font-size: 13px; opacity: 1; transition: opacity 600ms ease; }
 .notice button { padding: 0 4px; color: inherit; background: transparent; border: 0; font-size: 19px; line-height: 1; }
 .page-content { max-width: 1320px; padding: 30px 32px 44px; margin: 0 auto; }
 .page-content.page-enter { animation: page-in 640ms var(--ease-out) backwards; }
 .page-content.page-leave { pointer-events: none; animation: page-out 160ms ease-in both; }
 .page-heading { animation: heading-arrive 480ms var(--ease-out) backwards; }
-.notice.notice-leave { pointer-events: none; animation: notice-out 180ms ease-in both; }
+.notice.notice-leave { opacity: 0; }
 @keyframes page-in { from { opacity: 0; transform: translateX(calc(var(--page-direction, 1) * 26px)); } to { opacity: 1; transform: translateX(0); } }
 @keyframes page-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(calc(var(--page-direction, 1) * -14px)); } }
 @keyframes surface-arrive { from { opacity: 0; transform: translateY(20px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes sidebar-arrive { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes heading-arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes notice-drop { from { opacity: 0; transform: translateY(-14px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes notice-out { to { opacity: 0; transform: translateY(-10px) scale(.98); } }
 @keyframes status-breathe { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.22); opacity: .65; } }
 @keyframes preview-reveal { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 @keyframes mark-float { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-4px) rotate(-2deg); } }
