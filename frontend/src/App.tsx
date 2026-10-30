@@ -1299,10 +1299,10 @@ export default function App() {
           await bridge.saveSettings(nextSettings);
           persistedSettingsRef.current = serialized;
           if (superseded) return;
-          setSavedToast({ id: Date.now(), leaving: false });
           const { journal: _journal, ...engineSettings } = nextSettings;
           const serializedEngineSettings = JSON.stringify(engineSettings);
           const engineSettingsChanged = savedEngineSettingsRef.current !== serializedEngineSettings;
+          if (engineSettingsChanged) setSavedToast({ id: Date.now(), leaving: false });
           savedEngineSettingsRef.current = serializedEngineSettings;
           if (
             engineSettingsChanged &&

@@ -15,6 +15,27 @@ function browser(...args) {
   return result.stdout.trim();
 }
 
+test("journal remembers map options silently but resets the temporary floor on reentry", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "加页手记", "--exact");
+    browser("wait", "--text", "地图筛选");
+    browser("find", "role", "button", "click", "--name", "三开", "--exact");
+    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'save_settings' && c.args.settings.journal?.door === 'triple')");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.settings-saved-toast'))")), false);
+    browser("eval", "window.__launcherTest.calls = []");
+    browser("find", "role", "button", "click", "--name", "二楼", "--exact");
+    browser("wait", "500");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'save_settings')")), false);
+    browser("find", "role", "button", "click", "--name", "任务", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.journal')");
+    browser("find", "role", "button", "click", "--name", "加页手记", "--exact");
+    browser("wait", "--text", "地图筛选");
+    assert.equal(JSON.parse(browser("eval", "Array.from(document.querySelectorAll('.journal-options button')).find(b => b.textContent === '一楼').getAttribute('aria-pressed')")), "true");
+    assert.equal(JSON.parse(browser("eval", "Array.from(document.querySelectorAll('.journal-options button')).find(b => b.textContent === '三开').getAttribute('aria-pressed')")), "true");
+  } finally { browser("close"); }
+});
+
 test("game launch is placed between tasks and journal", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);

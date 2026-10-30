@@ -10,6 +10,7 @@ mockIPC((command, args) => {
   if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false } };
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { phase: "idle" };
+  if (command === "journal_list_packs") return { directory: "fixture", packs: [], errors: [] };
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
   if (command === "cancel_game_launch") { window.__launcherTest.finishLaunch?.("操作已取消"); return null; }
   if (command === "configure_login_component") {
