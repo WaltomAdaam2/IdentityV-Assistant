@@ -212,7 +212,7 @@ pub async fn check_update(
         .operation
         .try_lock()
         .map_err(|_| "An update operation is in progress")?;
-    let source = crate::update_source::resolve(&source).await?;
+    let source = crate::update_source::resolve(&source)?;
     {
         let mut session = manager.session.lock().unwrap();
         *session = Session::default();
@@ -310,7 +310,7 @@ pub async fn download_update(
     manager.report(&app, "downloading", None);
     let mut last_report = Instant::now();
     let download = async {
-        let source = crate::update_source::resolve(&source).await?;
+        let source = crate::update_source::resolve(&source)?;
         update.download_url = route(update.download_url.as_str(), &source)?
             .parse()
             .map_err(|e| format!("Invalid URL: {e}"))?;

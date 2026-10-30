@@ -4,7 +4,7 @@
 
 ## 安装与旧版迁移
 
-源码与正式发行统一在 [WaltomAdaam2/IdentityV-Assistant](https://github.com/WaltomAdaam2/IdentityV-Assistant/releases)。从 0.1.7 起，更新清单、预发布检查、自动选源测速和软件内项目链接均使用此仓库。
+源码与正式发行统一在 [WaltomAdaam2/IdentityV-Assistant](https://github.com/WaltomAdaam2/IdentityV-Assistant/releases)。从 0.1.7 起，更新清单、预发布检查和软件内项目链接均使用此仓库。
 
 | 已安装版本 | 迁移方式 |
 | --- | --- |
@@ -19,15 +19,15 @@
 
 ## 软件内更新
 
-在设置中选择 GitHub 直连、第三方 GH-Proxy 或自动测速。启动检查可关闭；发现更新后先展示说明，用户确认后才下载或安装。忽略某版本的启动提醒不会阻止手动检查。预发布开关默认关闭。
+默认使用 GitHub 直连（默认），也可手动选择 GH-Proxy、GHFast 或 ghproxy.net。0.1.8 移除自动测速，旧 `auto` 配置会迁移为直连；已手动选定的代理保持不变。启动检查可关闭；发现更新后先展示说明，用户确认后才下载或安装。忽略某版本的启动提醒不会阻止手动检查。预发布开关默认关闭。
 
 安装包必须通过项目/版本地址、发布签名、签名内版本、SHA-256 和大小校验。下载可取消，重试从头开始。安装前停止自动化并释放输入、清理本助手拥有的登录代理，然后退出并启动安装器。本地配置、日志、地图位于 AppData。
 
-自动选源并行读取同一固定公开安装包的最多 256 KiB，比较延迟与速度。每条线路最多等待八秒，结果缓存五分钟；全部失败时请手动选源。测速结果不保证完整下载始终最快，也不会跳过完整性校验。该选项同样用于独立登录组件的检查和下载；组件热更新与助手更新是两套流程。
+助手下载进度右侧显示最近五秒的实际速度和预计剩余时间；刚开始、大小未知或停滞时显示待估算。估算会随网络变化，不包含校验与安装时间。更新日志支持标题、列表、强调、代码与 HTTPS/HTTP 链接；不执行 HTML、脚本或加载嵌入图片。选源同样用于独立登录组件的检查和下载；组件热更新与助手更新是两套流程。
 
 ## 维护者打包
 
-先完成 [开发环境](development_zh.md) 准备，再从干净且已推送的 `main` 打包：
+先完成 [开发环境](development_zh.md) 准备，再从干净且已推送、尚未合并的版本分支（例如 `SNAPSHOT-v0.1.8`） 打包：
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -49,17 +49,20 @@ pnpm tauri build
 
 ## 发布步骤与说明格式
 
-1. 更新所有版本号，检查通过后提交并推送 `main`。
+1. 从最新 `main` 新建 `SNAPSHOT-v<版本>`（例如 `SNAPSHOT-v0.1.8`），更新所有版本号，检查通过后提交推送该分支，并按 [PR 格式](agents/pr-format.md) 创建到 `main` 的 PR。
 2. 从该干净提交重新构建，核对签名与离线自检结果。
-3. 准备 UTF-8 版本说明文件，按下面结构写真实变化。
-4. 在已登录的 GitHub CLI 环境中发布：
+3. 准备 UTF-8 版本说明文件，按 [Release 格式](agents/release-format.md) 写真实变化。
+4. 在已登录的 GitHub CLI 环境中创建并上传草稿：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1 -NotesFile docs/releases/0.1.7.md
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1 -NotesFile docs/releases/0.1.8.md
 ```
 
 说明格式：标题、概述、`## 新增与优化`、`## 修复内容`、`**Full Changelog**` 比较链接。脚本将这些完整说明放入清单和 GitHub Release，并在正文最后追加四个附件的 `## SHA-256`。不足三条真实变化时如实少写，初版使用真实历史链接。不要将 SHA 区块提前写入 NotesFile，以免重复或产生清单自引用。
 
-脚本校验干净 `main`、远端与构建提交一致、版本、附件哈希、大小和签名文本；标签指向实际源码提交。先创建草稿并上传全部附件，再发布为最新版本。若同名标签或 Release 已存在（包括草稿），立即停止，绝不覆盖或删除。网络结果不明确时先检查 GitHub 上已有状态，再恢复操作。
+脚本校验版本对应的干净 SNAPSHOT 分支、PR 尚未合并、远端与构建提交一致、版本、附件哈希、大小和签名文本；草稿指向实际源码提交。脚本只创建草稿并上传四个附件，绝不正式发布。若同名标签或 Release 已存在（包括草稿），立即停止，绝不覆盖或删除。网络结果不明确时先检查 GitHub 上已有状态，再恢复操作。
+
+5. 用户审核 PR、草稿说明、校验值和构建证据。PR 合并到 `main` 后，SNAPSHOT 分支永久保留并冻结：不再提交、同步、合并、变基或删除。后续改动使用新版本分支。
+6. 用户亲自在 GitHub 发布已审核的草稿，并确认正式版设为 Latest。发布前公众和软件自动更新都看不到草稿；发布后的新标签指向已验证的原构建提交。Agent 不代替用户发布。
 
 发布签名是更新校验，并非 Windows Authenticode 签名；Windows 可能显示未知发布者。当前源码和 0.1.7 起的自有代码使用 GPL-3.0-only，历史二进制及第三方材料保留原许可，详见 [第三方声明](../THIRD_PARTY_NOTICES.md)。

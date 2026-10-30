@@ -1,8 +1,35 @@
-# Identity V Assistant
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" alt="Identity V Assistant" width="128" height="128">
+</p>
 
-**语言 / Language:** 中文 | [English](README_EN.md)
+<h1 align="center">第五人格助手 Identity V Assistant</h1>
 
-Windows 桌面端的《第五人格》助手，提供游戏启动、视觉自动化任务和加页手记地图浏览。界面支持中文与英文，配置和地图保存在本机。
+<p align="center">
+  游戏启动 · 视觉自动化 · 加页手记地图<br>
+  基于 Tauri 2 + React + Rust + Python 构建的 Windows 桌面助手
+</p>
+
+<p align="center">
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/issues">反馈问题</a> · <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/releases">更新日志</a><br>
+  <a href="#安装与开始使用">快速开始</a> · <a href="docs/README_LOGIC.md">功能说明</a> · <a href="docs/development_zh.md">构建指南</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/releases"><img src="https://img.shields.io/github/v/release/WaltomAdaam2/IdentityV-Assistant?color=70815a" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-70815a" alt="License: GPL-3.0-only"></a>
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/stargazers"><img src="https://img.shields.io/github/stars/WaltomAdaam2/IdentityV-Assistant?style=social" alt="GitHub stars"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/React-18-61dafb?logo=react" alt="React 18">
+  <img src="https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri" alt="Tauri 2">
+  <img src="https://img.shields.io/badge/Rust-2021-dea584?logo=rust" alt="Rust edition 2021">
+  <img src="https://img.shields.io/badge/Python-3.12-3776ab?logo=python&logoColor=white" alt="Python 3.12">
+</p>
+
+<p align="center"><strong>中文</strong> · <a href="README_EN.md">English</a></p>
+
+---
 
 <p align="center">
   <img src="docs/images/overview.png" alt="Identity V Assistant 主界面" width="850">
@@ -15,7 +42,7 @@ Windows 桌面端的《第五人格》助手，提供游戏启动、视觉自动
 - **加页手记**：多选 ZIP 导入地图包，按赛季、难度、门型、楼层及纯净／速刷图筛选，支持详情与窗口内预览。
 - **窗口与输入**：按窗口捕捉画面，使用经过前台检查的 Windows 输入；显式开启引擎后应用窗口设置，关闭时尝试恢复原窗口。
 - **日常使用**：全局引擎快捷键、关闭到托盘、捕捉诊断、可筛选日志，以及可选的睡眠和熄屏控制。
-- **更新**：GitHub 直连、三个代理和自动测速选源；下载前确认，安装前校验签名、版本、SHA-256 与文件大小。
+- **更新**：默认 GitHub 直连，支持三个手动代理；显示下载速度、预计剩余时间与 Markdown 更新日志；下载前确认，安装前校验签名、版本、SHA-256 与文件大小。
 
 行为逻辑、任务恢复、组件职责和地图格式见 [功能逻辑说明](docs/README_LOGIC.md)。构建与检查见 [开发说明](docs/development_zh.md)，迁移与发布见 [更新说明](docs/updates.md)。
 

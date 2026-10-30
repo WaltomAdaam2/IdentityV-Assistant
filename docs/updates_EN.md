@@ -4,7 +4,7 @@
 
 ## Installation and migration
 
-Source and releases now share [WaltomAdaam2/IdentityV-Assistant](https://github.com/WaltomAdaam2/IdentityV-Assistant/releases). Starting with 0.1.7, update manifests, prerelease discovery, source speed probes, and in-app project links use this repository.
+Source and releases now share [WaltomAdaam2/IdentityV-Assistant](https://github.com/WaltomAdaam2/IdentityV-Assistant/releases). Starting with 0.1.7, update manifests, prerelease discovery, and in-app project links use this repository.
 
 | Installed version | Migration |
 | --- | --- |
@@ -19,15 +19,15 @@ After publishing and verifying the bridge, the old repository can remain public 
 
 ## In-app updates
 
-Settings offer direct GitHub access, third-party GH-Proxy, or automatic source selection. Startup checks can be disabled. Release notes appear before the user chooses to download or install. Ignoring a version's startup reminder does not prevent a manual check. Prereleases are disabled by default.
+GitHub direct (default) is the default source; GH-Proxy, GHFast and ghproxy.net remain manual choices. Version 0.1.8 removes automatic speed tests and migrates old `auto` preferences to direct while preserving explicit proxy choices. Startup checks can be disabled. Release notes appear before the user chooses to download or install. Ignoring a version's startup reminder does not prevent a manual check. Prereleases are disabled by default.
 
 Downloads must pass repository/version URL validation, release-signature verification, signed-version validation, SHA-256, and size checks. Cancellation discards the partial download; retry starts over. Installation stops automation, releases input, cleans up the assistant's owned login proxy, and exits before starting the installer. Settings, logs, and imported maps remain in AppData.
 
-Automatic selection reads at most 256 KiB of the same fixed public installer from each source and compares latency and speed. Each attempt has an eight-second deadline; results are cached for five minutes. If all sources fail, choose one manually. A probe does not guarantee the fastest complete download or bypass integrity checks. The selection also applies to the separate login component, whose updates have their own lifecycle.
+The assistant download shows a five-second rolling speed and estimated remaining time beside the progress bar. The estimate is unknown at startup, for unknown sizes, or during a stall; it excludes verification and installation time. Release notes render Markdown headings, lists, emphasis, code and HTTP/HTTPS links without executing HTML/scripts or loading embedded images. Source choices also apply to the separate login component, whose updates have their own lifecycle.
 
 ## Building
 
-Prepare the [development environment](development.md), then build from a clean, pushed `main`:
+Prepare the [development environment](development.md), then build from a clean, pushed, unmerged version branch such as `SNAPSHOT-v0.1.8`:
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -49,17 +49,20 @@ Use assets from the same build. Tauri CLI 2.12+ includes the version in the sign
 
 ## Publishing and release notes
 
-1. Update all versions, pass checks, commit, and push `main`.
+1. Create `SNAPSHOT-v<version>` from current main (for example `SNAPSHOT-v0.1.8`), update versions, pass checks, commit, push that branch, and create a PR to main using [the PR format](agents/pr-format.md).
 2. Rebuild from that clean commit and verify signatures and offline checks.
-3. Write a UTF-8 release-notes file containing real changes.
-4. With GitHub CLI authenticated, run:
+3. Write factual UTF-8 notes using [the release format](agents/release-format.md).
+4. With GitHub CLI authenticated, create and upload a draft:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1 -NotesFile docs/releases/0.1.7.md
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1 -NotesFile docs/releases/0.1.8.md
 ```
 
 Use a title, summary, `## 新增与优化`, `## 修复内容`, and a `**Full Changelog**` comparison link. The script stores the complete notes in the manifest and GitHub Release, then appends a final `## SHA-256` section covering all four assets. Fewer than three factual bullets are acceptable; the first release links to its actual history. Do not pre-add checksums to NotesFile: that would duplicate the section or make the manifest checksum self-referential.
 
-The script checks clean `main`, matching remote/build commits, version, checksums, size, and signature text. The tag identifies the actual source commit. Assets upload to a draft before it becomes the latest release. Existing tags or releases, including drafts, cause a stop rather than replacement or deletion. After an uncertain network response, inspect the existing GitHub state before resuming.
+The script checks the clean version-matched SNAPSHOT branch, unmerged PR state, matching remote/build commits, version, checksums, size, and signature text. The draft targets the actual build commit. It uploads all four assets and leaves the release as a draft; it never publishes. Existing tags or releases, including drafts, cause a stop rather than replacement or deletion. After an uncertain network response, inspect the existing GitHub state before resuming.
+
+5. The user reviews the PR, draft, checksums and build evidence. Once the PR merges into main, keep its SNAPSHOT branch permanently frozen: never commit, sync, merge, rebase or delete it. Later changes use a new version branch.
+6. The user personally publishes the reviewed draft on GitHub and makes a stable release Latest. Drafts are unavailable to the public updater until publication. The tag retains the verified build commit. Agents never publish for the user.
 
 Updater signatures are not Windows Authenticode signatures; Windows may report an unknown publisher. Current first-party source and releases from 0.1.7 use GPL-3.0-only. Historical binaries and third-party materials retain their original terms; see [Third-party notices](../THIRD_PARTY_NOTICES.md).

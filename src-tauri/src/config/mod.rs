@@ -64,9 +64,7 @@ fn migrate(settings: &mut Value) -> bool {
         if !app
             .get("update_source")
             .and_then(Value::as_str)
-            .is_some_and(|value| {
-                ["auto", "direct", "proxy", "ghfast", "ghproxy_net"].contains(&value)
-            })
+            .is_some_and(|value| ["direct", "proxy", "ghfast", "ghproxy_net"].contains(&value))
         {
             app.insert("update_source".into(), json!("direct"));
         }
@@ -157,7 +155,7 @@ mod tests {
         assert_eq!(settings["app"]["update_source"], "ghfast");
         settings["app"]["update_source"] = json!("auto");
         migrate(&mut settings);
-        assert_eq!(settings["app"]["update_source"], "auto");
+        assert_eq!(settings["app"]["update_source"], "direct");
         assert!(settings["app"]
             .get("check_component_updates_on_launch")
             .is_none());

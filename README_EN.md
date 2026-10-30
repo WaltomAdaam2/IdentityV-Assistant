@@ -1,8 +1,35 @@
-# Identity V Assistant
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" alt="Identity V Assistant" width="128" height="128">
+</p>
 
-**Language / 语言:** [中文](README.md) | English
+<h1 align="center">Identity V Assistant · 第五人格助手</h1>
 
-A Windows desktop assistant for Identity V, with a game launcher, visual automation tasks and journal map browsing. The interface supports Chinese and English; settings and map packs stay on the local machine.
+<p align="center">
+  Game launcher · Visual automation · Journal maps<br>
+  A Windows desktop assistant built with Tauri 2, React, Rust and Python
+</p>
+
+<p align="center">
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/issues">Report an issue</a> · <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/releases">Changelog</a><br>
+  <a href="#install-and-start">Quick start</a> · <a href="docs/README_LOGIC_EN.md">Feature guide</a> · <a href="docs/development.md">Build guide</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/releases"><img src="https://img.shields.io/github/v/release/WaltomAdaam2/IdentityV-Assistant?color=70815a" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-70815a" alt="License: GPL-3.0-only"></a>
+  <a href="https://github.com/WaltomAdaam2/IdentityV-Assistant/stargazers"><img src="https://img.shields.io/github/stars/WaltomAdaam2/IdentityV-Assistant?style=social" alt="GitHub stars"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/React-18-61dafb?logo=react" alt="React 18">
+  <img src="https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri" alt="Tauri 2">
+  <img src="https://img.shields.io/badge/Rust-2021-dea584?logo=rust" alt="Rust edition 2021">
+  <img src="https://img.shields.io/badge/Python-3.12-3776ab?logo=python&logoColor=white" alt="Python 3.12">
+</p>
+
+<p align="center"><a href="README.md">中文</a> · <strong>English</strong></p>
+
+---
 
 <p align="center">
   <img src="docs/images/overview.png" alt="Identity V Assistant interface" width="850">
@@ -15,7 +42,7 @@ A Windows desktop assistant for Identity V, with a game launcher, visual automat
 - **Journal maps:** import multiple ZIP packs, filter by season, difficulty, doors, floor and base/route view, and open map details or an in-window preview.
 - **Window and input control:** capture the game window and send foreground-checked Windows input. Explicit engine startup applies window settings; shutdown attempts to restore the original window.
 - **Desktop controls:** global engine shortcut, close to tray, capture diagnostics, searchable logs and optional sleep/display controls.
-- **Updates:** direct GitHub access, three proxies and automatic source measurement, with confirmation and signature, version, SHA-256 and size verification.
+- **Updates:** GitHub direct by default with three manual proxies, download speed/time estimates and Markdown notes, with confirmation and signature, version, SHA-256 and size verification.
 
 See [Feature logic](docs/README_LOGIC_EN.md) for behavior, recovery, component responsibilities and map formats; [Development](docs/development.md) for builds and checks; and [Updates](docs/updates_EN.md) for release migration and publishing.
 

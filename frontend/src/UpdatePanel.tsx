@@ -5,6 +5,8 @@ import { bridge } from "./bridge";
 import type { Settings } from "./types";
 import SettingRow, { SettingIcon } from "./SettingRow";
 import { version as appVersion } from "../package.json";
+import DownloadProgress from "./DownloadProgress";
+import ReleaseNotes from "./ReleaseNotes";
 import "./updates.css";
 
 export interface UpdateInfo {
@@ -20,12 +22,12 @@ const releaseUrl = "https://github.com/WaltomAdaam2/IdentityV-Assistant/releases
 const megabytes = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
 const copy = {
   "zh-CN": {
-    autoCheck: "自动检测更新", autoCheckHint: "启动助手时检查新版本，发现更新后显示提示；不会自动安装。", currentVersion: "当前版本", channel: "检查范围", stable: "正式版本", preview: "正式及预发布版本", done: "知道了", sourceHint: "默认使用 GitHub 直连；连接不畅时可切换代理源。", manualHint: "检查所选通道的新版本，并查看更新内容。", title: "软件更新", prerelease: "接收预发布版本", prereleaseHint: "提前体验新功能，可能存在尚未修复的问题。", source: "更新源", direct: "GitHub 直连", proxy: "GH-Proxy代理（推荐）", check: "检查更新", manual: "手动检查", later: "稍后", release: "发布页面", download: "下载更新", install: "安装并重启", cancel: "取消下载", retry: "重试", skip: "此版本下次打开不再提示", notes: "更新日志", empty: "此版本暂无更新日志。", close: "关闭", preferenceError: "无法保存提示偏好，请重试。", verified: "发布签名与 SHA-256 校验通过", installHint: "安装会停止当前任务并关闭助手。配置、日志与地图包将保留。", browser: "请在桌面应用中检查更新。",
+    autoCheck: "自动检测更新", autoCheckHint: "启动助手时检查新版本，发现更新后显示提示；不会自动安装。", currentVersion: "当前版本", channel: "检查范围", stable: "正式版本", preview: "正式及预发布版本", done: "知道了", sourceHint: "默认使用 GitHub 直连；连接不畅时可切换代理源。", manualHint: "检查所选通道的新版本，并查看更新内容。", title: "软件更新", prerelease: "接收预发布版本", prereleaseHint: "提前体验新功能，可能存在尚未修复的问题。", source: "更新源", direct: "GitHub 直连（默认）", proxy: "GH-Proxy代理", check: "检查更新", manual: "手动检查", later: "稍后", release: "发布页面", download: "下载更新", install: "安装并重启", cancel: "取消下载", retry: "重试", skip: "此版本下次打开不再提示", notes: "更新日志", empty: "此版本暂无更新日志。", close: "关闭", preferenceError: "无法保存提示偏好，请重试。", verified: "发布签名与 SHA-256 校验通过", installHint: "安装会停止当前任务并关闭助手。配置、日志与地图包将保留。", browser: "请在桌面应用中检查更新。",
     hints: { idle: "准备查询所选更新源。", checking: "正在获取发布信息，请稍候。", current: "检查完成，所选通道暂无可用的新版本。", available: "查看更新内容后下载，安装前仍需你确认。", downloading: "下载后将自动校验发布签名、版本与 SHA-256。", verifying: "正在检查安装包的真实性与完整性。", ready: "安装包已校验，可以开始安装。", installing: "正在关闭助手并启动安装程序。", error: "未能完成更新，请检查网络或更换更新源后重试。", cancelled: "下载已停止。你可以稍后重新下载。" },
     phases: { idle: "软件更新", checking: "正在检查更新…", available: "发现新版本", current: "已是最新版本", downloading: "正在下载更新", verifying: "正在校验文件…", ready: "更新已准备好", installing: "正在准备安装…", error: "更新未完成", cancelled: "下载已取消" },
   },
   "en-US": {
-    autoCheck: "Automatically check for updates", autoCheckHint: "Check on startup and notify when an update is available. Never installs automatically.", currentVersion: "Installed version", channel: "Release channel", stable: "Stable releases", preview: "Stable and prereleases", done: "Done", sourceHint: "GitHub direct is the default. Use GH-Proxy if the connection is slow.", manualHint: "Check the selected channel and review release notes.", title: "Software updates", prerelease: "Receive prerelease versions", prereleaseHint: "Try new features early. These versions may contain unresolved issues.", source: "Update source", direct: "GitHub direct", proxy: "GH-Proxy (recommended)", check: "Check for updates", manual: "Manual check", later: "Later", release: "Release page", download: "Download update", install: "Install and restart", cancel: "Cancel download", retry: "Retry", skip: "Do not show this version on startup again", notes: "Release notes", empty: "No release notes for this version.", close: "Close", preferenceError: "Could not save this preference. Please try again.", verified: "Release signature and SHA-256 verified", installHint: "Installing stops the current task and closes the assistant. Settings, logs, and maps are kept.", browser: "Check for updates in the desktop app.",
+    autoCheck: "Automatically check for updates", autoCheckHint: "Check on startup and notify when an update is available. Never installs automatically.", currentVersion: "Installed version", channel: "Release channel", stable: "Stable releases", preview: "Stable and prereleases", done: "Done", sourceHint: "GitHub direct is the default. Use GH-Proxy if the connection is slow.", manualHint: "Check the selected channel and review release notes.", title: "Software updates", prerelease: "Receive prerelease versions", prereleaseHint: "Try new features early. These versions may contain unresolved issues.", source: "Update source", direct: "GitHub direct (default)", proxy: "GH-Proxy", check: "Check for updates", manual: "Manual check", later: "Later", release: "Release page", download: "Download update", install: "Install and restart", cancel: "Cancel download", retry: "Retry", skip: "Do not show this version on startup again", notes: "Release notes", empty: "No release notes for this version.", close: "Close", preferenceError: "Could not save this preference. Please try again.", verified: "Release signature and SHA-256 verified", installHint: "Installing stops the current task and closes the assistant. Settings, logs, and maps are kept.", browser: "Check for updates in the desktop app.",
     hints: { idle: "Ready to query the selected update source.", checking: "Retrieving release information. Please wait.", current: "Check complete. No newer release is available on this channel.", available: "Review the changes before downloading. Installation needs your confirmation.", downloading: "The download will be checked for its signature, version and SHA-256.", verifying: "Checking the installer authenticity and integrity.", ready: "The installer is verified and ready.", installing: "Closing the assistant and starting the installer.", error: "The update could not finish. Check your connection or choose another source and retry.", cancelled: "Download stopped. You can download it again later." },
     phases: { idle: "Software updates", checking: "Checking for updates…", available: "Update available", current: "You're up to date", downloading: "Downloading update", verifying: "Verifying files…", ready: "Ready to install", installing: "Preparing installation…", error: "Update did not finish", cancelled: "Download cancelled" },
   },
@@ -52,7 +54,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
   const desktop = isTauri();
   const t = copy[settings.app.language];
   const source = settings.app.update_source;
-  const sourceNames = { auto: settings.app.language === "zh-CN" ? "自动选择（测速）" : "Automatic (speed test)", direct: t.direct, proxy: t.proxy, ghfast: "GHFast" + (settings.app.language === "zh-CN" ? "代理" : " proxy"), ghproxy_net: "ghproxy.net" + (settings.app.language === "zh-CN" ? "代理" : " proxy") };
+  const sourceNames = { direct: t.direct, proxy: t.proxy, ghfast: "GHFast" + (settings.app.language === "zh-CN" ? "代理" : " proxy"), ghproxy_net: "ghproxy.net" + (settings.app.language === "zh-CN" ? "代理" : " proxy") };
   const busy = pending || ["checking", "downloading", "verifying", "installing"].includes(status.phase);
 
   const run = useCallback(async (action: () => Promise<unknown>, checking = false) => {
@@ -131,7 +133,6 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
     if (connectionFailed) { setConnectionAttempt((attempt) => attempt + 1); return; }
     void run(() => bridge.checkUpdate(source, settings.app.update_prereleases), true);
   };
-  const progress = status.total && status.total > 0 ? Math.min(100, status.downloaded / status.total * 100) : undefined;
   const modal = showPrompt ? createPortal(<dialog ref={dialog} className={`update-dialog${status.info ? " has-release" : ""}`} aria-labelledby="update-dialog-title" onCancel={(event) => { event.preventDefault(); closePrompt(); }}>
     <button className="update-dialog-close" aria-label={t.close} onClick={closePrompt}>×</button>
     <header className={`update-dialog-heading phase-${status.phase}`}>
@@ -143,9 +144,9 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
       <div><dt>{t.source}</dt><dd>{sourceNames[status.source]}</dd></div>
       <div><dt>{t.channel}</dt><dd>{checkedPrereleases ? t.preview : t.stable}</dd></div>
     </dl>
-    {status.info && <section className="update-dialog-notes" aria-label={t.notes}><h3>{t.notes}</h3><p>{status.info.notes || t.empty}</p></section>}
+    {status.info && <section className="update-dialog-notes" aria-label={t.notes}><h3>{t.notes}</h3><ReleaseNotes language={settings.app.language}>{status.info.notes || t.empty}</ReleaseNotes></section>}
     {status.phase === "error" && <details className="update-error"><summary>{settings.app.language === "zh-CN" ? "错误详情" : "Error details"}</summary><p role="alert">{status.error}</p></details>}
-    {status.phase === "downloading" && <div className="update-download"><progress max="100" value={progress} aria-label={t.phases.downloading} /><small>{megabytes(status.downloaded)}{status.total ? ` / ${megabytes(status.total)}` : ""}{progress !== undefined ? ` · ${Math.floor(progress)}%` : ""}</small></div>}
+    {status.phase === "downloading" && <DownloadProgress downloaded={status.downloaded} total={status.total} language={settings.app.language} />}
     {status.phase === "ready" && <><p className="update-verified">✓ {t.verified}</p><p>{t.installHint}</p></>}
     {status.info && <label className="check-label update-skip"><input type="checkbox" checked={skipVersion} onChange={(event) => savePromptPreference(event.target.checked)} />{t.skip}</label>}
     {preferenceError && <p role="alert" className="update-error">{t.preferenceError}</p>}
