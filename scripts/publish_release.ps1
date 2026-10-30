@@ -1,5 +1,6 @@
 param([Parameter(Mandatory = $true)][string] $NotesFile)
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "file_hash.ps1")
 $NotesFile = (Resolve-Path -LiteralPath $NotesFile).Path
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $notes = Get-Content -LiteralPath $NotesFile -Raw -Encoding UTF8
@@ -39,7 +40,7 @@ if ($assetName -cne "IdentityV-Assistant-${version}-Windows-x64-Setup.exe") { th
 $asset = Join-Path $bundle $assetName
 if ($platform.url -ne "https://github.com/$repo/releases/download/$tag/$assetName" -or
     (Get-Content -LiteralPath (Join-Path $bundle "SHA256SUMS.txt") -Raw).Trim() -ne ($platform.sha256 + "  " + $assetName) -or
-    (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant() -ne $platform.sha256 -or
+    (Get-ReleaseFileHash $asset) -ne $platform.sha256 -or
     (Get-Item -LiteralPath $asset).Length -ne $platform.size -or
     (Get-Content -LiteralPath ($asset + '.sig') -Raw).Trim() -ne $platform.signature) {
     throw "Release artifacts no longer match the signed build metadata. Rebuild before publishing."
@@ -49,7 +50,7 @@ $manifest.pub_date = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 $releaseBody = Join-Path $bundle "release-body.txt"
 $checksums = @($asset, ($asset + ".sig"), $manifestPath, (Join-Path $bundle "SHA256SUMS.txt")) | ForEach-Object {
-    (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + [IO.Path]::GetFileName($_)
+    (Get-ReleaseFileHash $_) + "  " + [IO.Path]::GetFileName($_)
 }
 $body = $notes.Trim() + "`n`n## SHA-256`n`n" + '```text' + "`n" + ($checksums -join "`n") + "`n" + '```' + "`n"
 [IO.File]::WriteAllText($releaseBody, $body, [Text.UTF8Encoding]::new($false))

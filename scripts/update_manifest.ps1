@@ -4,8 +4,7 @@ param(
     [string] $NotesFile
 )
 $ErrorActionPreference = "Stop"
-# Reload the Windows PowerShell utility functions after nested packaging tools.
-Import-Module Microsoft.PowerShell.Utility -Force
+. (Join-Path $PSScriptRoot "file_hash.ps1")
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $config = Get-Content -LiteralPath (Join-Path $repoRoot "src-tauri/tauri.conf.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $Version) { $Version = $config.version }
@@ -27,7 +26,7 @@ $assetName = "IdentityV-Assistant-${Version}-Windows-x64-Setup.exe"
 $assetPath = Join-Path $BundleDirectory $assetName
 Copy-Item -LiteralPath $installer -Destination $assetPath -Force
 Copy-Item -LiteralPath $signaturePath -Destination ($assetPath + ".sig") -Force
-$hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$hash = Get-ReleaseFileHash $assetPath
 $notes = if ($NotesFile) { Get-Content -LiteralPath $NotesFile -Raw -Encoding UTF8 } else { "Identity V Assistant v$Version" }
 $commit = & git -C $repoRoot rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw "Could not read build commit." }

@@ -15,6 +15,9 @@ Type: task
 - Follow-up independent review caught PowerShell case-insensitive matching confusing verbose `-v` with version `-V`; changed to `-cin`. Seven actual-condition cases passed: build/-v/--verbose true; -V/--version/-h/--help false.
 - All seven historical releases now have matching template bodies. All five migrated releases retain original installer/signature bytes and verified source tags; all 20 uploaded asset digests match the migration plan. Latest temporarily remains v0.1.6 until 0.1.7 is ready.
 
+- Second complete build at 62f2f58 reproduced Get-FileHash unavailability despite explicit Utility import. Replace this dependency with a shared 11-line .NET SHA256 stream helper used by metadata and publishing (no new packages). Both PowerShell 5/7 matched the original cmdlet for the actual installer; exclusive reopening confirmed handle cleanup. Independent review: no findings. A third clean build will verify the complete path.
+- New-repository live automatic-source probe selected proxy successfully; prerelease metadata check passed. Extracted original URL validators from all five historical source commits and ran them offline against the bridge alias; all passed. Their updater public keys and signed-version requirements match the current key.
+
 ## Remaining
 
 - Commit/review the narrow final corrections, rebuild from clean source and await final CI.
