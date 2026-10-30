@@ -10,6 +10,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 pub struct DesktopSettings {
     hotkey: Mutex<Option<String>>,
     pub tray: AtomicBool,
+    quitting: AtomicBool,
 }
 
 fn preferences(settings: &Value) -> Result<(String, u64, bool, bool), String> {
@@ -220,6 +221,13 @@ fn set_startup(_: bool) -> Result<(), String> {
 }
 
 pub fn quit(app: &AppHandle) {
+    if app
+        .state::<DesktopSettings>()
+        .quitting
+        .swap(true, Ordering::AcqRel)
+    {
+        return;
+    }
     crate::window_size::flush(app);
     let app = app.clone();
     let supervisor = app
@@ -237,6 +245,11 @@ pub fn quit(app: &AppHandle) {
         let _ = app
             .state::<crate::power::PowerManager>()
             .apply(false, false);
+        // Let WebView2 close its controller before the event loop exits.
+        // close() would re-enter CloseRequested; destroy() bypasses that hook.
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.destroy();
+        }
         app.exit(0);
     });
 }

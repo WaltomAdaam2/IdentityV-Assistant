@@ -1,6 +1,6 @@
 # Launcher layout and automatic component setup
 
-Status: claimed
+Status: resolved
 Type: task
 
 ## Scope and decisions
@@ -32,6 +32,6 @@ Type: task
 - Removed the two redundant Settings rows. Added startup/setup cancellation and phase text, real health polling, console-free managed bootstrap and important application-log forwarding.
 - Independent review found health-poll lock contention and unsupported-discovered-version blocking download. Both corrected; added lock-contention regression test.
 - Seven browser interaction tests passed; TypeScript and production Vite build passed (Vite needed normal host access because sandbox parent-directory enumeration was denied).
-- Rust full suite at this checkpoint: 48 passed / 6 ignored; subsequent lock-contention regression is being verified. Lifecycle fixture confirms no console window, graceful cancellation/exit, health loss and external process preservation.
+- Rust full suite at this checkpoint: 48 passed / 6 ignored; subsequent launcher suite passed all 12 tests, including the new lock-contention regression. Lifecycle fixture confirms no console window, graceful cancellation/exit, health loss and external process preservation.
 - Bootstrap tests: four passed using the actual extracted official embedded Python, including real module loading with the main login function stubbed. No real account login is claimed.
-- User requested package-only clean/recompile/launch; final native validation remains pending.
+- Package-only cargo clean completed; a fresh Windows executable build passed and the native assistant was launched. The native overview was visually checked; elevated-window input was unavailable to the computer-use helper, so launcher interactions remain browser-harness evidence. Separate native exit-warning investigation is tracked in issue 05.
