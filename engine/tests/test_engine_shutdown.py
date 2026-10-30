@@ -97,7 +97,8 @@ def test_shutdown_restores_window_when_other_cleanup_fails(failure: str) -> None
     assert engine.status == EngineStatus.STOPPED
 
 
-def test_shutdown_retries_transient_window_restore_failure() -> None:
+@pytest.mark.parametrize("failure", ["exception", "false"])
+def test_shutdown_retries_transient_window_restore_failure(failure: str) -> None:
     engine = make_engine()
     attempts = 0
 
@@ -105,6 +106,8 @@ def test_shutdown_retries_transient_window_restore_failure() -> None:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
+            if failure == "false":
+                return False
             raise OSError("temporary window style failure")
         return True
 

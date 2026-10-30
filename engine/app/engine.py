@@ -171,7 +171,8 @@ class AutomationEngine:
             return
         for attempt in range(2):
             try:
-                restore_style()
+                if restore_style() is False:
+                    raise RuntimeError("Window style restoration failed")
                 return
             except Exception as error:
                 if attempt == 0:
