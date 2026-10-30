@@ -7,9 +7,16 @@ import re
 import subprocess
 import sys
 import threading
+import time
 
 OUTPUT = sys.stdout
 OUTPUT_LOCK = threading.Lock()
+
+
+def stage(phase):
+    with OUTPUT_LOCK:
+        OUTPUT.write("IDV_ASSISTANT_STAGE " + phase + "\n")
+        OUTPUT.flush()
 
 
 def emit(level, message):
@@ -36,11 +43,21 @@ def import_certificate(_self, cert_path):
 
 def adapt(upstream):
     def skip(*_args, **_kwargs):
-        emit("INFO", "由助手托管：跳过桌面快捷方式、更新或热更新入口")
+        emit("INFO", "由助手托管：跳过桌面快捷方式创建")
 
-    def reject_restart(*_args, **_kwargs):
-        emit("ERROR", "组件请求自重启；已阻止，请通过助手重新启动")
-        raise SystemExit(75)
+    def managed_restart(reason=""):
+        stage("restarting")
+        emit("INFO", f"组件请求重启，由助手重新建立代理：{reason}")
+        upstream.genv.set("last_run_state", "restart", True)
+        upstream.genv.set("last_run_state_ts", int(time.time()), True)
+        try:
+            upstream.handle_exit()
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            # This can run in an upstream Timer thread; SystemExit would leave
+            # the proxy alive. The owner recognizes this process exit code.
+            os._exit(75)
 
     def fail(error):
         upstream.genv.set("last_run_state", "crash", True)
@@ -48,14 +65,19 @@ def adapt(upstream):
         raise SystemExit(1)
 
     upstream.setup_shortcuts = skip
-    upstream.handle_update = skip
     upstream.handle_error_and_exit = fail
-    # Keep the shipped version: do not load persisted hotfix overlays or restart
-    # outside the process handle owned by the assistant.
-    upstream.hotfixmgr.pre_start_check_and_rollback_if_needed = skip
-    upstream.hotfixmgr.install_import_hook = skip
-    upstream.hotfixmgr.handle_if_needed = skip
-    upstream.hotfixmgr.restart_self = reject_restart
+    upstream.hotfixmgr.restart_self = managed_restart
+    def with_stage(original, phase):
+        def run(*args, **kwargs):
+            stage(phase)
+            try:
+                return original(*args, **kwargs)
+            finally:
+                stage("initializing")
+        return run
+
+    upstream.handle_update = with_stage(upstream.handle_update, "updating")
+    upstream.hotfixmgr.handle_if_needed = with_stage(upstream.hotfixmgr.handle_if_needed, "updating")
 
 
 def main():
@@ -92,12 +114,14 @@ def main():
         # The pipe closes if the assistant crashes, too. No console is needed.
         sys.stdin.readline()
         try:
+            stage("stopping")
             emit("INFO", "收到助手停止请求，正在清理登录代理")
             upstream.handle_exit()
         finally:
             os._exit(0)
 
     threading.Thread(target=watch_host, daemon=True).start()
+    stage("initializing")
     emit("INFO", "正在初始化官方登录组件（后台模式）")
     upstream.main(upstream.CLI_ARGS)
 

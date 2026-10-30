@@ -17,6 +17,7 @@ export interface Announcement {
 
 export interface LauncherStatus {
   phase: "idle" | "starting" | "configuring" | "ready" | "error" | "stopping";
+  proxy_phase?: "idle" | "starting" | "configuring" | "initializing" | "updating" | "restarting" | "checking" | "ready" | "stopping" | "error";
   component_path: string | null;
   message: string | null;
 }

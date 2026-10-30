@@ -28,6 +28,23 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
   const starting = launching || status?.phase === "starting";
   const installing = configuring || status?.phase === "configuring";
   const busy = starting || installing || status?.phase === "stopping";
+  const proxyPhase = cancelling ? "stopping" : statusError ? "error" : status?.proxy_phase || status?.phase || "checking";
+  const proxyLabels: Record<string, [string, string]> = {
+    idle: ["登录代理未启动", "Login proxy stopped"],
+    starting: ["正在启动代理", "Starting proxy"],
+    configuring: ["正在配置组件", "Configuring component"],
+    initializing: ["代理初始化中", "Initializing proxy"],
+    updating: ["检查组件更新", "Checking component updates"],
+    restarting: ["代理重启中", "Restarting proxy"],
+    checking: ["正在检查代理", "Checking proxy"],
+    ready: ["登录代理已就绪", "Login proxy ready"],
+    stopping: ["代理停止中", "Stopping proxy"],
+    error: ["登录代理不可用", "Login proxy unavailable"],
+  };
+  const proxyLabel = !status?.component_path && proxyPhase === "idle"
+    ? (zh ? "请先配置官方登录组件" : "Set up the official login component")
+    : (proxyLabels[proxyPhase] || proxyLabels.checking)[zh ? 0 : 1];
+  const proxyDot = proxyPhase === "ready" ? "running" : proxyPhase === "error" ? "error" : proxyPhase === "idle" ? "stopped" : "starting";
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -52,6 +69,7 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
     if (!status?.component_path) { setSetup(true); return; }
     setLaunching(true);
     setLaunchError("");
+    setStatus((previous) => previous && { ...previous, phase: "starting", proxy_phase: "starting", message: null });
     try {
       await bridge.launchGame(gamePath);
       setStatus(await bridge.getLauncherStatus());
@@ -120,6 +138,9 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
   };
   return <section className="game-launcher" aria-label={zh ? "游戏启动" : "Game launch"}>
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />
+    <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message || undefined}>
+      <span className={`dot ${proxyDot}`} aria-hidden="true" />{proxyLabel}
+    </div>
     <div className="launcher-bottom">
       <section className="launcher-news" aria-labelledby="launcher-news-title">
         <div className="launcher-news-heading">
@@ -148,7 +169,6 @@ export default function GameLauncher({ language, executablePath, onExecutableCha
         </section>}
         <p className="launcher-game-path" title={gamePath} role="status">{locating ? (zh ? "正在定位游戏…" : "Locating game…") : gamePath || (zh ? "请选择游戏程序" : "Choose the game executable")}</p>
         {gameError && <p className="launcher-game-error" role="alert">{gameError}</p>}
-        <p className="launcher-status" role="status">{busy ? (status?.message || (zh ? "正在启动登录组件…" : "Starting login component…")) : status?.phase === "ready" ? (zh ? "登录代理已就绪" : "Login proxy ready") : !status?.component_path ? (zh ? "请先配置官方登录组件" : "Set up the official login component") : (zh ? "直接启动第五人格" : "Launch Identity V directly")}</p>
         {(launchError || statusError || (!busy && status?.message)) && <p className="launcher-game-error" role="alert">{launchError || statusError || status?.message}</p>}
         <div className="launcher-launch-controls">
           <button className="launcher-start" disabled={cancelling || status?.phase === "stopping" || (!starting && !installing && (choosing || locating || !gamePath || !status || !!statusError))} onClick={() => void launch()}>{cancelling ? (zh ? "正在取消…" : "Cancelling…") : installing ? (zh ? "取消配置" : "Cancel setup") : starting ? (zh ? "取消启动" : "Cancel launch") : (zh ? "启动游戏" : "Launch game")}</button>

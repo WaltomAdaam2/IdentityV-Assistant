@@ -3,6 +3,7 @@ use std::{
     os::windows::{io::AsRawHandle, process::CommandExt},
     path::Path,
     process::{Child, Command, Stdio},
+    sync::{Arc, Mutex},
 };
 use windows::Win32::{
     Foundation::{HANDLE, WAIT_TIMEOUT},
@@ -10,12 +11,13 @@ use windows::Win32::{
         GetExtendedTcpTable, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
     },
     Networking::WinSock::AF_INET,
-    System::Threading::{TerminateProcess, WaitForSingleObject},
+    System::Threading::{GetExitCodeProcess, TerminateProcess, WaitForSingleObject},
 };
 
 pub(super) struct OwnedProcess {
     child: Child,
     pub pid: u32,
+    phase: Arc<Mutex<&'static str>>,
 }
 
 fn log_record(line: &[u8]) -> Option<serde_json::Value> {
@@ -37,7 +39,11 @@ fn log_record(line: &[u8]) -> Option<serde_json::Value> {
     )
 }
 
-fn drain(mut reader: impl Read + Send + 'static, app: Option<tauri::AppHandle>) {
+fn drain(
+    mut reader: impl Read + Send + 'static,
+    app: Option<tauri::AppHandle>,
+    phase: Arc<Mutex<&'static str>>,
+) {
     std::thread::spawn(move || {
         let mut buffer = [0u8; 4096];
         let mut line = Vec::new();
@@ -49,6 +55,16 @@ fn drain(mut reader: impl Read + Send + 'static, app: Option<tauri::AppHandle>) 
             for byte in &buffer[..count] {
                 if *byte == b'\n' {
                     if !oversized {
+                        if let Ok(stage) = std::str::from_utf8(&line) {
+                            match stage.trim().strip_prefix("IDV_ASSISTANT_STAGE ") {
+                                Some("initializing") => *phase.lock().unwrap() = "initializing",
+                                Some("updating") => *phase.lock().unwrap() = "updating",
+                                Some("restarting") => *phase.lock().unwrap() = "restarting",
+                                Some("checking") => *phase.lock().unwrap() = "checking",
+                                Some("stopping") => *phase.lock().unwrap() = "stopping",
+                                _ => {}
+                            }
+                        }
                         if let (Some(app), Some(record)) = (&app, log_record(&line)) {
                             crate::logs::emit(app, record);
                         }
@@ -100,14 +116,21 @@ impl OwnedProcess {
             .creation_flags(0x08000000)
             .spawn()
             .map_err(|e| format!("无法启动登录组件：{e}"))?;
-        drain(child.stdout.take().ok_or("无法读取组件输出")?, app.cloned());
+        let phase = Arc::new(Mutex::new("initializing"));
+        drain(
+            child.stdout.take().ok_or("无法读取组件输出")?,
+            app.cloned(),
+            phase.clone(),
+        );
         drain(
             child.stderr.take().ok_or("无法读取组件错误输出")?,
             app.cloned(),
+            phase.clone(),
         );
         Ok(Self {
             pid: child.id(),
             child,
+            phase,
         })
     }
 
@@ -120,6 +143,19 @@ impl OwnedProcess {
 
     pub fn is_running(&self) -> bool {
         self.wait(0) == WAIT_TIMEOUT
+    }
+
+    pub fn phase(&self) -> &'static str {
+        *self.phase.lock().unwrap()
+    }
+
+    pub fn exit_code(&self) -> Option<u32> {
+        if self.is_running() {
+            return None;
+        }
+        let mut code = 0;
+        unsafe { GetExitCodeProcess(HANDLE(self.child.as_raw_handle()), &mut code) }.ok()?;
+        Some(code)
     }
 
     pub fn wait(&self, milliseconds: u32) -> windows::Win32::Foundation::WAIT_EVENT {

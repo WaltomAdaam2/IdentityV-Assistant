@@ -29,7 +29,7 @@ class ManagedLoginTests(unittest.TestCase):
                         self.assertIs(sys.modules["main"], module)
                         self.assertEqual(cli.proxy_port, 12345)
                         self.assertEqual(module.setup_shortcuts.__name__, "skip")
-                        self.assertEqual(module.hotfixmgr.restart_self.__name__, "reject_restart")
+                        self.assertEqual(module.hotfixmgr.restart_self.__name__, "managed_restart")
                         calls.append(True)
                     module.main = check
                 spec.loader.exec_module = load
@@ -46,16 +46,23 @@ class ManagedLoginTests(unittest.TestCase):
                     sys.modules["logutil"].logger.remove()
                 os.chdir(cwd)
 
-    def test_managed_start_skips_desktop_update_and_restart(self):
-        upstream = types.SimpleNamespace(hotfixmgr=types.SimpleNamespace(), genv=Mock())
-        with patch.object(bootstrap, "emit"):
+    def test_managed_start_keeps_updates_and_requests_owned_restart_without_shortcuts(self):
+        update, hotfix, rollback, finder = Mock(), Mock(), Mock(), Mock()
+        upstream = types.SimpleNamespace(handle_update=update, handle_exit=Mock(), hotfixmgr=types.SimpleNamespace(handle_if_needed=hotfix, pre_start_check_and_rollback_if_needed=rollback, install_import_hook=finder), genv=Mock())
+        with patch.object(bootstrap, "emit"), patch.object(bootstrap, "stage") as stage, patch.object(bootstrap.os, "_exit", side_effect=SystemExit) as exit_process:
             bootstrap.adapt(upstream)
             upstream.setup_shortcuts()
-            upstream.handle_update()
-            upstream.hotfixmgr.handle_if_needed(None)
-            upstream.hotfixmgr.install_import_hook()
+            upstream.handle_update("release")
+            update.assert_called_once_with("release")
+            upstream.hotfixmgr.handle_if_needed()
+            hotfix.assert_called_once_with()
+            stage.assert_any_call("updating")
+            self.assertIs(upstream.hotfixmgr.pre_start_check_and_rollback_if_needed, rollback)
+            self.assertIs(upstream.hotfixmgr.install_import_hook, finder)
             with self.assertRaises(SystemExit):
                 upstream.hotfixmgr.restart_self("update")
+            upstream.handle_exit.assert_called_once()
+            exit_process.assert_called_once_with(75)
             with self.assertRaises(SystemExit):
                 upstream.handle_error_and_exit(RuntimeError("fixture"))
         upstream.genv.set.assert_any_call("last_run_state", "crash", True)

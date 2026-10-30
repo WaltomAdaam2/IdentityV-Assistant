@@ -97,6 +97,7 @@ pub fn run() {
             let settings = config::load().map_err(std::io::Error::other)?;
             window_size::restore(app.handle()).map_err(std::io::Error::other)?;
             desktop::create_tray(app.handle())?;
+            launcher::manager::start_monitor(app.handle().clone());
             if let Err(error) = desktop::initialize(app.handle(), &settings) {
                 logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"DESKTOP_SETTINGS_FAILED","message":error,"recoverable":true,"details":{}}));
             }

@@ -50,6 +50,25 @@ test("game launch is placed between tasks and journal", () => {
   }
 });
 
+test("proxy pill uses existing status styling and replaces a stale error during startup", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("eval", "Object.assign(window.__launcherTest.launcherStatus, {phase:'error', proxy_phase:'error', message:'旧的代理错误'})");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "旧的代理错误");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "取消启动");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.launcher-game-error'))")), false);
+    for (const [phase, label] of [['initializing','代理初始化中'],['updating','检查组件更新'],['restarting','代理重启中'],['checking','正在检查代理'],['ready','登录代理已就绪'],['stopping','代理停止中']]) {
+      browser("eval", `Object.assign(window.__launcherTest.launcherStatus, {proxy_phase:'${phase}', message:null})`);
+      browser("wait", "--text", label);
+      assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-proxy-status').classList.contains('engine-status')")), true);
+    }
+    const rect = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => {const p=document.querySelector('.launcher-proxy-status').getBoundingClientRect(), r=document.querySelector('.game-launcher').getBoundingClientRect();return {top:p.top-r.top,right:r.right-p.right};})())")));
+    assert.ok(rect.top >= 0 && rect.top < 50 && rect.right >= 0 && rect.right < 50);
+  } finally { browser("close"); }
+});
+
 test("long news stays within half the launcher and controls share hover movement", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
@@ -181,7 +200,7 @@ test("a second click cancels launch and later health failure removes ready statu
     browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
     browser("eval", "window.__launcherTest.finishLaunch()");
     browser("wait", "--text", "登录代理已就绪");
-    browser("eval", "Object.assign(window.__launcherTest.launcherStatus, {phase:'error', message:'登录代理不可用'})");
+    browser("eval", "Object.assign(window.__launcherTest.launcherStatus, {phase:'error', proxy_phase:'error', message:'登录代理不可用'})");
     browser("wait", "--text", "登录代理不可用");
     assert.doesNotMatch(browser("eval", "document.querySelector('.launcher-status').textContent"), /已就绪/);
   } finally { browser("close"); }

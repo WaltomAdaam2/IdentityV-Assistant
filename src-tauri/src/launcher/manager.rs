@@ -17,6 +17,7 @@ use tokio::sync::Mutex as AsyncMutex;
 #[derive(Clone, Serialize)]
 pub struct LauncherStatus {
     phase: &'static str,
+    proxy_phase: &'static str,
     component_path: Option<String>,
     message: Option<String>,
 }
@@ -54,6 +55,7 @@ impl Default for Launcher {
             owned: AsyncMutex::new(None),
             status: Mutex::new(LauncherStatus {
                 phase: "idle",
+                proxy_phase: "idle",
                 component_path: None,
                 message: None,
             }),
@@ -74,22 +76,39 @@ impl Launcher {
     fn report(&self, phase: &'static str, message: Option<String>) {
         let mut status = self.status.lock().unwrap();
         status.phase = phase;
+        status.proxy_phase = phase;
         status.message = message;
     }
 
-    pub async fn status(&self) -> Result<LauncherStatus, String> {
-        // Never block status polling behind a component that is still starting.
-        if let Ok(owned) = self.owned.try_lock() {
-            if let Some(component) = owned.as_ref() {
-                match component.session.verify_ready().await {
-                    Ok(()) => self.report("ready", None),
-                    Err(_) => self.report(
-                        "error",
-                        Some("登录代理不可用，请重新启动游戏以恢复代理".into()),
-                    ),
-                }
+    fn report_proxy(&self, phase: &'static str) {
+        let mut status = self.status.lock().unwrap();
+        status.proxy_phase = phase;
+        status.message = None;
+    }
+
+    async fn refresh_proxy(&self) {
+        if self.closing.load(Ordering::Relaxed) {
+            return;
+        }
+        // Skip startup/configuration, which owns this lock and publishes progress.
+        let Ok(mut owned) = self.owned.try_lock() else {
+            return;
+        };
+        if let Some(component) = owned.as_mut() {
+            match component
+                .session
+                .refresh(&self.closing, |phase| self.report_proxy(phase))
+                .await
+            {
+                Ok("ready") => self.report("ready", None),
+                Ok(phase) => self.report_proxy(phase),
+                Err(error) => self.report("error", Some(format!("登录代理不可用：{error}"))),
             }
         }
+    }
+
+    pub async fn status(&self) -> Result<LauncherStatus, String> {
+        // A snapshot must not wait for network probes or report a stale startup error.
         let mut status = self.status.lock().unwrap().clone();
         let directory = directory()?;
         status.component_path = if let Some(python) = runtime::component_path(&directory)? {
@@ -189,7 +208,8 @@ impl Launcher {
     ) -> Result<(), String> {
         let _operation = self.operation.try_lock().map_err(|_| "启动操作正在进行")?;
         self.cancelled.store(false, Ordering::Relaxed);
-        let mut owned = self.owned.lock().await;
+        let mut owned =
+            install::cancellable(async { Ok(self.owned.lock().await) }, &self.cancelled).await?;
         if self.closing.load(Ordering::Relaxed) {
             return Err("助手正在退出或更新".into());
         }
@@ -224,11 +244,16 @@ impl Launcher {
     ) -> Result<(), String> {
         install::check_cancel(&self.cancelled)?;
         let game = locate_game(game)?;
-        let unhealthy = if let Some(component) = owned.as_ref() {
-            component.session.verify_ready().await.is_err()
+        let unhealthy = if let Some(component) = owned.as_mut() {
+            component
+                .session
+                .ensure_ready(&self.cancelled, |phase| self.report_proxy(phase))
+                .await
+                .is_err()
         } else {
             false
         };
+        install::check_cancel(&self.cancelled)?;
         if unhealthy {
             if let Some(previous) = owned.take() {
                 previous.stop().await?;
@@ -256,6 +281,7 @@ impl Launcher {
                 Duration::from_secs(60),
                 &self.cancelled,
                 app,
+                |phase| self.report_proxy(phase),
             )
             .await
             {
@@ -277,7 +303,7 @@ impl Launcher {
         }
         let result = async {
             let component = owned.as_ref().ok_or("登录组件不可用")?;
-            component.session.verify_ready().await?;
+            // start_logged/ensure_ready just checked health and ownership.
             if self.closing.load(Ordering::Relaxed) || self.cancelled.load(Ordering::Relaxed) {
                 return Err("启动已取消".into());
             }
@@ -311,6 +337,16 @@ impl Launcher {
     pub fn resume(&self) {
         self.closing.store(false, Ordering::Relaxed);
     }
+}
+
+pub fn start_monitor(app: tauri::AppHandle) {
+    use tauri::Manager;
+    tauri::async_runtime::spawn(async move {
+        loop {
+            app.state::<Launcher>().refresh_proxy().await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    });
 }
 
 #[tauri::command]
@@ -361,6 +397,22 @@ pub async fn launch_game(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cancel_does_not_wait_for_background_proxy_recovery() {
+        let manager = Launcher::default();
+        let _background = manager.owned.lock().await;
+        let cancel = async {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            manager.cancel();
+        };
+        let (result, _) = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(manager.launch(Some("Fever.exe".into()), None), cancel)
+        })
+        .await
+        .unwrap();
+        assert!(result.unwrap_err().contains("取消"));
+    }
 
     #[tokio::test]
     async fn health_poll_lock_does_not_reject_a_user_launch() {
