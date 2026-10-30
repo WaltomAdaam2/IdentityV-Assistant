@@ -28,3 +28,7 @@ Type: task
 - Rust final library run: 57 passed, 7 intentionally ignored. Separately ran the public metadata test through GH-Proxy successfully. Official embedded Python: 4 bootstrap tests and 3 hotfix-worker tests passed, including harmless temporary-module backup/replacement and stdin cancellation before mutation.
 - TypeScript and Vite production build passed. Rendered popup inspected. Independent review findings (worker exit wait and failed-update proxy recovery) were fixed and reviewed again with no remaining concrete findings.
 - Real account login, real installation hotfix application and native shutdown during a live update were not exercised. User's earlier successful proxy login is separate evidence.
+
+## Follow-up
+
+- Issue 08 supersedes the optional component-check preference: remove the toggle and legacy values, always check on game launch, and retain the update confirmation dialog. The assistant's own startup update preference is unchanged.

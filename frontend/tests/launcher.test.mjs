@@ -59,13 +59,12 @@ test("component updates check at game launch only and share the dialog source ch
     browser("find", "role", "button", "click", "--name", "检查组件更新", "--exact");
     browser("wait", "--text", "组件已是最新版本");
     browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
-    browser("uncheck", "input[type=checkbox]:not([role=switch])");
-    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'save_settings' && c.args.settings.app.check_component_updates_on_launch === false)");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.launcher-setup input[type=checkbox]'))")), false);
     browser("find", "role", "button", "click", "--name", "关闭启动设置", "--exact");
     browser("eval", "window.__launcherTest.calls = []; window.__launcherTest.hasHotfix = true");
     browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
-    browser("wait", "--text", "取消启动");
-    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'check_login_updates')")), false);
+    browser("wait", "--text", "测试热更新");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'check_login_updates')")), true);
   } finally { browser("close"); }
 });
 
@@ -75,6 +74,22 @@ test("title bar minimize explicitly requests the taskbar", () => {
     browser("find", "role", "button", "click", "--name", "最小化", "--exact");
     browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'minimize_to_taskbar')");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'plugin:window|minimize')")), false);
+  } finally { browser("close"); }
+});
+
+test("launcher fits the window with a long error banner and open launch settings", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("set", "viewport", "1000", "680");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    browser("eval", "window.__launcherTest.saveFailure = true");
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    browser("find", "role", "button", "click", "--name", "选择游戏程序", "--exact");
+    browser("wait", "--text", "Hotkey already registered");
+    const layout = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => {const w=document.querySelector('.workspace'), p=document.querySelector('.launcher-setup').getBoundingClientRect(), r=w.getBoundingClientRect(), b=document.querySelector('.launcher-start').getBoundingClientRect(); return {overflow:w.scrollHeight-w.clientHeight, top:p.top-r.top, bottom:r.bottom-p.bottom, button:r.bottom-b.bottom};})())")));
+    assert.ok(layout.overflow <= 1 && layout.top >= 0 && layout.bottom >= 0 && layout.button >= 0, JSON.stringify(layout));
+    assert.match(browser("eval", "getComputedStyle(document.querySelector('.workspace-launcher')).backgroundImage"), /background\.jpg/);
   } finally { browser("close"); }
 });
 
@@ -108,6 +123,13 @@ test("proxy pill uses existing status styling and replaces a stale error during 
     }
     const rect = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => {const p=document.querySelector('.launcher-proxy-status').getBoundingClientRect(), r=document.querySelector('.game-launcher').getBoundingClientRect();return {top:p.top-r.top,right:r.right-p.right};})())")));
     assert.ok(rect.top >= 0 && rect.top < 50 && rect.right >= 0 && rect.right < 50);
+    browser("eval", "Object.assign(window.__launcherTest.launcherStatus, {proxy_phase:'checking', message:null})");
+    browser("wait", "--text", "正在检查代理");
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    const pill = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => {const p=document.querySelector('.launcher-proxy-status'), r=p.getBoundingClientRect(), s=document.querySelector('.launcher-setup').getBoundingClientRect();return {gap:s.top-r.bottom, visible:!!document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('.launcher-proxy-status'), pulse:getComputedStyle(p.querySelector('.dot')).animationName, change:getComputedStyle(p.querySelector('.launcher-proxy-label')).animationName};})())")));
+    assert.ok(pill.visible && pill.gap >= 8, JSON.stringify(pill));
+    assert.equal(pill.pulse, "status-breathe");
+    assert.equal(pill.change, "launcher-status-change");
   } finally { browser("close"); }
 });
 

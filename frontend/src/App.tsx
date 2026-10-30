@@ -687,7 +687,6 @@ const defaults: Settings = {
     prevent_system_sleep: false,
     prevent_display_sleep: false,
     check_updates_on_start: true,
-    check_component_updates_on_launch: true,
     update_source: "direct",
   },
   engine: {

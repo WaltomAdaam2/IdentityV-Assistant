@@ -75,9 +75,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
       return;
     }
     if (!status?.component_path) { setSetup(true); return; }
-    if (appSettings.check_component_updates_on_launch) {
-      await checkUpdates(true);
-    } else { await startGame(); }
+    await checkUpdates(true);
   };
   const startGame = async () => {
     setLaunching(true);
@@ -186,7 +184,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
       onDownload={() => void bridge.openLoginUpdate(appSettings.update_source).catch((error) => setUpdateError(String(error)))} />}
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />
     <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message || undefined}>
-      <span className={`dot ${proxyDot}`} aria-hidden="true" />{proxyLabel}
+      <span className={`dot ${proxyDot}`} aria-hidden="true" /><span className="launcher-proxy-label" key={proxyPhase}>{proxyLabel}</span>
     </div>
     <div className="launcher-bottom">
       <section className="launcher-news" aria-labelledby="launcher-news-title">
@@ -213,7 +211,6 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
           <div className="launcher-setup-buttons"><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void chooseComponent()}>{zh ? "选择登录组件" : "Choose component"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(true)}>{zh ? "官方下载" : "Official download"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(false)}>{zh ? "自动配置" : "Auto configure"}</button></div>
           <p className="launcher-setup-note">{zh ? "自动配置会扫描已安装的组件。未找到时，官方下载会按设置中的下载源下载到助手程序目录并自动配置；也可手动选择包含“点我启动工具.bat”的文件夹。首次使用需本人登录，之后由组件保留账号。" : "Auto configure scans installed components. Official download uses your selected download source, extracts into the assistant directory and configures it. You can also select the folder containing the startup BAT. Sign in yourself on first use; the component remembers accounts."}</p>
           <p className="launcher-setup-note">{zh ? "组件会安装登录所需证书。退出助手会关闭自有代理；已打开的游戏会保留。" : "The component installs a certificate for login. Exiting the assistant closes its proxy and leaves the game open."}</p>
-          <label className="check-label"><input type="checkbox" checked={appSettings.check_component_updates_on_launch} disabled={busy} onChange={(event) => onAppSettingsChange({...appSettings, check_component_updates_on_launch: event.target.checked})} />{zh ? "启动游戏时自动检查组件更新" : "Check component updates when launching the game"}</label>
           <button disabled={busy || !status?.component_path} onClick={() => void checkUpdates(false)}>{zh ? "检查组件更新" : "Check component updates"}</button>
         </section>}
         <p className="launcher-game-path" title={gamePath} role="status">{locating ? (zh ? "正在定位游戏…" : "Locating game…") : gamePath || (zh ? "请选择游戏程序" : "Choose the game executable")}</p>

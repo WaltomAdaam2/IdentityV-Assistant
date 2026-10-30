@@ -7,7 +7,8 @@ window.__launcherTest = { calls: [], newsFailure: true, selectedGamePath: "D:\\G
 window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv-login\\python-embed\\python.exe", message: null };
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
-  if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false } };
+  if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false } };
+  if (command === "save_settings" && window.__launcherTest.saveFailure) return Promise.reject("快捷键已被占用或无法注册：Hotkey already registered: HotKey { mods: Modifiers(0x0), key: F3, id: 162 }");
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { phase: "idle" };
   if (command === "journal_list_packs") return { directory: "fixture", packs: [], errors: [] };

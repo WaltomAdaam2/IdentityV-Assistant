@@ -83,8 +83,10 @@ pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
     let manager = app.state::<DesktopSettings>();
     let mut registered = manager.hotkey.lock().unwrap();
     let old = crate::config::load()?;
-    let (_, old_scale, old_startup, _) = preferences(&old)?;
-    let changed = registered.as_deref() != Some(&hotkey);
+    let (old_hotkey, old_scale, old_startup, _) = preferences(&old)?;
+    // A failed startup registration must not block unrelated setting saves.
+    // Retry registration when the user actually chooses another shortcut.
+    let changed = registered.as_deref().unwrap_or(&old_hotkey) != hotkey;
     // Reserve the replacement first: an occupied key must leave the old key usable.
     if changed {
         app.global_shortcut()

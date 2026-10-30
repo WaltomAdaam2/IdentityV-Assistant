@@ -54,15 +54,7 @@ pub fn load() -> Result<Value, String> {
 fn migrate(settings: &mut Value) -> bool {
     let before = settings.clone();
     if let Some(app) = settings.get_mut("app").and_then(Value::as_object_mut) {
-        if !app
-            .get("check_component_updates_on_launch")
-            .is_some_and(Value::is_boolean)
-        {
-            app.insert(
-                "check_component_updates_on_launch".into(),
-                Value::Bool(true),
-            );
-        }
+        app.remove("check_component_updates_on_launch");
         if !app
             .get("check_updates_on_start")
             .is_some_and(Value::is_boolean)
@@ -158,10 +150,11 @@ mod tests {
     #[test]
     fn migrates_update_preferences_and_preserves_disabled_startup_check() {
         let mut settings =
-            json!({"app": {"check_updates_on_start": false, "update_source": "ghfast"}});
+            json!({"app": {"check_updates_on_start": false, "check_component_updates_on_launch": false, "update_source": "ghfast"}});
         migrate(&mut settings);
         assert_eq!(settings["app"]["check_updates_on_start"], false);
         assert_eq!(settings["app"]["update_source"], "ghfast");
+        assert!(settings["app"].get("check_component_updates_on_launch").is_none());
         settings["app"] = json!({"update_source": "unknown"});
         migrate(&mut settings);
         assert_eq!(settings["app"]["check_updates_on_start"], true);
