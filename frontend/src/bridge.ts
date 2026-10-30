@@ -55,6 +55,7 @@ export const bridge = {
   onUpdateStatus: (handler: (status: UpdateStatus) => void): Promise<UnlistenFn> =>
     listen<UpdateStatus>("update-status", ({ payload }) => handler(payload)),
   openRepository: () => invoke<void>("open_project_repository"),
+  openReleaseLink: (url: string) => invoke<void>("open_release_link", { url }),
   startEngine: () => invoke<void>("start_engine"),
   stopEngine: () => invoke<void>("stop_engine"),
   restartEngine: () => invoke<void>("restart_engine"),

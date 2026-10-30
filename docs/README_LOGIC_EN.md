@@ -85,6 +85,6 @@ Diagnostics discover windows, capture frames manually and inspect templates. Deb
 
 ## Updates and validation limits
 
-Assistant and login-component updates are separate. Assistant startup checking can be disabled; a new version is shown for review before download or installation. All sources enforce signature, signed version, installer URL, SHA-256 and size validation. Automatic source selection compares bounded samples of a fixed asset; it cannot guarantee the fastest full download afterward.
+Assistant and login-component updates are separate. Assistant startup checking can be disabled; a new version is shown for review before download or installation. All sources enforce signature, signed version, installer URL, SHA-256 and size validation. GitHub direct is the default, with three manually selected proxies. Version 0.1.8 removes automatic probes. Speed and remaining-time estimates use the last five seconds of actual byte changes; stalled transfers show an unknown remaining time.
 
 See [Updates and releases](updates_EN.md) for repository migration, legacy compatibility and publishing. Tests cover screenshot recognition, logic, mocked IPC and package integrity. Per user instruction, 0.1.7 does not receive installation, native-app execution, live account authentication or live gameplay validation.

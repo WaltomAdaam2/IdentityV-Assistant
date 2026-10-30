@@ -19,7 +19,7 @@
 .update-version-arrow { color: var(--muted); }
 .update-dialog-notes { padding: 12px 14px; background: var(--input); border: 1px solid var(--border); border-radius: 7px; }
 .update-dialog-notes h3 { font-size: 12px; }
-.update-dialog-notes p { margin-top: 8px; max-height: 28vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 12px; }
+.update-dialog-notes > p { margin-top: 8px; max-height: 28vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 12px; }
 .update-skip { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--muted-strong); }
 .update-skip input { accent-color: var(--accent); }
 .update-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
@@ -37,3 +37,21 @@
 @keyframes update-dialog-enter { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes update-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .update-dialog[open], .update-state-icon svg { animation: none; } .update-download progress::-webkit-progress-value { transition: none; } }
+
+.update-progress-row { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.update-progress-row progress { flex: 1; min-width: 48px; }
+.update-transfer { display: grid; gap: 3px; text-align: right; flex-shrink: 0; font-size: 11px; line-height: 1.5; }
+.release-markdown { max-height: 28vh; overflow: auto; overflow-wrap: anywhere; margin-top: 8px; font-size: 12px; line-height: 1.7; }
+.release-markdown > :first-child { margin-top: 0; }
+.release-markdown h1 { font-size: 16px; margin: 14px 0 8px; }
+.release-markdown h2 { font-size: 14px; margin: 14px 0 6px; }
+.release-markdown h3, .release-markdown h4, .release-markdown h5, .release-markdown h6 { font-size: 12px; margin: 12px 0 6px; }
+.release-markdown p, .release-markdown ul, .release-markdown ol, .release-markdown pre, .release-markdown blockquote { margin: 8px 0; }
+.release-markdown ul, .release-markdown ol { padding-left: 22px; }
+.release-markdown li + li { margin-top: 4px; }
+.release-markdown a { color: var(--accent); text-decoration: underline; }
+.release-markdown code { font-family: monospace; background: var(--surface-raised); border-radius: 3px; padding: 1px 4px; }
+.release-markdown pre { overflow-x: auto; padding: 8px; background: var(--surface-raised); border-radius: 4px; }
+.release-markdown pre code { padding: 0; }
+.release-markdown blockquote { padding-left: 10px; border-left: 2px solid var(--border); color: var(--muted-strong); }
+.release-markdown hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }

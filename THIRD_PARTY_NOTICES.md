@@ -54,3 +54,7 @@ the redistributed GEOS library.
 
 Interface icons use Lucide from the Iconify collection (https://github.com/iconify/icon-sets).
 Original ISC and MIT notices are included in `assets/icons/LUCIDE_LICENSE.txt`.
+
+## Markdown rendering
+
+The frontend uses [react-markdown](https://github.com/remarkjs/react-markdown) under the [MIT license](https://github.com/remarkjs/react-markdown/blob/main/license), with its unified/remark dependencies retaining their own package licenses. Release content is rendered as React elements; raw HTML and embedded images are disabled.

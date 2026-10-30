@@ -18,3 +18,9 @@ Publish one 0.1.7 bridge in the old repository with the identical signed install
 ## Consequences
 
 The existing updater and release scripts retain ownership; no new release framework or configuration layer is needed. Release bodies contain complete factual notes, a source-history comparison, then asset SHA-256 values. Upload drafts completely before publishing. Never replace an existing tag or release automatically. Builds and offline checks do not establish successful native installation or live gameplay.
+
+## 0.1.8 superseding workflow
+
+The user's next version request removes automatic source probing entirely; legacy auto settings resolve to direct GitHub without network selection. Manual proxy choices remain.
+
+Every version now uses a permanent `SNAPSHOT-v<version>` branch and a PR to main. Build signed assets from the clean pushed branch before merge. After merge, the branch is frozen forever. Automation may only prepare a Draft Release targeting the verified build commit; the user reviews and personally publishes it. This supersedes the earlier automatic draft-to-public step, without changing signing or integrity validation. See [the maintained workflow](../updates_EN.md).

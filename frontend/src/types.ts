@@ -141,7 +141,7 @@ export interface Settings {
     prevent_display_sleep: boolean;
     check_updates_on_start: boolean;
     update_prereleases: boolean;
-    update_source: "auto" | "direct" | "proxy" | "ghfast" | "ghproxy_net";
+    update_source: "direct" | "proxy" | "ghfast" | "ghproxy_net";
   };
   engine: {
     memory_protection: boolean;

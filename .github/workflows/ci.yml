@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "SNAPSHOT-v*"
   pull_request:
 
 permissions:
@@ -37,8 +38,12 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      - name: Test frontend logs
-        run: node --test frontend/tests/logs.test.mjs
+      - name: Test frontend helpers
+        run: node --test frontend/tests/logs.test.mjs frontend/tests/download-progress.test.mjs
+
+      - name: Test draft-only release gates
+        shell: powershell
+        run: ./scripts/tests/publish_release.tests.ps1
 
       - name: Set up uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4

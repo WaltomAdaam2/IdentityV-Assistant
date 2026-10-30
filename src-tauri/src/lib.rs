@@ -56,6 +56,7 @@ pub fn run() {
         .manage(window_size::WindowSizeState::default())
         .invoke_handler(tauri::generate_handler![
             commands::open_project_repository,
+            commands::open_release_link,
             launcher::manager::launch_game,
             launcher::locate_game,
             launcher::manager::get_launcher_status,

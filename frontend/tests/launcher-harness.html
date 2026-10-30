@@ -4,15 +4,32 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 mockWindows("main");
+window.isTauri = new URLSearchParams(location.search).has("desktop");
 window.__launcherTest = { calls: [], newsFailure: true, selectedGamePath: "D:\\Games\\IdentityV\\dwrg.exe" };
 window.__launcherTest.emitLog = (payload) => emit("engine-event", { type: "log", level: "info", data: { important: true }, ...payload });
+window.__launcherTest.updateStatus = { phase: "idle", info: null, downloaded: 0, total: null, error: null, source: "direct" };
+window.__launcherTest.emitUpdate = async (patch) => {
+  Object.assign(window.__launcherTest.updateStatus, patch);
+  await emit("update-status", { ...window.__launcherTest.updateStatus });
+};
 window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv-login\\python-embed\\python.exe", message: null };
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
   if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
   if (command === "save_settings" && window.__launcherTest.saveFailure) return Promise.reject("快捷键已被占用或无法注册：Hotkey already registered: HotKey { mods: Modifiers(0x0), key: F3, id: 162 }");
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
-  if (command === "get_update_status") return { phase: "idle" };
+  if (command === "get_update_status") return { ...window.__launcherTest.updateStatus };
+  if (command === "check_update") {
+    const info = { version: "0.1.9", current_version: "0.1.8", notes: window.__launcherTest.releaseNotes || "# Update\n\n## Changes\n\n- **Clear** progress", date: null, sha256: "fixture", size: 10000000 };
+    Object.assign(window.__launcherTest.updateStatus, { phase: "available", info, source: args.source, total: info.size });
+    return info;
+  }
+  if (command === "download_update") {
+    return window.__launcherTest.emitUpdate({ phase: "downloading", downloaded: 0 }).then(() => new Promise((resolve) => { window.__launcherTest.finishDownload = resolve; }));
+  }
+  if (command === "cancel_update") {
+    return window.__launcherTest.emitUpdate({ phase: "cancelled" }).then(() => window.__launcherTest.finishDownload?.());
+  }
   if (command === "journal_list_packs") return { directory: "fixture", packs: [], errors: [] };
   if (command === "journal_choose_pack_source") return window.__launcherTest.importSources ?? null;
   if (command === "journal_import_pack") {

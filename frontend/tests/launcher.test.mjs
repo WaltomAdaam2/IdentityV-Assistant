@@ -188,9 +188,11 @@ test("component updates check at game launch only and share the dialog source ch
     browser("wait", "--text", "测试热更新");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'launch_game')")), false);
     assert.equal(JSON.parse(browser("eval", "document.querySelector('dialog[open]').classList.contains('update-dialog')")), true);
-    browser("select", "#component-update-source", "auto");
+    assert.deepEqual(JSON.parse(browser("eval", "[...document.querySelector('#component-update-source').options].map(o=>o.value)")), ["direct", "proxy", "ghfast", "ghproxy_net"]);
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('#component-update-source').selectedOptions[0].textContent")), "GitHub 直连（默认）");
+    browser("select", "#component-update-source", "ghfast");
     browser("find", "role", "button", "click", "--name", "应用热更新", "--exact");
-    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'apply_login_hotfixes' && c.args.source === 'auto')");
+    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'apply_login_hotfixes' && c.args.source === 'ghfast')");
     browser("wait", "--text", "取消启动");
     browser("eval", "window.__launcherTest.finishLaunch()");
     browser("wait", "--text", "登录代理已就绪");

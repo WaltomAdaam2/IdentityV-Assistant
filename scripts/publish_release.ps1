@@ -7,33 +7,36 @@ $notes = Get-Content -LiteralPath $NotesFile -Raw -Encoding UTF8
 if (-not $notes.Trim()) { throw "Release notes must not be empty." }
 Set-Location -LiteralPath $repoRoot
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "Install GitHub CLI and run gh auth login first." }
+$repo = "WaltomAdaam2/IdentityV-Assistant"
+$version = (Get-Content -LiteralPath "src-tauri/tauri.conf.json" -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $branch = & git branch --show-current
-if ($LASTEXITCODE -ne 0 -or $branch -ne "main") { throw "Publish from main only." }
+if ($LASTEXITCODE -ne 0 -or $branch -cne "SNAPSHOT-v$version") { throw "Prepare drafts from SNAPSHOT-v$version only." }
+$merged = & gh api --paginate "repos/$repo/pulls?state=closed&head=WaltomAdaam2:$branch&per_page=100" --jq '.[] | select(.merged_at != null) | .number'
+if ($LASTEXITCODE -ne 0) { throw "Could not inspect the SNAPSHOT branch's PR state." }
+if ($merged) { throw "This SNAPSHOT branch is frozen after PR merge. Do not change it or build another draft from it." }
 $changes = & git status --porcelain
 if ($LASTEXITCODE -ne 0 -or $changes) { throw "Commit all source changes before building and publishing." }
 $commit = & git rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw "Cannot read HEAD." }
-$remoteCommit = & git ls-remote origin refs/heads/main
-if ($LASTEXITCODE -ne 0 -or -not $remoteCommit -or ($remoteCommit -split '\s+')[0] -ne $commit) {
-    throw "Push main before publishing; remote main must match the built commit."
+$remoteCommit = & gh api "repos/$repo/git/ref/heads/$branch" --jq '.object.sha'
+if ($LASTEXITCODE -ne 0 -or $remoteCommit -ne $commit) {
+    throw "Push the SNAPSHOT branch first; its remote head must match the built commit."
 }
 $bundle = Join-Path $repoRoot "src-tauri/target/release/bundle/nsis"
 $manifestPath = Join-Path $bundle "latest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$version = (Get-Content -LiteralPath "src-tauri/tauri.conf.json" -Raw -Encoding UTF8 | ConvertFrom-Json).version
 if ($manifest.version -ne $version -or $manifest.commit -ne $commit -or -not $manifest.source_clean) {
-    throw "Build artifacts are stale or were built with uncommitted changes. Run the build again from clean main."
+    throw "Build artifacts are stale or were built with uncommitted changes. Run the build again from the clean SNAPSHOT branch."
 }
 $tag = "v$version"
-$repo = "WaltomAdaam2/IdentityV-Assistant"
 # Tags in the source repository identify the actual verified build commit.
 $releaseCommit = $commit
 # Enumerate through a successful API request: a network failure must not look like an absent release.
 $releases = & gh api --paginate "repos/$repo/releases?per_page=100" --jq '.[].tag_name'
 if ($LASTEXITCODE -ne 0) { throw "Could not inspect existing releases." }
 if ($releases -contains $tag) { throw "$tag already exists (possibly a draft from a previous attempt). Inspect it manually; this script never overwrites releases." }
-$tags = & git ls-remote "https://github.com/$repo.git" "refs/tags/$tag"
-if ($LASTEXITCODE -ne 0 -or $tags) { throw "Cannot publish: tag exists or remote inspection failed." }
+$tags = & gh api --paginate "repos/$repo/git/matching-refs/tags/$tag" --jq '.[].ref'
+if ($LASTEXITCODE -ne 0 -or $tags -contains "refs/tags/$tag") { throw "Cannot create draft: tag exists or remote inspection failed." }
 $platform = $manifest.platforms.'windows-x86_64'
 $assetName = ($platform.url -split '/')[-1]
 if ($assetName -cne "IdentityV-Assistant-${version}-Windows-x64-Setup.exe") { throw "Installer filename must match the product, version and platform." }
@@ -55,11 +58,22 @@ $checksums = @($asset, ($asset + ".sig"), $manifestPath, (Join-Path $bundle "SHA
 $body = $notes.Trim() + "`n`n## SHA-256`n`n" + '```text' + "`n" + ($checksums -join "`n") + "`n" + '```' + "`n"
 [IO.File]::WriteAllText($releaseBody, $body, [Text.UTF8Encoding]::new($false))
 $isPrerelease = $version.Contains('-')
-$channelArguments = if ($isPrerelease) { @('--prerelease') } else { @() }
-& gh release create $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo --target $releaseCommit --draft --title "Identity V Assistant v$version" --notes-file $releaseBody @channelArguments
-if ($LASTEXITCODE -ne 0) { throw "Draft creation/upload failed or outcome is unknown. Inspect GitHub Releases before retrying. No existing release will be overwritten." }
-$latestArgument = if ($isPrerelease) { '--latest=false' } else { '--latest=true' }
-& gh release edit $tag --repo $repo --draft=false $latestArgument
-if ($LASTEXITCODE -ne 0) { throw "Publishing did not confirm success. Inspect the existing draft/release on GitHub; do not create another one." }
-& gh release view $tag --repo $repo --json url,assets
-if ($LASTEXITCODE -ne 0) { throw "Release was published but final verification failed. Inspect it on GitHub." }
+# Creating a draft is the final automation step. Only the user may publish it.
+$payloadPath = Join-Path $bundle "draft-release.json"
+$payload = @{
+    tag_name = $tag; target_commitish = $releaseCommit; name = "Identity V Assistant v$version"
+    body = $body; draft = $true; prerelease = $isPrerelease; make_latest = "false"
+}
+[IO.File]::WriteAllText($payloadPath, ($payload | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+& gh api --method POST "repos/$repo/releases" --input $payloadPath --jq '.html_url'
+if ($LASTEXITCODE -ne 0) { throw "Draft creation failed or outcome is unknown. Inspect GitHub before retrying; never overwrite an existing release." }
+& gh release upload $tag $asset ($asset + ".sig") $manifestPath (Join-Path $bundle "SHA256SUMS.txt") --repo $repo
+if ($LASTEXITCODE -ne 0) { throw "Draft asset upload did not confirm success. Inspect the existing draft before resuming." }
+$result = & gh release view $tag --repo $repo --json url,isDraft,targetCommitish,assets
+if ($LASTEXITCODE -ne 0) { throw "Draft created, but final inspection failed. Check GitHub before retrying." }
+$draft = $result | ConvertFrom-Json
+if (-not $draft.isDraft -or $draft.targetCommitish -ne $releaseCommit -or $draft.assets.Count -ne 4) {
+    throw "Draft verification failed. Do not publish; inspect its state, target commit and assets."
+}
+Write-Output $result
+Write-Host "Draft ready for the user's review and manual publication. No release was published."
