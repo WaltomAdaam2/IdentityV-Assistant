@@ -27,7 +27,7 @@ export default function ComponentUpdateDialog({ info, error, phase, source, lang
     <dl className="update-facts">
       <div><dt>{zh ? "当前版本" : "Installed version"}</dt><dd>{info?.current_version || "—"}{info?.release_url && <><span className="update-version-arrow"> → </span><strong>{info.version}</strong></>}</dd></div>
       <div><dt><label htmlFor="component-update-source">{zh ? "更新源" : "Update source"}</label></dt><dd><select id="component-update-source" disabled={busy} value={source} onChange={(event) => onSource(event.target.value as Settings["app"]["update_source"])}>
-        <option value="direct">{zh ? "GitHub 直连" : "GitHub direct"}</option><option value="proxy">{zh ? "GH-Proxy代理（推荐）" : "GH-Proxy (recommended)"}</option><option value="ghfast">GHFast</option><option value="ghproxy_net">ghproxy.net</option>
+        <option value="auto">{zh ? "自动选择（测速）" : "Automatic (speed test)"}</option><option value="direct">{zh ? "GitHub 直连" : "GitHub direct"}</option><option value="proxy">GH-Proxy</option><option value="ghfast">GHFast</option><option value="ghproxy_net">ghproxy.net</option>
       </select></dd></div>
     </dl>
     {available && <section className="update-dialog-notes" aria-label={zh ? "更新日志" : "Release notes"}><h3>{zh ? "更新日志" : "Release notes"}</h3>{info.notes && <p>{info.notes}</p>}{info.hotfixes.map((item) => <p key={`${item.target_module}@${item.target_commit}`}><strong>{item.target_module}</strong> · {item.target_commit.slice(0, 8)}<br />{item.note}</p>)}</section>}

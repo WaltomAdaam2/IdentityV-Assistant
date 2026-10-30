@@ -8,6 +8,7 @@ mod launcher;
 mod launcher_news;
 mod logs;
 mod power;
+mod update_source;
 mod updates;
 mod window_size;
 
@@ -121,15 +122,13 @@ pub fn run() {
                 window_size::resized(window);
             }
             let minimize_to_tray = window.state::<desktop::DesktopSettings>().tray.load(std::sync::atomic::Ordering::Relaxed);
-            let taskbar_minimize = &window.state::<desktop::DesktopSettings>().taskbar_minimize;
-            if matches!(event, tauri::WindowEvent::Focused(true)) && !window.is_minimized().unwrap_or(false) {
-                taskbar_minimize.store(false, std::sync::atomic::Ordering::Relaxed);
-            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                desktop::quit(window.app_handle());
-            } else if matches!(event, tauri::WindowEvent::Resized(_)) && minimize_to_tray && !taskbar_minimize.load(std::sync::atomic::Ordering::Relaxed) && window.is_minimized().unwrap_or(false) {
-                let _ = window.hide();
+                if minimize_to_tray {
+                    let _ = window.hide();
+                } else {
+                    desktop::quit(window.app_handle());
+                }
             }
         })
         .run(tauri::generate_context!())

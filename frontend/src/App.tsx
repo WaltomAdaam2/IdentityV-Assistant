@@ -2388,7 +2388,7 @@ function SettingsPage({
         <SettingRow icon="power" title={language === "zh-CN" ? "开机启动助手" : "Launch at sign-in"} description={language === "zh-CN" ? "登录 Windows 后自动启动助手" : "Start the assistant when you sign in to Windows."} language={language}>
           <input type="checkbox" role="switch" checked={settings.app.launch_on_login} onChange={(event) => updateApp({ launch_on_login: event.target.checked })} />
         </SettingRow>
-        <SettingRow icon="tray" title={language === "zh-CN" ? "最小化到托盘" : "Minimize to system tray"} description={language === "zh-CN" ? "系统最小化时隐藏到托盘；右上角最小化按钮始终保留在任务栏，关闭窗口仍会退出" : "System minimize hides in the tray. The title-bar minimize button always uses the taskbar; closing still exits."} language={language}>
+        <SettingRow icon="tray" title={language === "zh-CN" ? "关闭到托盘" : "Close to system tray"} description={language === "zh-CN" ? "点击右上角 × 隐藏到托盘；最小化保留在任务栏。完全退出请使用托盘菜单。" : "The title-bar × hides to the tray; minimize stays on the taskbar. Use the tray menu to quit."} language={language}>
           <input type="checkbox" role="switch" checked={settings.app.minimize_to_tray} onChange={(event) => updateApp({ minimize_to_tray: event.target.checked })} />
         </SettingRow>
         <SettingRow icon="scale" title={language === "zh-CN" ? "界面缩放" : "Interface scale"} description={language === "zh-CN" ? "调整文字与控件的显示大小" : "Adjust the size of text and controls."} language={language}>

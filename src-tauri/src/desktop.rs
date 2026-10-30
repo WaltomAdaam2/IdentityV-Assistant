@@ -10,19 +10,12 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 pub struct DesktopSettings {
     hotkey: Mutex<Option<String>>,
     pub tray: AtomicBool,
-    pub taskbar_minimize: AtomicBool,
     quitting: AtomicBool,
 }
 
 #[tauri::command]
 pub fn minimize_to_taskbar(window: tauri::WebviewWindow) -> Result<(), String> {
-    let settings = window.state::<DesktopSettings>();
-    settings.taskbar_minimize.store(true, Ordering::Relaxed);
-    if let Err(error) = window.minimize() {
-        settings.taskbar_minimize.store(false, Ordering::Relaxed);
-        return Err(error.to_string());
-    }
-    Ok(())
+    window.minimize().map_err(|error| error.to_string())
 }
 
 fn preferences(settings: &Value) -> Result<(String, u64, bool, bool), String> {

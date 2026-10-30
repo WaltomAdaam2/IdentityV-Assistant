@@ -52,7 +52,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
   const desktop = isTauri();
   const t = copy[settings.app.language];
   const source = settings.app.update_source;
-  const sourceNames = { direct: t.direct, proxy: t.proxy, ghfast: "GHFast" + (settings.app.language === "zh-CN" ? "代理" : " proxy"), ghproxy_net: "ghproxy.net" + (settings.app.language === "zh-CN" ? "代理" : " proxy") };
+  const sourceNames = { auto: settings.app.language === "zh-CN" ? "自动选择（测速）" : "Automatic (speed test)", direct: t.direct, proxy: t.proxy, ghfast: "GHFast" + (settings.app.language === "zh-CN" ? "代理" : " proxy"), ghproxy_net: "ghproxy.net" + (settings.app.language === "zh-CN" ? "代理" : " proxy") };
   const busy = pending || ["checking", "downloading", "verifying", "installing"].includes(status.phase);
 
   const run = useCallback(async (action: () => Promise<unknown>, checking = false) => {

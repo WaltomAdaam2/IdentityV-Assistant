@@ -107,9 +107,9 @@ test("component updates check at game launch only and share the dialog source ch
     browser("wait", "--text", "测试热更新");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'launch_game')")), false);
     assert.equal(JSON.parse(browser("eval", "document.querySelector('dialog[open]').classList.contains('update-dialog')")), true);
-    browser("select", "#component-update-source", "proxy");
+    browser("select", "#component-update-source", "auto");
     browser("find", "role", "button", "click", "--name", "应用热更新", "--exact");
-    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'apply_login_hotfixes' && c.args.source === 'proxy')");
+    browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'apply_login_hotfixes' && c.args.source === 'auto')");
     browser("wait", "--text", "取消启动");
     browser("eval", "window.__launcherTest.finishLaunch()");
     browser("wait", "--text", "登录代理已就绪");
@@ -149,6 +149,8 @@ test("launcher fits the window with a long error banner and open launch settings
     const layout = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => {const w=document.querySelector('.workspace'), p=document.querySelector('.launcher-setup').getBoundingClientRect(), r=w.getBoundingClientRect(), b=document.querySelector('.launcher-start').getBoundingClientRect(); return {overflow:w.scrollHeight-w.clientHeight, top:p.top-r.top, bottom:r.bottom-p.bottom, button:r.bottom-b.bottom};})())")));
     assert.ok(layout.overflow <= 1 && layout.top >= 0 && layout.bottom >= 0 && layout.button >= 0, JSON.stringify(layout));
     assert.match(browser("eval", "getComputedStyle(document.querySelector('.workspace-launcher')).backgroundImage"), /background\.jpg/);
+    const panel = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => { const p=document.querySelector('.launcher-setup'); return {overflow:p.scrollHeight-p.clientHeight, bottom:p.getBoundingClientRect().bottom, button:document.querySelector('.launcher-start').getBoundingClientRect().top}; })())")));
+    assert.ok(panel.overflow <= 1 && panel.bottom < panel.button, JSON.stringify(panel));
   } finally { browser("close"); }
 });
 

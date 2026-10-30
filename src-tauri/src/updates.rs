@@ -212,7 +212,7 @@ pub async fn check_update(
         .operation
         .try_lock()
         .map_err(|_| "An update operation is in progress")?;
-    route("", &source)?;
+    let source = crate::update_source::resolve(&source).await?;
     {
         let mut session = manager.session.lock().unwrap();
         *session = Session::default();
@@ -293,43 +293,47 @@ pub async fn download_update(
         .map_err(|_| "An update operation is in progress")?;
     let (mut update, info, mut cancelled) = {
         let mut session = manager.session.lock().unwrap();
-        let mut update = session.update.clone().ok_or("Check for updates first")?;
+        let update = session.update.clone().ok_or("Check for updates first")?;
         let info = session
             .status
             .info
             .clone()
             .ok_or("Missing update information")?;
-        update.download_url = route(update.download_url.as_str(), &source)?
-            .parse()
-            .map_err(|e| format!("Invalid URL: {e}"))?;
         let (tx, rx) = oneshot::channel();
         session.cancel = Some(tx);
         session.bytes = None;
-        session.status.source = source;
+        session.status.source = source.clone();
         session.status.downloaded = 0;
         (update, info, rx)
     };
     update.timeout = Some(Duration::from_secs(600));
     manager.report(&app, "downloading", None);
     let mut last_report = Instant::now();
-    let download = update.download(
-        |length, _| {
-            let mut session = manager.session.lock().unwrap();
-            session.status.downloaded += length as u64;
-            if session.status.downloaded > info.size {
-                if let Some(cancel) = session.cancel.take() {
-                    let _ = cancel.send(());
+    let download = async {
+        let source = crate::update_source::resolve(&source).await?;
+        update.download_url = route(update.download_url.as_str(), &source)?
+            .parse()
+            .map_err(|e| format!("Invalid URL: {e}"))?;
+        manager.session.lock().unwrap().status.source = source;
+        update.download(
+            |length, _| {
+                let mut session = manager.session.lock().unwrap();
+                session.status.downloaded += length as u64;
+                if session.status.downloaded > info.size {
+                    if let Some(cancel) = session.cancel.take() {
+                        let _ = cancel.send(());
+                    }
                 }
-            }
-            if last_report.elapsed() >= Duration::from_millis(100) {
-                let _ = app.emit("update-status", session.status.clone());
-                last_report = Instant::now();
-            }
-        },
-        || manager.report(&app, "verifying", None),
-    );
+                if last_report.elapsed() >= Duration::from_millis(100) {
+                    let _ = app.emit("update-status", session.status.clone());
+                    last_report = Instant::now();
+                }
+            },
+            || manager.report(&app, "verifying", None),
+        ).await.map_err(|e| e.to_string())
+    };
     let result = tokio::select! {
-        result = download => result.map_err(|e| e.to_string()),
+        result = download => result,
         _ = &mut cancelled => Err("Download cancelled".to_owned()),
     };
     manager.session.lock().unwrap().cancel = None;

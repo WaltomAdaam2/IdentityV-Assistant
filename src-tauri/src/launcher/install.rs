@@ -117,6 +117,8 @@ pub(super) async fn install(
         runtime::verify_version(&runtime).await?;
         return Ok(runtime);
     }
+    let selected = cancellable(crate::update_source::resolve(source), cancelled).await?;
+    let source = selected.as_str();
     let parent = destination.parent().ok_or("组件安装目录无效")?;
     fs::create_dir_all(parent).map_err(|e| format!("无法写入助手程序目录：{e}"))?;
     let staging = tempfile::Builder::new()

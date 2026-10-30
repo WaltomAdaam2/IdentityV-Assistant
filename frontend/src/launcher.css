@@ -21,13 +21,13 @@
 .launcher-proxy-status .dot.starting { animation: status-breathe 1.5s ease-in-out infinite; }
 .launcher-proxy-label { animation: launcher-status-change 180ms ease-out both; }
 @keyframes launcher-status-change { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
-.launcher-setup { position: absolute; z-index: 2; top: 76px; right: 28px; bottom: 112px; width: min(360px, 65vw); max-height: 430px; overflow-y: auto; padding: 20px; border: 1px solid #ffffff30; border-radius: 12px; background: #201d19f5; box-shadow: 0 12px 40px #0006; }
+.launcher-setup { position: absolute; z-index: 2; top: 76px; right: 28px; width: min(360px, 65vw); padding: 12px 16px; border: 1px solid #ffffff30; border-radius: 12px; background: #201d19f5; box-shadow: 0 12px 40px #0006; }
 .launcher-setup-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .launcher-setup h2 { margin: 0; color: #fff; font-size: 16px; }
-.launcher-setup p { margin: 16px 0 8px; color: #eee8de; font-size: 12px; }
-.launcher-setup .launcher-setup-note { color: #c8c0b5; line-height: 1.6; }
-.launcher-setup-path { overflow-wrap: anywhere; margin-bottom: 8px; color: #c8c0b5; font-size: 11px; }
-.launcher-setup button { padding: 7px 10px; color: #fff; border: 1px solid #ffffff40; background: #ffffff12; font-size: 12px; }
+.launcher-setup p { margin: 8px 0 4px; color: #eee8de; font-size: 12px; }
+.launcher-setup .launcher-setup-note { color: #c8c0b5; font-size: 11px; line-height: 1.45; }
+.launcher-setup-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; color: #c8c0b5; font-size: 11px; }
+.launcher-setup button { padding: 4px 8px; color: #fff; border: 1px solid #ffffff40; background: #ffffff12; font-size: 12px; }
 .launcher-setup button:hover:not(:disabled) { background: #ffffff25; }
 .launcher-setup-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .launcher-game-path { margin-bottom: 10px; overflow: hidden; color: #fff; text-shadow: 0 1px 3px #201d19; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 11px; }

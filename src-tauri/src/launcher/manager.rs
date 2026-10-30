@@ -83,6 +83,9 @@ impl Launcher {
         }
         self.cancelled.store(false, Ordering::Relaxed);
         *self.update.lock().unwrap() = None;
+        let selected = install::cancellable(crate::update_source::resolve(source), &self.cancelled)
+            .await?;
+        let source = selected.as_str();
         let directory = directory()?;
         let python = runtime::component_path(&directory)?.ok_or("请先配置官方登录组件")?;
         let runtime = runtime::runtime_from_python(python)?;
@@ -464,14 +467,16 @@ pub async fn apply_login_hotfixes(
     manager: tauri::State<'_, Launcher>,
     source: String,
 ) -> Result<(), String> {
+    let source = crate::update_source::resolve(&source).await?;
     manager.apply_hotfixes(&source, &app).await
 }
 
 #[tauri::command]
-pub fn open_login_update(
+pub async fn open_login_update(
     manager: tauri::State<'_, Launcher>,
     source: String,
 ) -> Result<(), String> {
+    let source = crate::update_source::resolve(&source).await?;
     let update = manager.update.lock().unwrap();
     let url = update
         .as_ref()
