@@ -571,6 +571,7 @@ mod tests {
                 .build()
                 .unwrap();
             let mut update = updater.check().await.unwrap().unwrap();
+            assert_eq!(update.version, env!("CARGO_PKG_VERSION"));
             update.timeout = Some(Duration::from_secs(600));
             validate_asset(update.download_url.as_str(), &update.version).unwrap();
             let (sha256, size) = expected_integrity(&update.raw_json).unwrap();

@@ -15,6 +15,8 @@ Source and releases now share [WaltomAdaam2/IdentityV-Assistant](https://github.
 
 The bridge uses the identical signed installer. The old repository also provides a 32-character hexadecimal filename accepted by 0.1.2, and its manifest points to that alias. Copying the new manifest unchanged to the old repository would fail older clients' URL checks. After the old repository is removed, clients that have not migrated must install manually. Historical installers retain their embedded links and license notices; migration does not modify their bytes.
 
+After publishing and verifying the bridge, the old repository can remain public and be archived. Archival makes the repository and releases read-only; retaining its name, tags, and assets preserves the migration endpoint for older clients. Unarchive it before making further changes. See [GitHub archival documentation](https://docs.github.com/en/repositories/archiving-a-github-repository/archiving-repositories).
+
 ## In-app updates
 
 Settings offer direct GitHub access, third-party GH-Proxy, or automatic source selection. Startup checks can be disabled. Release notes appear before the user chooses to download or install. Ignoring a version's startup reminder does not prevent a manual check. Prereleases are disabled by default.

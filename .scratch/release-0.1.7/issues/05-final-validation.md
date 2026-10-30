@@ -1,6 +1,6 @@
 # Final validation and signed publication
 
-Status: claimed
+Status: resolved
 Type: task
 
 ## Evidence
@@ -18,8 +18,20 @@ Type: task
 - Second complete build at 62f2f58 reproduced Get-FileHash unavailability despite explicit Utility import. Replace this dependency with a shared 11-line .NET SHA256 stream helper used by metadata and publishing (no new packages). Both PowerShell 5/7 matched the original cmdlet for the actual installer; exclusive reopening confirmed handle cleanup. Independent review: no findings. A third clean build will verify the complete path.
 - New-repository live automatic-source probe selected proxy successfully; prerelease metadata check passed. Extracted original URL validators from all five historical source commits and ran them offline against the bridge alias; all passed. Their updater public keys and signed-version requirements match the current key.
 
-## Remaining
+## Published result
 
-- Commit/review the narrow final corrections, rebuild from clean source and await final CI.
-- Finish historical migration, publish 0.1.7 and its old-repository bridge, verify public hashes/signatures/manifests and record source tags.
-- Native installation/upgrade, file picker, authentication and gameplay are explicitly excluded by the user.
+- Final clean source/build commit: f59581c2e17d1dba2fa680d02abfed7a186bcd33. Complete `pnpm tauri build` exited 0, including frozen-engine self-check and update metadata generation. Log: D:/.Others/Release/work/IdentityV-Assistant-Releases/build-0.1.7-verified.log.
+- Final build source CI: https://github.com/WaltomAdaam2/IdentityV-Assistant/actions/runs/41069343183 — success.
+- Source release: https://github.com/WaltomAdaam2/IdentityV-Assistant/releases/tag/v0.1.7 (ID 429124130); tag points to the actual clean build commit. Four uploaded asset hashes, body and Latest state verified.
+- Bridge release: https://github.com/WaltomAdaam2/desktop-releases/releases/tag/v0.1.7 (ID 429128630); six assets include the canonical installer/signature plus a compatible hexadecimal alias/signature. The old repository tag points to its distribution main; its manifest records the actual application source commit.
+- Installer: IdentityV-Assistant-0.1.7-Windows-x64-Setup.exe, 87,163,816 bytes. SHA-256: f5c831be0f07e4211169339c7346947f4f6928c04e25df7122a748b230b7c069. Original-key signature and trusted version verified before publication using the updater's existing Minisign library.
+- Git remote reads repeatedly timed out, so a one-time copy of the reviewed publisher used equivalent GitHub API reads for remote commit/tag checks. All other provenance and artifact gates remained intact. Two GitHub CLI create attempts returned HTTP 500; fresh API reads confirmed no draft/tag existed. Direct REST draft creation succeeded, followed by CLI asset uploads, digest verification and publication. No tags or uploaded assets were overwritten or deleted; existing historical release descriptions were reformatted as authorized.
+- The actual updater SDK downloaded public 0.1.7 through the supported proxy and verified repository URL, signed version, signature, SHA-256 and size (255.44 seconds). The ignored network test now asserts the manifest version equals the package version so a stale cached historical release cannot give a false pass.
+- Public old Latest manifest downloaded and matched the prepared bridge byte for byte. Its alias URL returned 262,144 bytes identical to the start of the verified new installer; GitHub's full-asset digest equals the canonical installer. This is a bounded old-URL download plus full remote-digest verification, not a second complete installer download.
+- Original installers/signatures for 0.1.2–0.1.6 independently passed cryptographic verification. All historical release bodies and migrated source tags are verified, and old original bytes remain archived under migration-0.1.7/original-v*.
+- Published assets and metadata are archived under D:/.Others/Release/work/IdentityV-Assistant-Releases/v0.1.7. The original pnpm 12.16.1/lockfile edits remain unstaged in the user's primary checkout.
+- The user asked about archiving the old repository. Public archival after verification preserves the read-only migration endpoint; this is now documented in both languages. No repository administration was performed.
+
+## Verification limits
+
+Native installation/upgrade, the actual file picker, account authentication and gameplay were explicitly excluded by the user. Browser interaction used the real React app with mocked native IPC; engine, process and packaged-engine tests were offline fixtures. No claim of live-game success is made.

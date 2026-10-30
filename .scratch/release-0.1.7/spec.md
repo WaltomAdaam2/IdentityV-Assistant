@@ -1,6 +1,6 @@
 # Version 0.1.7: repository consolidation and reliable feedback
 
-Status: claimed
+Status: resolved
 
 ## User decisions (2026-10-30)
 
@@ -35,3 +35,7 @@ Status: claimed
 
 - [CI](issues/01-ci.md)
 - Subsequent focused issues will record implementation, review and publication evidence.
+
+## Completion
+
+All deliverables are verified in [the final validation record](issues/05-final-validation.md), including public releases, the original signing trust chain and the old-repository bridge. User-excluded native installation and live gameplay remain untested. The old repository may now be publicly archived by the user; it was not deleted or archived by the agent.

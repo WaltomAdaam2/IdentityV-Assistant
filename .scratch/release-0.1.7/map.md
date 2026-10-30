@@ -15,6 +15,6 @@ The project has one application domain across React, Rust, and Python. Explorati
 | Documentation | separate Chinese/English README, feature logic, development and release docs; corrected dry-run, capture, recovery and IPC claims; local links checked |
 | Licensing | official GPL v3 text, GPL-3.0-only metadata, preserved historical binary terms and third-party attribution/source obligations |
 
-Independent final defect review found no remaining actionable regressions after the sticky-notice fix. Full browser regression and clean signed release build/publication are tracked in the release issue. Native picker, installation/upgrade, account authentication and live gameplay remain deliberately untested under the user's latest decision.
+Independent final defect review found no remaining actionable regressions after the sticky-notice fix. All 19 browser cases were verified (18 in the full run, one after a render-wait correction). The clean signed build and both published 0.1.7 releases are verified; see issues/05-final-validation.md. Native picker, installation/upgrade, account authentication and live gameplay remain deliberately untested under the user's latest decision.
 
 The architecture report recommends reusing the current notice owner and keeping release identity consistent. No general event bus, release framework or unrelated rewrite was introduced.

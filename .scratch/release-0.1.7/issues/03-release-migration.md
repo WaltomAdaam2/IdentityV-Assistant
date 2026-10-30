@@ -1,6 +1,6 @@
 # Consolidate release delivery into the source repository
 
-Status: claimed
+Status: resolved
 Type: task
 
 ## Decisions
@@ -22,3 +22,9 @@ Type: task
 - 0.1.2 accepts only 32 lowercase hex filenames; 0.1.3–0.1.6 accept that alias and readable names. The bridge will use a hex alias of the identical 0.1.7 installer. 0.1.0 lacks an updater; 0.1.1 requires its early fixed name and is documented as manual migration.
 - Runtime/about/probe/preview/config/build/publish links switched to the source repository; Rust regression rejects legacy-repository assets in new clients. Complete notes and all four asset hashes replace the former hash-only body.
 - Updater targeted tests passed (7); complete Rust suite passed (60, with network/native tests explicitly ignored). Historical migration is in progress; source tag and uploaded digest verification follows each draft upload.
+
+## Completion
+
+- All seven historical releases in IdentityV-Assistant use the requested template and final asset SHA-256 sections. Five migrated releases use manifest-derived source commits; original installer/signature bytes and old metadata remain archived.
+- 0.1.7 is published as Latest in both repositories. New source tag/build commit is f59581c2e17d1dba2fa680d02abfed7a186bcd33. The legacy manifest uses its own old-repository hex alias; all remote asset digests and update trust checks passed. See [final validation](05-final-validation.md) for exact evidence and network recovery details.
+- Public archival of desktop-releases is supported after this verified bridge; the user performs that action.
