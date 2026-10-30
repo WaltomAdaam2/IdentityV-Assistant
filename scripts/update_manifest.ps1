@@ -4,6 +4,8 @@ param(
     [string] $NotesFile
 )
 $ErrorActionPreference = "Stop"
+# Reload the Windows PowerShell utility functions after nested packaging tools.
+Import-Module Microsoft.PowerShell.Utility -Force
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $config = Get-Content -LiteralPath (Join-Path $repoRoot "src-tauri/tauri.conf.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $Version) { $Version = $config.version }

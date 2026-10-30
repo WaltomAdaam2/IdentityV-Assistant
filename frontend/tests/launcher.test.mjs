@@ -129,6 +129,7 @@ test("developer mode reveals retained component details without losing normal la
     browser("wait", "--text", "登录代理检查通过，已启动游戏");
     assert.equal(JSON.parse(browser("eval", "document.querySelector('.log-table').textContent.includes('证书已存在')")), false);
     browser("find", "role", "button", "click", "--name", "设置", "--exact");
+    browser("wait", "--fn", "Array.from(document.querySelectorAll('.setting-row')).some(row => row.textContent.includes('开发者模式'))");
     browser("eval", "Array.from(document.querySelectorAll('.setting-row')).find(row => row.textContent.includes('开发者模式')).querySelector('input').click()");
     browser("find", "role", "button", "click", "--name", "运行日志", "--exact");
     browser("wait", "--text", "证书已存在且有效，跳过生成。");

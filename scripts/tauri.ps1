@@ -34,7 +34,8 @@ if ($isDevCommand -and -not (Test-IsAdministrator)) {
 }
 
 Set-Location -LiteralPath $repoRoot
-$isBuild = $TauriArgs.Count -gt 0 -and $TauriArgs[0] -eq "build"
+$isBuild = $TauriArgs.Count -gt 0 -and $TauriArgs[0] -eq "build" -and
+    -not ($TauriArgs | Where-Object { $_ -cin @('--help', '-h', '--version', '-V') })
 $previousKey = $env:TAURI_SIGNING_PRIVATE_KEY
 try {
     if ($isBuild -and -not $previousKey) {
