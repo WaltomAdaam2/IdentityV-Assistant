@@ -40,3 +40,5 @@ Update decisions now use the assistant's existing update-dialog style. A separat
 ### Subsequent update-check simplification
 
 The user removed the optional component-check setting. This supersedes the separate preference above: always check component updates on game launch and retain the confirmation dialog and manual settings entry. Discard legacy toggle values. Do not check component updates at assistant startup or alter the assistant's own update preference.
+
+Ordinary game launch preserves the game's window style and placement. Only running or paused automation tasks apply the engine's borderless layout; an idle service and capture diagnostics must not take over a newly launched game window. Service shutdown restores the engine's saved original window state.

@@ -76,7 +76,6 @@ class AutomationEngine:
         heartbeat: asyncio.Task[None] | None = None
         try:
             self.status = EngineStatus.IDLE
-            await self._ensure_window_style(self.context.window.find_window())
             await self.emit(
                 "ready",
                 engine_version=ENGINE_VERSION,
@@ -144,7 +143,7 @@ class AutomationEngine:
                 continue
 
     async def _ensure_window_style(self, window: WindowInfo | None) -> None:
-        if window is None:
+        if window is None or self.status not in (EngineStatus.RUNNING, EngineStatus.PAUSED):
             return
         apply_style = getattr(self.context.window, "apply_automation_style", None)
         if not callable(apply_style):
@@ -526,6 +525,7 @@ class AutomationEngine:
             message = None
             reason = TaskFinishReason.ENGINE_ERROR
             try:
+                await self._ensure_window_style(self.context.window.find_window())
                 reason = await task.run(self.context, control)
             except Exception as error:
                 message = str(error)

@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 from app.engine import AutomationEngine
 from config.schema import EngineConfig, WindowConfig
+from core.enums import TaskFinishReason
 from core.models import Rect
 from window.base import WindowInfo
 from window.windows import WindowsWindowManager
@@ -29,14 +32,31 @@ def test_window_manager_delegates_current_options_and_restoration():
     assert len(calls) == 3
 
 
-def test_engine_applies_and_restores_style_during_lifecycle() -> None:
+@pytest.mark.parametrize("start_task", [False, True])
+def test_engine_only_applies_window_style_for_automation_tasks(start_task: bool) -> None:
+    heartbeat = asyncio.Event()
+    task_started = asyncio.Event()
+
     class Writer:
         async def send(self, message: dict) -> None:
-            pass
+            if message["type"] == "heartbeat":
+                heartbeat.set()
 
     class Reader:
         async def messages(self):
+            await heartbeat.wait()
+            assert window.applied == 0
+            if start_task:
+                yield {"type": "start_task", "task": "login_lobby"}
+                await task_started.wait()
             yield {"type": "shutdown"}
+
+    class Task:
+        async def run(self, ctx, control):
+            assert window.applied >= 1
+            task_started.set()
+            await control.cancelled.wait()
+            return TaskFinishReason.USER_STOPPED
 
     class Window:
         applied = 0
@@ -59,8 +79,12 @@ def test_engine_applies_and_restores_style_during_lifecycle() -> None:
     engine.reader = Reader()
     engine.context.window = window
     engine.context.input = SimpleNamespace(release_all=lambda: None)
+    engine._task_factories = lambda: {"login_lobby": Task}
 
-    asyncio.run(engine.run())
+    async def run():
+        await asyncio.wait_for(engine.run(), timeout=1)
 
-    assert window.applied >= 1
+    asyncio.run(run())
+
+    assert (window.applied > 0) == start_task
     assert window.restored == 1

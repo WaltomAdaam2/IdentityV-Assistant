@@ -92,7 +92,7 @@ def test_shutdown_restores_window_when_other_cleanup_fails(failure: str) -> None
     with pytest.raises(RuntimeError, match=failure):
         asyncio.run(engine.run())
 
-    assert engine.context.window.applied == 1
+    assert engine.context.window.applied == 0
     assert engine.context.window.restored == 1
     assert engine.status == EngineStatus.STOPPED
 
