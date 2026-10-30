@@ -118,8 +118,9 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .dot { width: 7px; height: 7px; background: var(--muted); border-radius: 50%; }
 .dot.running { background: var(--safe); box-shadow: 0 0 8px color-mix(in srgb, var(--safe) 48%, transparent); }
 .dot.error { background: var(--danger); }.dot.starting, .dot.stopping { background: var(--warning); }.dot.paused { background: #9e8ffc; }
-.notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; margin: 18px 32px -2px; color: var(--title); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 12px; font-size: 13px; opacity: 1; transition: opacity 600ms ease; }
-.notice button { padding: 0 4px; color: inherit; background: transparent; border: 0; font-size: 19px; line-height: 1; }
+.notice { position: sticky; top: 8px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; margin: 18px 32px -2px; color: var(--title); background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 12px; font-size: 13px; opacity: 1; transition: opacity 600ms ease; }
+.notice > span { min-width: 0; max-height: 25vh; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
+.notice button { flex-shrink: 0; align-self: flex-start; padding: 0 4px; color: inherit; background: transparent; border: 0; font-size: 19px; line-height: 1; }
 .page-content { max-width: 1320px; padding: 30px 32px 44px; margin: 0 auto; }
 .page-content.page-enter { animation: page-in 640ms var(--ease-out) backwards; }
 .page-content.page-leave { pointer-events: none; animation: page-out 160ms ease-in both; }

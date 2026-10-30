@@ -846,8 +846,11 @@ export default function App() {
   const pendingLogsRef = useRef<LogEntry[]>([]);
   const logFlushTimer = useRef<number | null>(null);
   const nextLogId = useRef(2);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [visibleNotice, setVisibleNotice] = useState<string | null>(null);
+  const [notice, setCurrentNotice] = useState<{ message: string; error: boolean } | null>(null);
+  const [visibleNotice, setVisibleNotice] = useState<typeof notice>(null);
+  const setNotice = useCallback((message: string | null, error = false) => {
+    setCurrentNotice(message ? { message, error } : null);
+  }, []);
   const [noticeHovered, setNoticeHovered] = useState(false);
   const [noticeFocused, setNoticeFocused] = useState(false);
   const noticeHeld = noticeHovered || noticeFocused;
@@ -860,7 +863,7 @@ export default function App() {
   }, [notice, noticeHeld]);
   useEffect(() => {
     if (!notice || noticeHeld) return;
-    const timer = window.setTimeout(() => setNotice(null), 1000);
+    const timer = window.setTimeout(() => setCurrentNotice(null), notice.error ? 8000 : 1000);
     return () => window.clearTimeout(timer);
   }, [notice, noticeHeld]);
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
@@ -1454,7 +1457,8 @@ export default function App() {
     launcher: <GameLauncher language={language} appSettings={settings.app} onAppSettingsChange={(app) => setSettings((current) => ({...current, app}))} executablePath={settings.game_window.executable_path}
       onLog={(message) => appendLog("info", message, "launcher", true)}
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
-    journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))} />,
+    journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))}
+      onNotice={(message, error = false) => { setNotice(message, error); appendLog(error ? "error" : "info", message, "journal", true); }} />,
     runtime: (
       <Runtime
         language={language}
@@ -1544,12 +1548,12 @@ export default function App() {
             </div>
           </header>
           {visibleNotice && (
-            <div key={visibleNotice} className={`notice${notice ? "" : " notice-leave"}`} role="status"
-              onMouseEnter={() => { setNoticeHovered(true); setNotice(visibleNotice); }}
+            <div className={`notice${notice ? "" : " notice-leave"}`} role={visibleNotice.error ? "alert" : "status"}
+              onMouseEnter={() => { setNoticeHovered(true); setCurrentNotice(visibleNotice); }}
               onMouseLeave={() => setNoticeHovered(false)}
-              onFocusCapture={() => { setNoticeFocused(true); setNotice(visibleNotice); }}
+              onFocusCapture={() => { setNoticeFocused(true); setCurrentNotice(visibleNotice); }}
               onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setNoticeFocused(false); }}>
-              <span>{visibleNotice}</span>
+              <span>{visibleNotice.message}</span>
               <button aria-label={t.closeNotice} onClick={() => { setNotice(null); setVisibleNotice(null); setNoticeHovered(false); setNoticeFocused(false); }}>
                 ×
               </button>

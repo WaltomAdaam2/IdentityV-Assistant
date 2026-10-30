@@ -14,6 +14,14 @@ mockIPC((command, args) => {
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { phase: "idle" };
   if (command === "journal_list_packs") return { directory: "fixture", packs: [], errors: [] };
+  if (command === "journal_choose_pack_source") return window.__launcherTest.importSources ?? null;
+  if (command === "journal_import_pack") {
+    const finish = () => window.__launcherTest.importErrors?.[args.sourcePath]
+      ? Promise.reject(window.__launcherTest.importErrors[args.sourcePath])
+      : { directory: "fixture", packs: [], errors: [] };
+    if (window.__launcherTest.deferImport) return new Promise((resolve) => { window.__launcherTest.finishImport = () => resolve(finish()); });
+    return finish();
+  }
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
   if (command === "check_login_updates") return {current_version: "v6.3.2-stable", version: "v6.3.2-stable", notes: "", release_url: null, hotfixes: window.__launcherTest.hasHotfix ? [{target_module: "fixture", target_commit: "abcdef1234567", note: "测试热更新"}] : []};
   if (command === "apply_login_hotfixes") { window.__launcherTest.hasHotfix = false; return null; }

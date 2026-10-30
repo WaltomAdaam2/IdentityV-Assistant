@@ -38,10 +38,11 @@ function Thumbnail({ image, name, zh }: { image: MapImage; name: string; zh: boo
   </div>;
 }
 
-export default function Journal({ language, settings: savedSettings, onSettingsChange }: {
+export default function Journal({ language, settings: savedSettings, onSettingsChange, onNotice }: {
   language: Settings["app"]["language"];
   settings: JournalSettings;
   onSettingsChange: (settings: JournalSettings) => void;
+  onNotice: (message: string, error?: boolean) => void;
 }) {
   const zh = language === "zh-CN";
   const [floor, setFloor] = useState("1");
@@ -49,8 +50,6 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   const settings = useMemo(() => ({ ...savedSettings, floor, collapsed }), [savedSettings, floor, collapsed]);
   const [library, setLibrary] = useState<JournalLibrary>({ directory: "", packs: [], errors: [] });
   const [busy, setBusy] = useState(true);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [preview, setPreview] = useState<"closed" | "open" | "closing">("closed");
   const [detailImage, setDetailImage] = useState({ key: "", url: "", error: "" });
@@ -63,7 +62,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   useEffect(() => {
     let active = true;
     journalApi.list().then((data) => { if (active) setLibrary(data); })
-      .catch((reason) => { if (active) setError(String(reason)); })
+      .catch((reason) => { if (active) onNotice(String(reason), true); })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, []);
@@ -132,24 +131,21 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     {quickFloors.map(([floor, chinese, english]) => <button key={floor} type="button" disabled={!availableFloors.has(floor)} aria-pressed={settings.floor === floor} className={settings.floor === floor ? "primary" : ""} title={!availableFloors.has(floor) ? (zh ? "当前地图没有此楼层" : "This floor is unavailable for this map") : undefined} onClick={() => change({ floor })}>{zh ? chinese : english}</button>)}
   </div>;
   async function reload() {
-    setBusy(true); setError(""); setMessage("");
-    try { setLibrary(await journalApi.list()); } catch (reason) { setError(String(reason)); } finally { setBusy(false); }
+    setBusy(true);
+    try { setLibrary(await journalApi.list()); } catch (reason) { onNotice(String(reason), true); } finally { setBusy(false); }
   }
   async function importPack() {
-    setBusy(true); setError(""); setMessage(zh ? "请选择地图包…" : "Choose a map pack…");
+    setBusy(true);
     try {
       const sources = await journalApi.choose();
-      if (!sources?.length) { setMessage(""); return; }
-      setMessage(zh ? `正在导入 ${sources.length} 个地图包…` : `Importing ${sources.length} map packs…`);
+      if (!sources?.length) return;
       const result = await importJournalPacks(sources);
       if (result.library) setLibrary(result.library);
-      setMessage(zh ? `已导入 ${result.imported} 个地图包，失败 ${result.errors.length} 个。` : `Imported ${result.imported} map packs; ${result.errors.length} failed.`);
-      setError(result.errors.join("\n"));
-    } catch (reason) { setMessage(""); setError(String(reason)); } finally { setBusy(false); }
+      const summary = zh ? `已导入 ${result.imported} 个地图包，失败 ${result.errors.length} 个。` : `Imported ${result.imported} map packs; ${result.errors.length} failed.`;
+      onNotice([summary, ...result.errors].join("\n"), result.errors.length > 0);
+    } catch (reason) { onNotice(String(reason), true); } finally { setBusy(false); }
   }
   return <div className="journal">
-    {message && <p role="status">{message}</p>}
-    {error && <p className="journal-error" role="alert">{error}</p>}
     {library.errors.length > 0 && <details className="journal-error"><summary>{zh ? "部分地图包读取失败" : "Some map packs could not be read"}</summary>{library.errors.map((item, index) => <p key={index}>{item}</p>)}</details>}
     <div className={`journal-layout${settings.collapsed ? " journal-collapsed" : ""}`}>
       <aside className="panel journal-filters">
@@ -168,7 +164,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           <div className="journal-options journal-tools">
             <button type="button" disabled={busy} onClick={() => void importPack()}>{zh ? "导入地图包" : "Import map packs"}</button>
             <button type="button" disabled={busy} onClick={() => void reload()}>{zh ? "刷新地图" : "Refresh maps"}</button>
-            <button type="button" onClick={() => { void journalApi.openDirectory().catch((reason) => setError(String(reason))); }}>{zh ? "打开地图目录" : "Open map folder"}</button>
+            <button type="button" onClick={() => { void journalApi.openDirectory().catch((reason) => onNotice(String(reason), true)); }}>{zh ? "打开地图目录" : "Open map folder"}</button>
           </div>
           {library.directory && <p className="journal-directory">{library.directory}</p>}
         </div>

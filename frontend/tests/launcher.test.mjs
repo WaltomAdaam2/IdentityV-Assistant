@@ -15,6 +15,86 @@ function browser(...args) {
   return result.stdout.trim();
 }
 
+test("journal import completion uses a dismissible top notice", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "加页手记", "--exact");
+    browser("wait", "--text", "导入地图包");
+    browser("eval", "window.__launcherTest.importSources = ['fixture.zip']");
+    browser("find", "role", "button", "click", "--name", "导入地图包", "--exact");
+    browser("wait", "--fn", "(() => { const notice = document.querySelector('.notice'); if (!notice?.textContent.includes('已导入 1 个地图包')) return false; notice.dispatchEvent(new MouseEvent('mouseover', {bubbles:true, relatedTarget:document.body})); return true; })()");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.notice')?.textContent.includes('已导入 1 个地图包') ?? false")), true);
+    browser("find", "role", "button", "click", "--name", "关闭提示", "--exact");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.notice'))")), false);
+  } finally { browser("close"); }
+});
+
+test("journal import reports partial and total failures, retains details, and ignores cancellation", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "加页手记", "--exact");
+    browser("wait", "--text", "导入地图包");
+    browser("eval", "window.__launcherTest.importSources = ['good.zip', 'bad.zip']; window.__launcherTest.importErrors = {'bad.zip':'地图包格式无效'}");
+    browser("find", "role", "button", "click", "--name", "导入地图包", "--exact");
+    browser("wait", "--text", "已导入 1 个地图包，失败 1 个。");
+    const result = JSON.parse(JSON.parse(browser("eval", `(async () => {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      const notice = document.querySelector('.notice');
+      return JSON.stringify({role:notice?.getAttribute('role'), details:notice?.textContent.includes('bad.zip: 地图包格式无效'), visible:notice && getComputedStyle(notice).opacity === '1', fits:notice && notice.scrollWidth <= notice.clientWidth});
+    })()`)));
+    assert.deepEqual(result, {role:"alert", details:true, visible:true, fits:true});
+    browser("find", "role", "button", "click", "--name", "关闭提示", "--exact");
+    browser("eval", "window.__launcherTest.importSources = null; window.__launcherTest.calls = []");
+    browser("find", "role", "button", "click", "--name", "导入地图包", "--exact");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'journal_import_pack') || Boolean(document.querySelector('.notice'))")), false);
+    browser("eval", "window.__launcherTest.importSources = ['bad.zip']");
+    browser("find", "role", "button", "click", "--name", "导入地图包", "--exact");
+    browser("wait", "--text", "已导入 0 个地图包，失败 1 个。");
+    browser("find", "role", "button", "click", "--name", "运行日志", "--exact");
+    browser("wait", "--fn", "document.querySelector('.log-table')?.textContent.includes('bad.zip: 地图包格式无效')");
+  } finally { browser("close"); }
+});
+
+test("journal import completion remains visible after leaving and scrolling the page", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "加页手记", "--exact");
+    browser("wait", "--text", "导入地图包");
+    browser("eval", "window.__launcherTest.importSources = ['fixture.zip']; window.__launcherTest.deferImport = true");
+    browser("find", "role", "button", "click", "--name", "导入地图包", "--exact");
+    browser("wait", "--fn", "Boolean(window.__launcherTest.finishImport)");
+    browser("find", "role", "button", "click", "--name", "设置", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.journal')");
+    const visible = JSON.parse(JSON.parse(browser("eval", `(async () => {
+      const workspace = document.querySelector('.workspace');
+      workspace.scrollTop = workspace.scrollHeight;
+      window.__launcherTest.finishImport();
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const notice = document.querySelector('.notice');
+      return JSON.stringify(!!notice?.textContent.includes('已导入 1 个地图包') && workspace.scrollTop > 0 && notice.getBoundingClientRect().top >= workspace.getBoundingClientRect().top);
+    })()`)));
+    assert.equal(visible, true);
+  } finally { browser("close"); }
+});
+
+test("identical notices restart their lifetime and keyboard focus retains them", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("wait", "--text", "游戏启动");
+    const result = JSON.parse(JSON.parse(browser("eval", `(async () => {
+      const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const notify = () => window.__launcherTest.emitLog({type:'error', code:'WINDOW_NOT_FOUND', message:'重复操作结果', recoverable:true});
+      await notify(); await delay(800); await notify(); await delay(450);
+      const repeated = document.querySelector('.notice')?.classList.contains('notice-leave') === false;
+      document.querySelector('.notice button')?.focus(); await delay(1600);
+      const focused = document.querySelector('.notice')?.classList.contains('notice-leave') === false;
+      document.activeElement.blur(); await delay(1800);
+      return JSON.stringify({repeated, focused, removed:!document.querySelector('.notice')});
+    })()`)));
+    assert.deepEqual(result, {repeated:true, focused:true, removed:true});
+  } finally { browser("close"); }
+});
+
 test("journal remembers map options silently but resets the temporary floor on reentry", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
