@@ -41,7 +41,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 `start_task` / `start_tasks` 会自动启动尚未运行的引擎；F3 切换引擎，并与其他生命周期操作串行。显式启动自动化时应用游戏窗口布局，单次诊断不应用。暂停释放输入并冻结任务计时，恢复重新截图，停止清空队列。前台或捕捉丢失有有限恢复时间，详见 [功能逻辑](README_LOGIC.md) 与 [IPC](ipc.md)。
 
-本地规格和问题放在 `.scratch/`，遵循 [问题工作流](agents/issue-tracker.md)。真正的架构决策记入 `docs/adr/`，共享术语记入 `GLOSSARY.md`，不要为局部问题扩展成全项目重写。
+架构决策见 `docs/adr/`，共享应用术语见 `GLOSSARY.md`。
 
 ## 打包与发布
 

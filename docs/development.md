@@ -41,7 +41,7 @@ The frontend browser tests use the real React UI with mocked Tauri IPC. See `fro
 
 `start_task` / `start_tasks` start a stopped engine automatically. F3 toggles the engine, serialized with other lifecycle commands. Explicit automation startup applies the configured game window layout; diagnostics do not. Pause releases input and freezes task timers. Resume captures a fresh screen. Stop clears the queue. A recoverable foreground/capture loss receives a bounded recovery period; see [feature logic](README_LOGIC_EN.md) and [IPC](ipc.md).
 
-Keep local work specifications and issues under `.scratch/` according to [the issue workflow](agents/issue-tracker.md). Record actual architectural decisions in `docs/adr/` and shared terms in `GLOSSARY.md`; avoid broad rewrites for local changes.
+Architectural decisions are documented in `docs/adr/`, with shared application terms in `GLOSSARY.md`.
 
 ## Packaging and publishing
 

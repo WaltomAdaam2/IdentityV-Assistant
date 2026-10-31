@@ -105,4 +105,4 @@ Assistant and login-component updates are separate. Assistant startup checking c
 
 Component hotfixes in 0.1.9 also show actual per-module byte counts and download speed. Reliable server lengths enable totals and percentages; otherwise the total remains unknown. Applying files and restoring the proxy have separate stages and are not presented as downloading.
 
-See [Updates and releases](updates_EN.md) for repository migration, legacy compatibility and publishing. Tests cover screenshot recognition, logic, mocked IPC and package integrity. Per user instruction, 0.1.9 and 0.1.10 do not receive installation, native-app execution, live account authentication or live gameplay validation.
+See [Updates and releases](updates_EN.md) for repository migration, legacy compatibility and publishing. Tests cover screenshot recognition, logic, mocked IPC and package integrity. Validation of 0.1.9 and 0.1.10 does not cover installation, native-app execution, live account authentication or live gameplay.

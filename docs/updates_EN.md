@@ -58,9 +58,9 @@ Use assets from the same build. Tauri CLI 2.12+ includes the version in the sign
 
 ## Publishing and release notes
 
-1. Create `SNAPSHOT-v<version>` from current main (for example `SNAPSHOT-v0.1.8`), update versions, pass checks, commit, push that branch, and create a PR to main using [the PR format](agents/pr-format.md).
+1. Create `SNAPSHOT-v<version>` from current main (for example `SNAPSHOT-v0.1.8`), update versions, pass checks, commit, push that branch, and create a PR to main with a factual description.
 2. Rebuild from that clean commit and verify signatures and offline checks.
-3. Write factual UTF-8 notes using [the release format](agents/release-format.md).
+3. Write factual UTF-8 notes using the release-note structure below.
 4. With GitHub CLI authenticated, create and upload a draft:
 
 ```powershell
@@ -71,9 +71,9 @@ Use a title, summary, `## 新增与优化`, `## 修复内容`, and a `**Full Cha
 
 The script checks the clean version-matched SNAPSHOT branch, unmerged PR state, matching remote/build commits, version, checksums, size, and signature text. The draft targets the actual build commit. It uploads all four assets and leaves the release as a draft; it never publishes. Existing tags or releases, including drafts, cause a stop rather than replacement or deletion. After an uncertain network response, inspect the existing GitHub state before resuming.
 
-5. The user reviews the PR, draft, checksums and build evidence. Once the PR merges into main, keep its SNAPSHOT branch permanently frozen: never commit, sync, merge, rebase or delete it. Later changes use a new version branch.
-6. The user personally publishes the reviewed draft on GitHub and makes a stable release Latest. Drafts are unavailable to the public updater until publication. The tag retains the verified build commit. Agents never publish for the user.
+5. Review the PR, draft, checksums and build evidence. After the PR merges, the draft and signed assets must still identify the original verified build commit.
+6. Manually publish the reviewed draft on GitHub and make a stable release Latest. Drafts are unavailable to the public updater until publication. The tag retains the verified build commit.
 
-If the user explicitly requests merging before draft creation, still build and verify the clean pushed SNAPSHOT commit before merging. Upload only that original build afterward with `-MergedPullRequest <number>`. The script verifies the merged PR's repository, version branch and original commit, main ancestry, unchanged remote branch and all existing artifact integrity checks. A clean detached worktree at that commit is supported; never modify or synchronize the frozen SNAPSHOT branch. This option cannot overwrite an existing tag/draft or publish a release.
+If the PR is merged before draft creation, still build and verify the clean pushed SNAPSHOT commit before merging. Upload only that original build afterward with `-MergedPullRequest <number>`. The script verifies the merged PR's repository, version branch and original commit, main ancestry, unchanged remote branch and all existing artifact integrity checks. A clean detached worktree at that commit is supported; never modify or synchronize the frozen SNAPSHOT branch. This option cannot overwrite an existing tag/draft or publish a release.
 
 Updater signatures are not Windows Authenticode signatures; Windows may report an unknown publisher. Current first-party source and releases from 0.1.7 use GPL-3.0-only. Historical binaries and third-party materials retain their original terms; see [Third-party notices](../THIRD_PARTY_NOTICES.md).
