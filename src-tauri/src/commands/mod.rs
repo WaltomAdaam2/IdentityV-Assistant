@@ -4,7 +4,7 @@ pub(crate) mod settings;
 
 #[tauri::command]
 pub fn open_project_repository() -> Result<(), String> {
-    open_url("https://github.com/WaltomAdaam2/IdentityV-Assistant/releases")
+    open_url("https://github.com/WaltomAdaam2/IdentityV-Assistant")
 }
 
 fn release_link(url: &str) -> Result<reqwest::Url, String> {

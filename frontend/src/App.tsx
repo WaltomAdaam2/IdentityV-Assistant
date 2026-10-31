@@ -8,6 +8,8 @@ import Journal from "./Journal";
 import GameLauncher from "./GameLauncher";
 import UpdatePanel from "./UpdatePanel";
 import SupportPanel from "./SupportPanel";
+import { useDialog } from "./useDialog";
+import { NumberInput, KeywordsInput } from "./SettingsInput";
 import SettingRow from "./SettingRow";
 import Icon, { type IconName } from "./Icon";
 import { defaultJournalSettings } from "./journalData";
@@ -805,6 +807,8 @@ export default function App() {
   const persistedSettingsRef = useRef("");
   const settingsSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [savedToast, setSavedToast] = useState<{ id: number; leaving: boolean } | null>(null);
+  const [savedHovered, setSavedHovered] = useState(false);
+  const [savedFocused, setSavedFocused] = useState(false);
   const savedToastRef = useRef<HTMLDivElement>(null);
   engineStatusRef.current = engineState(snapshot);
   const [tasks, setTasks] = useState(initialTasks);
@@ -818,12 +822,24 @@ export default function App() {
   });
   const [progress, setProgress] = useState<TaskProgress | null>(null);
   const [preflight, setPreflight] = useState<EngineEvent | null>(null);
-  const preflightDialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (preflight && !preflightDialog.current?.open) preflightDialog.current?.showModal();
-  }, [preflight]);
+  const originalStart = useRef<{label: string; command: Record<string, unknown>} | null>(null);
+  const [preflightBusy, setPreflightBusy] = useState(false);
+  const [lifecyclePending, setLifecyclePending] = useState<"start" | "stop" | "restart" | null>(null);
+  const lifecycleRequest = useRef<typeof lifecyclePending>(null);
+  const lifecyclePromise = useRef<Promise<void>>(Promise.resolve());
+  const [taskStartPending, setTaskStartPending] = useState(false);
+  const taskStartRequest = useRef(false);
+  const [restartPrompt, setRestartPrompt] = useState(false);
+  const {dialog: restartDialog, closing: restartClosing, close: closeRestart} = useDialog(restartPrompt, () => setRestartPrompt(false));
+  const {dialog: preflightDialog, closing: preflightClosing, close: closePreflight} = useDialog(Boolean(preflight), () => { setPreflight(null); originalStart.current = null; });
   const [settings, setSettings] = useState<Settings>(defaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsLoadError, setSettingsLoadError] = useState("");
+  const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
+  const [settingsSaveError, setSettingsSaveError] = useState<{message: string; saved: boolean} | null>(null);
+  const [eventError, setEventError] = useState("");
+  const [snapshotError, setSnapshotError] = useState("");
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const supportBusyRef = useRef(false);
   const [supportBusy, setSupportBusy] = useState(false);
   const [supportRevision, setSupportRevision] = useState(0);
@@ -950,7 +966,7 @@ export default function App() {
       } catch (error) {
         const message = current.actionFailed(label, asMessage(error));
         appendLog("error", message, "ui");
-        setNotice(message);
+        setNotice(current.actionFailed(label, ""), true, asMessage(error));
         return false;
       }
     },
@@ -960,6 +976,11 @@ export default function App() {
     async (label: string, command: Record<string, unknown>) => {
       const previousQueue = requestedTaskQueueRef.current;
       const type = command.type;
+      if (type === "start_task" || type === "start_tasks") {
+        if (taskStartRequest.current) return false;
+        taskStartRequest.current = true; setTaskStartPending(true);
+        originalStart.current = {label, command};
+      }
       if (type === "start_task" && typeof command.task === "string")
         requestedTaskQueueRef.current = [command.task];
       else if (type === "start_tasks" && Array.isArray(command.tasks))
@@ -967,8 +988,11 @@ export default function App() {
           (task): task is string => typeof task === "string",
         );
       const sent = await run(label, () => bridge.sendEngineCommand(command));
-      if (!sent && (type === "start_task" || type === "start_tasks"))
+      if (!sent && (type === "start_task" || type === "start_tasks")) {
         requestedTaskQueueRef.current = previousQueue;
+        originalStart.current = null;
+        taskStartRequest.current = false; setTaskStartPending(false);
+      }
       return sent;
     },
     [run],
@@ -976,7 +1000,9 @@ export default function App() {
   const refreshSnapshot = useCallback(async () => {
     try {
       setSnapshot(await bridge.getEngineSnapshot());
+      setSnapshotError("");
     } catch (error) {
+      setSnapshotError(asMessage(error));
       appendLog(
         "debug",
         translations[languageRef.current].snapshotFailed(asMessage(error)),
@@ -984,8 +1010,25 @@ export default function App() {
       );
     }
   }, [appendLog]);
+  const lifecycle = useCallback(async (action: "start" | "stop" | "restart") => {
+    if (lifecycleRequest.current && (action !== "stop" || lifecycleRequest.current === "stop")) return;
+    const preceding = lifecyclePromise.current;
+    lifecycleRequest.current = action; setLifecyclePending(action);
+    const operation = (async () => {
+      // A later Stop must win over an in-flight restart's eventual Start.
+      if (action === "stop") await preceding;
+      await run(translations[languageRef.current].dashboard[action], async () => {
+        await ({start: bridge.startEngine, stop: bridge.stopEngine, restart: bridge.restartEngine})[action]();
+        await refreshSnapshot();
+      });
+    })();
+    lifecyclePromise.current = operation;
+    try { await operation; }
+    finally { if (lifecycleRequest.current === action) { lifecycleRequest.current = null; setLifecyclePending(null); } }
+  }, [run, refreshSnapshot]);
   useEffect(() => {
-    void refreshSnapshot();
+    let disposed = false;
+    setSettingsLoadError("");
     void bridge
       .loadSettings()
       .then((loaded) => {
@@ -1015,11 +1058,19 @@ export default function App() {
         setSettingsLoaded(true);
         appendLog("info", hydrated.app.language === "zh-CN" ? "配置加载完成" : "Configuration loaded", "settings", true);
       })
-      .catch(() => undefined);
+      .catch(error => { if (!disposed) setSettingsLoadError(asMessage(error)); });
+    return () => { disposed = true; };
+  }, [appendLog, settingsLoadAttempt]);
+  useEffect(() => {
+    void refreshSnapshot();
+    setEventError("");
     let dispose: (() => void) | undefined;
     let disposed = false;
     void bridge
       .onEngineEvent((event: EngineEvent) => {
+        if (["task_started", "task_paused", "task_finished"].includes(event.type ?? "") || (event.type === "task_preflight" && event.for_start === true && event.ok === false) || (event.type === "error" && !event.recoverable)) {
+          taskStartRequest.current = false; setTaskStartPending(false);
+        }
         const current = translations[languageRef.current];
         if (event.type === "task_started" && event.task_id)
           progressStagesRef.current.delete(event.task_id);
@@ -1118,7 +1169,7 @@ export default function App() {
           ].includes(event.code ?? "")
         ) {
           setDiagnosticError(event);
-          setNotice(event.message ?? event.code ?? current.receivedEvent);
+          setNotice(event.message ?? event.code ?? current.receivedEvent, true);
         }
         if (event.type === "template_match")
           setTemplateMatch({
@@ -1208,6 +1259,7 @@ export default function App() {
         }
         if (event.type === "task_preflight") {
           setPreflight(event.ok === true && event.for_start === true ? null : event);
+          if (event.ok === true && event.for_start === true) originalStart.current = null;
           if (event.ok === false && event.for_start === true) {
             requestedTaskQueueRef.current = [];
             setTaskControlEvent(previous => ({revision: previous.revision + 1, type: "task_preflight"}));
@@ -1283,26 +1335,25 @@ export default function App() {
         if (disposed) void unlisten();
         else dispose = unlisten;
       })
-      .catch(() => undefined);
+      .catch(error => { if (!disposed) setEventError(asMessage(error)); });
     const timer = window.setInterval(() => void refreshSnapshot(), 5_000);
     return () => {
       disposed = true;
       window.clearInterval(timer);
       dispose?.();
     };
-  }, [appendLog, refreshSnapshot, updateFrame]);
+  }, [appendLog, refreshSnapshot, updateFrame, connectionAttempt]);
   useEffect(() => {
     if (!settingsLoaded || startupHandled.current) return;
     startupHandled.current = true;
     if (settings.app.launch_engine_on_start)
-      void run(t.dashboard.start, async () => {
-        await bridge.startEngine();
-        await refreshSnapshot();
-      });
-  }, [settingsLoaded, settings.app.launch_engine_on_start, run, refreshSnapshot, t.dashboard.start]);
+      void lifecycle("start");
+  }, [settingsLoaded, settings.app.launch_engine_on_start, lifecycle]);
   useEffect(() => {
     document.documentElement.dataset.theme = settings.app.theme;
+    document.documentElement.style.colorScheme = settings.app.theme === "system" ? "light dark" : settings.app.theme;
   }, [settings.app.theme]);
+  useEffect(() => { document.documentElement.lang = language; }, [language]);
   useEffect(() => {
     if (!settingsLoaded) return;
     void bridge
@@ -1325,15 +1376,14 @@ export default function App() {
         try {
           const nextSettings = { ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } };
           const serialized = JSON.stringify(nextSettings);
-          if (persistedSettingsRef.current === serialized) return;
-          await bridge.saveSettings(nextSettings);
-          persistedSettingsRef.current = serialized;
+          if (persistedSettingsRef.current !== serialized) {
+            await bridge.saveSettings(nextSettings);
+            persistedSettingsRef.current = serialized;
+          }
           if (superseded) return;
           const { journal: _journal, ...engineSettings } = nextSettings;
           const serializedEngineSettings = JSON.stringify(engineSettings);
           const engineSettingsChanged = savedEngineSettingsRef.current !== serializedEngineSettings;
-          if (engineSettingsChanged) setSavedToast({ id: Date.now(), leaving: false });
-          savedEngineSettingsRef.current = serializedEngineSettings;
           if (
             engineSettingsChanged &&
             !["stopped", "starting", "stopping", "error"].includes(
@@ -1345,13 +1395,22 @@ export default function App() {
               settings: nextSettings,
             });
           }
+          savedEngineSettingsRef.current = serializedEngineSettings;
+          if (!superseded) {
+            setSettingsSaveError(null);
+            if (engineSettingsChanged) setSavedToast({ id: Date.now(), leaving: false });
+          }
         } catch (error) {
           const message = translations[languageRef.current].actionFailed(
             translations[languageRef.current].nav.settings,
             asMessage(error),
           );
           appendLog("error", message, "settings");
-          if (!superseded) setNotice(message);
+          if (!superseded) {
+            const next = {...settings, tasks: {enabled: enabledTaskIds ? enabledTaskIds.split(",") : []}};
+            setSettingsSaveError({message: asMessage(error), saved: persistedSettingsRef.current === JSON.stringify(next)});
+            setNotice(translations[languageRef.current].actionFailed(translations[languageRef.current].nav.settings, ""), true, asMessage(error));
+          }
         }
       };
       settingsSaveQueueRef.current = settingsSaveQueueRef.current.then(save, save);
@@ -1377,14 +1436,18 @@ export default function App() {
     return () => { workspace.removeEventListener("scroll", schedule); resize.disconnect(); cancelAnimationFrame(frame); };
   }, [savedToast?.id]);
   useEffect(() => {
-    if (!savedToast) return;
+    if (!savedToast || savedHovered || savedFocused) return;
     const exit = window.setTimeout(() => setSavedToast((value) => value ? { ...value, leaving: true } : null), 2000);
     const remove = window.setTimeout(() => setSavedToast(null), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 2000 : 2500);
     return () => { window.clearTimeout(exit); window.clearTimeout(remove); };
-  }, [savedToast?.id]);
+  }, [savedToast?.id, savedHovered, savedFocused]);
   useEffect(() => {
     document.title = t.about.name;
   }, [t.about.name]);
+  useLayoutEffect(() => {
+    const heading = workspaceRef.current?.querySelector<HTMLElement>(page === "launcher" ? ".launcher-choose" : ".topbar h1");
+    if (heading) { if (heading.tagName !== "BUTTON") heading.tabIndex = -1; heading.focus({preventScroll: true}); }
+  }, [page]);
   useEffect(
     () => () => {
       if (pageTransitionTimer.current !== null)
@@ -1435,25 +1498,14 @@ export default function App() {
     }
   }, [page, settings.app.developer_mode]);
   const actions = {
-    start: () =>
-      run(t.dashboard.start, async () => {
-        await bridge.startEngine();
-        await refreshSnapshot();
-      }),
-    stop: () =>
-      run(t.dashboard.stop, async () => {
-        await bridge.stopEngine();
-        await refreshSnapshot();
-      }),
-    restart: () =>
-      run(t.dashboard.restart, async () => {
-        await bridge.restartEngine();
-        await refreshSnapshot();
-      }),
+    start: () => { void lifecycle("start"); },
+    stop: () => { void lifecycle("stop"); },
+    restart: () => { if (tasks.some(task => task.status !== "idle")) setRestartPrompt(true); else void lifecycle("restart"); },
   };
   const content = {
     dashboard: (
       <Dashboard
+        pending={lifecyclePending}
         progress={progress}
         language={language}
         snapshot={snapshot}
@@ -1466,6 +1518,7 @@ export default function App() {
     ),
     tasks: (
       <Tasks
+        startPending={taskStartPending}
         language={language}
         tasks={tasks}
         onChange={setTasks}
@@ -1507,6 +1560,7 @@ export default function App() {
     ),
     settings: (<SettingsPage
       language={language}
+      onNotice={setNotice}
       settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
       setSettings={value => { if (!supportBusyRef.current) setSettings(value); }}
       support={<SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")} onNotice={setNotice}
@@ -1546,7 +1600,13 @@ export default function App() {
   return (
     <>
       <WindowTitleBar language={language} />
-      {savedToast && <div ref={savedToastRef} key={savedToast.id} className={`settings-saved-toast${savedToast.leaving ? " leaving" : ""}`} role="status"><span className="saved-check" aria-hidden="true">✓</span>{language === "zh-CN" ? "设置已保存" : "Settings saved"}</div>}
+      {restartPrompt && createPortal(<dialog ref={restartDialog} data-closing={restartClosing || undefined} className="update-dialog" aria-labelledby="restart-title" onCancel={event => {event.preventDefault(); closeRestart();}}>
+        <h2 id="restart-title">{language === "zh-CN" ? "重启自动化服务？" : "Restart automation service?"}</h2><p>{language === "zh-CN" ? "当前任务和队列会中断。重启完成后需要重新启动任务。" : "This interrupts the current task and queue. Start your tasks again after restarting."}</p>
+        <footer className="update-actions"><button autoFocus onClick={() => closeRestart()}>{language === "zh-CN" ? "取消" : "Cancel"}</button><button className="primary" onClick={() => closeRestart(() => {void lifecycle("restart");})}>{language === "zh-CN" ? "确认重启" : "Restart service"}</button></footer>
+      </dialog>, document.body)}
+      {savedToast && <div ref={savedToastRef} className={`settings-saved-toast${savedToast.leaving ? " leaving" : ""}`} role="status" tabIndex={0}
+        onMouseEnter={() => {setSavedHovered(true); setSavedToast(value => value && {...value, leaving: false});}} onMouseLeave={() => setSavedHovered(false)}
+        onFocus={() => {setSavedFocused(true); setSavedToast(value => value && {...value, leaving: false});}} onBlur={() => setSavedFocused(false)}><span className="saved-check" aria-hidden="true">✓</span>{language === "zh-CN" ? "设置已保存" : "Settings saved"}</div>}
       <main className="shell">
         <aside className="sidebar">
           <div className="brand sidebar-card" title={t.about.name}>
@@ -1586,7 +1646,7 @@ export default function App() {
             </div>
             <div className="engine-status">
               <span className={`dot ${engineState(snapshot)}`} />
-              {t.engine} {stateLabel(engineState(snapshot), language)}
+              <span key={eventError || snapshotError ? "unavailable" : engineState(snapshot)} className="status-label">{eventError || snapshotError ? (language === "zh-CN" ? "状态不可用" : "Status unavailable") : `${t.engine} ${stateLabel(engineState(snapshot), language)}`}</span>
             </div>
           </header>
           {visibleNotice && (
@@ -1603,24 +1663,30 @@ export default function App() {
             </div>
             </div></div>
           )}
-          <div className={`page-content page-${page} page-${pagePhase}`} style={{ "--page-direction": pageDirection } as CSSProperties}
+          <div className={`page-content page-${page} page-${pagePhase}`} ref={element => { if (element) element.inert = pagePhase === "leave"; }} style={{ "--page-direction": pageDirection } as CSSProperties}
             onAnimationEnd={(event) => { if (event.target === event.currentTarget && event.animationName === "page-in") setPagePhase("idle"); }}>
-            <UpdatePanel settings={settings} loaded={settingsLoaded} expanded={page === "settings"}
+            {(eventError || snapshotError) && <div className="persistent-feedback" role="alert"><div><strong>{language === "zh-CN" ? "状态连接失败，显示内容可能已过时" : "Status connection failed; displayed information may be outdated"}</strong><details><summary>{language === "zh-CN" ? "错误详情" : "Error details"}</summary><p>{eventError || snapshotError}</p></details></div><button onClick={() => setConnectionAttempt(value => value + 1)}>{language === "zh-CN" ? "重新连接" : "Reconnect"}</button></div>}
+            {page === "settings" && settingsSaveError && <div className="persistent-feedback settings-save-error" role="alert"><div><strong>{settingsSaveError.saved ? (language === "zh-CN" ? "设置已保存，但引擎尚未应用" : "Settings saved, but not applied by the engine") : (language === "zh-CN" ? "尚未保存" : "Settings not saved")}</strong><p>{settingsSaveError.message}</p></div><button onClick={() => setSupportRevision(value => value + 1)}>{language === "zh-CN" ? "重试保存" : "Retry save"}</button></div>}
+            <UpdatePanel settings={settings} loaded={settingsLoaded} expanded={page === "settings" && settingsLoaded}
               onSettingsChange={(app) => setSettings((previous) => ({ ...previous, app }))}
               onOpen={() => navigate("settings")} />
-            {preflight && createPortal(<dialog ref={preflightDialog} className="update-dialog preflight-dialog" aria-labelledby="preflight-title"
-              onCancel={(event) => { event.preventDefault(); setPreflight(null); }} onClose={() => setPreflight(null)}>
-              <button className="update-dialog-close" aria-label={language === "zh-CN" ? "关闭启动检查" : "Close task preflight"} onClick={() => setPreflight(null)}>×</button>
+            {preflight && createPortal(<dialog ref={preflightDialog} data-closing={preflightClosing || undefined} className="update-dialog preflight-dialog" aria-labelledby="preflight-title"
+              onCancel={(event) => { event.preventDefault(); if (!preflightBusy) closePreflight(); }}>
+              <button className="update-dialog-close" disabled={preflightBusy} aria-label={language === "zh-CN" ? "关闭启动检查" : "Close task preflight"} onClick={() => closePreflight()}>×</button>
               <h2 id="preflight-title">{language === "zh-CN" ? "任务启动检查" : "Task preflight"}</h2>
               <p role={preflight.ok ? "status" : "alert"}>{({ready: ["检查通过，可以启动任务。", "Checks passed. Ready to start."], window_missing: ["未找到游戏窗口，请先启动游戏。", "Game window not found. Start the game first."], window_unresponsive: ["游戏窗口无响应，请等待恢复。", "Game window is not responding. Wait for it to recover."], window_minimized: ["游戏窗口仍处于最小化，请还原后重试。", "Restore the minimized game window and retry."], capture_failed: ["无法获取游戏画面，请检查捕捉设置。", "Could not capture the game. Check capture settings."]}[preflight.code ?? ""] ?? ["检查未完成", "Checks incomplete"])[language === "zh-CN" ? 0 : 1]}</p>
               {Array.isArray(preflight.warnings) && preflight.warnings.length > 0 && <p>{language === "zh-CN" ? "窗口尺寸或前台状态与期望不同，任务仍会遵循现有窗口恢复规则。" : "Window size or focus differs; existing window recovery still applies."}</p>}
               <footer className="update-actions">
-                <button onClick={() => void run("Preflight", async () => { await bridge.taskPreflight(); })}>{language === "zh-CN" ? "重新检查" : "Check again"}</button>
-                <button onClick={() => { setPreflight(null); navigate("debug"); }}>{t.nav.debug}</button>
-                <button className="primary" autoFocus onClick={() => setPreflight(null)}>{language === "zh-CN" ? "关闭" : "Close"}</button>
+                <button disabled={preflightBusy} onClick={() => { setPreflightBusy(true); void run("Preflight", async () => { await bridge.taskPreflight(); }).finally(() => setPreflightBusy(false)); }}>{preflightBusy ? (language === "zh-CN" ? "检查中…" : "Checking…") : (language === "zh-CN" ? "重新检查" : "Check again")}</button>
+                <button disabled={preflightBusy} onClick={() => closePreflight(() => navigate("debug"))}>{t.nav.debug}</button>
+                {preflight.ok === true && originalStart.current && <button className="primary" disabled={preflightBusy || tasks.some(task => task.status !== "idle")} onClick={() => {
+                  const original = originalStart.current;
+                  if (original) closePreflight(() => { void sendEngineCommand(original.label, original.command); });
+                }}>{language === "zh-CN" ? "启动原任务" : "Start requested task"}</button>}
+                <button autoFocus disabled={preflightBusy} onClick={() => closePreflight()}>{language === "zh-CN" ? "关闭" : "Close"}</button>
               </footer>
             </dialog>, document.body)}
-            {content}
+            {!settingsLoaded && ["settings", "tasks", "launcher", "journal"].includes(page) ? <section className="panel" role={settingsLoadError ? "alert" : "status"}><h2>{language === "zh-CN" ? "读取设置" : "Loading settings"}</h2><p>{settingsLoadError || (language === "zh-CN" ? "正在读取配置…" : "Reading configuration…")}</p>{settingsLoadError && <button onClick={() => setSettingsLoadAttempt(value => value + 1)}>{language === "zh-CN" ? "重新加载" : "Reload settings"}</button>}</section> : content}
           </div>
         </section>
       </main>
@@ -1629,6 +1695,7 @@ export default function App() {
 }
 
 function Dashboard({
+  pending,
   progress,
   language,
   snapshot,
@@ -1638,6 +1705,7 @@ function Dashboard({
   onRestart,
   onNavigate,
 }: {
+  pending: "start" | "stop" | "restart" | null;
   progress: TaskProgress | null;
   language: Language;
   snapshot: EngineSnapshot;
@@ -1665,18 +1733,18 @@ function Dashboard({
         <div className="button-row">
           <button
             className="primary"
-            disabled={state === "running" || state === "starting"}
+            disabled={!!pending || !["stopped", "error"].includes(state)}
             onClick={onStart}
           >
-            {t.start}
+            {pending === "start" ? (language === "zh-CN" ? "启动中…" : "Starting…") : t.start}
           </button>
           <button
-            disabled={state === "stopped" || state === "stopping"}
+            disabled={pending === "stop" || (state === "stopped" && !pending) || state === "stopping"}
             onClick={onStop}
           >
-            {t.stop}
+            {pending === "stop" ? (language === "zh-CN" ? "停止中…" : "Stopping…") : t.stop}
           </button>
-          <button onClick={onRestart}>{t.restart}</button>
+          <button disabled={!!pending || state === "starting" || state === "stopping"} onClick={onRestart}>{pending === "restart" ? (language === "zh-CN" ? "重启中…" : "Restarting…") : t.restart}</button>
         </div>
       </div>
       <div className="stat-grid">
@@ -1743,6 +1811,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 function Tasks({
+  startPending,
   language,
   tasks,
   onChange,
@@ -1751,6 +1820,7 @@ function Tasks({
   taskControlEvent,
   onCommand,
 }: {
+  startPending: boolean;
   language: Language;
   tasks: TaskItem[];
   onChange: (value: TaskItem[] | ((current: TaskItem[]) => TaskItem[])) => void;
@@ -1772,6 +1842,7 @@ function Tasks({
   const [pendingCommand, setPendingCommand] = useState<{
     type: "start" | "pause" | "resume" | "stop";
     afterRevision: number;
+    taskId?: string;
   } | null>(null);
   const updateAutomation = (patch: Partial<Settings["automation"]>) =>
     setSettings({ ...settings, automation: { ...settings.automation, ...patch } });
@@ -1788,7 +1859,7 @@ function Tasks({
     );
   const enabledTasks = tasks.filter((task) => task.enabled);
   const hasActiveTask = tasks.some((task) => task.status !== "idle");
-  const commandPending = pendingCommand !== null;
+  const commandPending = pendingCommand !== null || startPending;
   useEffect(() => {
     if (!pendingCommand || taskControlEvent.revision <= pendingCommand.afterRevision)
       return;
@@ -1820,13 +1891,16 @@ function Tasks({
           <h2>{t.title}</h2>
           <p>{t.hint}</p>
         </div>
-        <button
+        <div className="button-row"><button
           className="primary"
           disabled={!enabledTasks.length || hasActiveTask || commandPending}
           onClick={() => void startFirst()}
         >
-          {t.startEnabled}
-        </button>
+          {(pendingCommand?.type === "start" || startPending) && !pendingCommand?.taskId ? (language === "zh-CN" ? "启动检查中…" : "Checking before start…") : t.startEnabled}
+        </button><button disabled={!hasActiveTask || commandPending} onClick={() => {
+          setPendingCommand({type: "stop", afterRevision: taskControlEvent.revision});
+          void onCommand(t.stopTask, {type: "stop_task"}).then(sent => { if (!sent) setPendingCommand(null); }, () => setPendingCommand(null));
+        }}>{pendingCommand?.type === "stop" ? (language === "zh-CN" ? "停止中…" : "Stopping…") : (language === "zh-CN" ? "停止任务与队列" : "Stop task and queue")}</button></div>
       </div>
       <div className="task-list">
         {tasks.map((task) => {
@@ -1856,6 +1930,7 @@ function Tasks({
               <label className="switch">
                 <input
                   type="checkbox"
+                  aria-label={language === "zh-CN" ? `启用${name}任务` : `Enable ${name} task`}
                   checked={task.enabled}
                   onChange={(event) =>
                     update(task.id, { enabled: event.target.checked })
@@ -1870,7 +1945,7 @@ function Tasks({
               <button
                 disabled={commandPending || (action === "start" && hasActiveTask)}
                 onClick={() => void (async () => {
-                  setPendingCommand({ type: action, afterRevision: taskControlEvent.revision });
+                  setPendingCommand({ type: action, afterRevision: taskControlEvent.revision, taskId: task.id });
                   try {
                     const sent = await onCommand(
                       label,
@@ -1886,7 +1961,7 @@ function Tasks({
                   }
                 })()}
               >
-                {action === "pause"
+                {pendingCommand?.taskId === task.id ? (language === "zh-CN" ? (action === "start" ? "检查中…" : "处理中…") : (action === "start" ? "Checking…" : "Working…")) : action === "pause"
                   ? t.pause
                   : action === "resume"
                     ? t.resume
@@ -1897,21 +1972,6 @@ function Tasks({
                 setEditingTask(editingTask === task.id ? null : task.id);
               }}>
                 {editingTask === task.id ? t.closeEdit : t.edit}
-              </button>
-              <button
-                className="task-stop-button"
-                disabled={task.status === "idle" || commandPending}
-                onClick={() => void (async () => {
-                  setPendingCommand({ type: "stop", afterRevision: taskControlEvent.revision });
-                  try {
-                    const sent = await onCommand(t.stopTask, { type: "stop_task" });
-                    if (!sent) setPendingCommand(null);
-                  } catch {
-                    setPendingCommand(null);
-                  }
-                })()}
-              >
-                {translations[language].dashboard.stop}
               </button>
               <span key={task.status} className={`tag task-status ${task.status}`}>{statusLabel(task.status, language)}</span>
             </article>
@@ -1927,18 +1987,18 @@ function Tasks({
                   </select>
                 </label>
                 <label>{labels.loginTimeout}
-                  <input type="number" min="30" max="900" value={settings.automation.login_timeout_seconds} onChange={(event) => updateAutomation({ login_timeout_seconds: Math.max(30, Math.min(900, Number(event.target.value))) })} />
+                  <NumberInput language={language} min="30" max="900" value={settings.automation.login_timeout_seconds} onValue={login_timeout_seconds => updateAutomation({login_timeout_seconds})} />
                 </label>
                 {timingFields.map(([key, label, min, max]) => <label key={key}>{label}
-                  <input type="number" min={min} max={max} value={settings.automation[key]} onChange={(event) => updateAutomation({ [key]: Math.max(min, Math.min(max, Number(event.target.value))) })} />
+                  <NumberInput language={language} min={min} max={max} value={settings.automation[key]} onValue={value => updateAutomation({[key]: value})} />
                 </label>)}
               </> : <>
                 <label className="check-label"><input type="checkbox" checked={settings.automation[loopKey]} onChange={(event) => updateAutomation({ [loopKey]: event.target.checked })} />{t.infiniteLoop}</label>
                 {task.id === "blackjack" && <label>{t.cameraScale}
-                  <input type="number" min="20" max="300" value={settings.automation.camera_turn_scale_percent} onChange={(event) => updateAutomation({ camera_turn_scale_percent: Math.max(20, Math.min(300, Number(event.target.value))) })} />
+                  <NumberInput language={language} min="20" max="300" value={settings.automation.camera_turn_scale_percent} onValue={camera_turn_scale_percent => updateAutomation({camera_turn_scale_percent})} />
                 </label>}
                 {timingFields.map(([key, label, min, max]) => <label key={key}>{label}
-                  <input type="number" min={min} max={max} value={settings.automation[key]} onChange={(event) => updateAutomation({ [key]: Math.max(min, Math.min(max, Number(event.target.value))) })} />
+                  <NumberInput language={language} min={min} max={max} value={settings.automation[key]} onValue={value => updateAutomation({[key]: value})} />
                 </label>)}
               </>}
               <p>{t.editHint}</p>
@@ -2003,12 +2063,12 @@ function Runtime({
           </div>
         </div>
         <textarea
-          className="command-input"
+          className="command-input" aria-label={t.command} aria-invalid={!!error} aria-describedby={error ? "command-error" : undefined}
           value={command}
           onChange={(event) => setCommand(event.target.value)}
           spellCheck={false}
         />
-        {error && <p className="form-error">{error}</p>}
+        {error && <p id="command-error" className="form-error" role="alert">{error}</p>}
         <button className="primary" onClick={send}>
           {t.send}
         </button>
@@ -2035,12 +2095,13 @@ function Debug({
   lastPlannedAction: EngineEvent | null;
   developerInputEnabled: boolean;
   appendLog: (level: LogLevel, message: string, source?: string) => void;
-  setNotice: (value: string) => void;
+  setNotice: (value: string, error?: boolean, details?: string) => void;
 }) {
   const t = translations[language].debug;
   const [templateName, setTemplateName] = useState("test/mock_template.pgm");
   const [busy, setBusy] = useState<string | null>(null);
   const request = async (label: string, action: () => Promise<unknown>, waitsForResult = false) => {
+    if (busy) return;
     setBusy(label);
     try {
       await action();
@@ -2053,7 +2114,7 @@ function Debug({
         asMessage(error),
       );
       appendLog("error", message, "debug");
-      setNotice(message);
+      setNotice(language === "zh-CN" ? "操作未完成" : "Action failed", true, asMessage(error));
     } finally {
       setBusy(null);
     }
@@ -2092,7 +2153,7 @@ function Debug({
           disabled={Boolean(busy)}
           onClick={() => void request(t.detectWindow, bridge.detectWindow, true)}
         >
-          {t.detect}
+          {busy === t.detectWindow ? (language === "zh-CN" ? "检查中…" : "Checking…") : t.detect}
         </button>
         {windowInfo && (
           <dl className="key-values">
@@ -2160,7 +2221,7 @@ function Debug({
           disabled={Boolean(busy)}
           onClick={() => void request(t.captureFrame, bridge.captureFrame, true)}
         >
-          {t.capture}
+          {busy === t.captureFrame ? (language === "zh-CN" ? "捕获中…" : "Capturing…") : t.capture}
         </button>
         <div className="preview">
           {frame?.imageUrl ? (
@@ -2313,6 +2374,7 @@ const Logs = memo(function Logs({
       <div className="log-toolbar">
         <div className="filters">
           <select
+            aria-label={t.level}
             value={level}
             onChange={(event) => {
               setLevel(event.target.value as "all" | LogLevel);
@@ -2327,6 +2389,7 @@ const Logs = memo(function Logs({
             ))}
           </select>
           <input
+            aria-label={t.filter}
             placeholder={t.filter}
             value={query}
             onChange={(event) => { setQuery(event.target.value); setPage(1); }}
@@ -2383,18 +2446,20 @@ function SettingsPage({
   settings,
   setSettings,
   support,
+  onNotice,
 }: {
   language: Language;
   settings: Settings;
   setSettings: (value: Settings) => void;
   support: ReactNode;
+  onNotice: (message: string, error?: boolean, details?: string) => void;
 }) {
   const t = translations[language].settings;
-  const [settingsActionError, setSettingsActionError] = useState("");
   const [settingsActionBusy, setSettingsActionBusy] = useState(false);
   const desktopAction = async (action: () => Promise<unknown>) => {
-    setSettingsActionError(""); setSettingsActionBusy(true);
-    try { await action(); } catch (error) { setSettingsActionError(asMessage(error)); }
+    if (settingsActionBusy) return;
+    setSettingsActionBusy(true);
+    try { await action(); } catch (error) { onNotice(language === "zh-CN" ? "操作未完成" : "Action failed", true, asMessage(error)); }
     finally { setSettingsActionBusy(false); }
   };
   const updateApp = (patch: Partial<Settings["app"]>) =>
@@ -2410,14 +2475,8 @@ function SettingsPage({
     setSettings({ ...settings, capture: { ...settings.capture, ...patch } });
   const updateVision = (patch: Partial<Settings["vision"]>) =>
     setSettings({ ...settings, vision: { ...settings.vision, ...patch } });
-  const keywords = (value: string) =>
-    value
-      .split(/[,，]/)
-      .map((item) => item.trim())
-      .filter(Boolean);
   return (
     <section className="settings-form">
-      {settingsActionError && <p className="form-error" role="alert">{settingsActionError}</p>}
       <section className="panel">
         <h2>{t.general}</h2>
         <p>{t.generalHint}</p>
@@ -2512,46 +2571,32 @@ function SettingsPage({
           </select>
         </SettingRow>
         <SettingRow icon="search" title={t.titleKeywords} description={language === "zh-CN" ? "用于查找游戏窗口，多个关键词用逗号分隔" : "Find the game window using comma-separated title keywords."} language={language}>
-          <input
-            value={settings.game_window.title_contains.join("，")}
-            onChange={(event) =>
-              updateWindow({ title_contains: keywords(event.target.value) })
-            }
+          <KeywordsInput
+            value={settings.game_window.title_contains}
+            onValue={title_contains => updateWindow({title_contains})}
             placeholder="第五人格，Identity V"
           />
         </SettingRow>
         <SettingRow icon="process" title={t.processNames} description={language === "zh-CN" ? "用于识别游戏进程，多个名称用逗号分隔" : "Identify game processes using comma-separated names."} language={language}>
-          <input
-            value={settings.game_window.process_names.join("，")}
-            onChange={(event) =>
-              updateWindow({ process_names: keywords(event.target.value) })
-            }
+          <KeywordsInput
+            value={settings.game_window.process_names}
+            onValue={process_names => updateWindow({process_names})}
             placeholder="dwrg.exe，IdentityV.exe"
           />
         </SettingRow>
         <SettingRow icon="classes" title={t.classNames} description={language === "zh-CN" ? "可选窗口类名；留空使用默认识别" : "Optional window classes. Leave empty for default detection."} language={language}>
-          <input
-            value={settings.game_window.class_names.join("，")}
-            onChange={(event) =>
-              updateWindow({ class_names: keywords(event.target.value) })
-            }
-          />
+          <KeywordsInput value={settings.game_window.class_names} onValue={class_names => updateWindow({class_names})} />
         </SettingRow>
       </section>
       <section className="panel developer-panel">
         <h2>{t.engineCapture}</h2>
         <p>{t.engineCaptureHint}</p>
         <SettingRow icon="clock" title={t.heartbeat} description={language === "zh-CN" ? "检测自动化引擎连接状态的时间间隔" : "Interval between engine connection checks."} language={language}>
-          <input
-            type="number"
+          <NumberInput language={language}
             min="0.5"
             step="0.5"
             value={settings.engine.heartbeat_interval_seconds}
-            onChange={(event) =>
-              updateEngine({
-                heartbeat_interval_seconds: Number(event.target.value),
-              })
-            }
+            onValue={heartbeat_interval_seconds => updateEngine({heartbeat_interval_seconds})}
           />
         </SettingRow>
         <SettingRow icon="camera" title={t.captureBackend} description={language === "zh-CN" ? "选择游戏画面的截图方式" : "Choose how game frames are captured."} language={language}>
@@ -2564,17 +2609,6 @@ function SettingsPage({
             <option value="dxcam">DXcam</option>
             <option value="mss">MSS</option>
           </select>
-        </SettingRow>
-        <SettingRow icon="fps" title={t.idleFps} description={language === "zh-CN" ? "空闲时每秒捕获的画面数量" : "Number of frames captured per second while idle."} language={language}>
-          <input
-            type="number"
-            min="1"
-            max="60"
-            value={settings.capture.idle_fps}
-            onChange={(event) =>
-              updateCapture({ idle_fps: Number(event.target.value) })
-            }
-          />
         </SettingRow>
         <SettingRow icon="memory" title={t.memoryProtection} description={language === "zh-CN" ? "自动检测电脑总内存占用，超过 90% 时清理未使用缓存，可能略微影响脚本速度" : "Monitor total system memory; above 90%, release unused caches. This may briefly slow automation."} language={language}>
           <input
@@ -2593,15 +2627,12 @@ function SettingsPage({
         </SettingRow>
         <SettingRow icon="logFolder" title={language === "zh-CN" ? "日志文件" : "Log files"} description={language === "zh-CN" ? "打开本机保存的每日运行日志" : "Open the daily log archives on this computer."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></SettingRow>
         <SettingRow icon="threshold" title={t.threshold} description={language === "zh-CN" ? "仅用于开发者模板诊断，不影响任务内的识别规则" : "Used for template diagnostics only; task recognition rules are unchanged."} language={language}>
-          <input
-            type="number"
+          <NumberInput language={language}
             min="0"
             max="1"
             step="0.01"
             value={settings.vision.template_threshold}
-            onChange={(event) =>
-              updateVision({ template_threshold: Number(event.target.value) })
-            }
+            onValue={template_threshold => updateVision({template_threshold})}
           />
         </SettingRow>
         {support}

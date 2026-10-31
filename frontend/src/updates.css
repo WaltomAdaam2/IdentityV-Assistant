@@ -2,6 +2,8 @@
 .update-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 22px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 20px 65px var(--shadow); overflow: auto; }
 .update-dialog.has-release { width: min(560px, calc(100vw - 32px)); }
 .update-dialog[open] { animation: update-dialog-enter 220ms var(--ease-out); }
+.update-dialog[open][data-closing] { animation: update-dialog-exit 180ms ease-in both; pointer-events: none; }
+.update-dialog[data-closing]::backdrop { animation: update-backdrop-exit 180ms ease-in both; }
 .update-dialog::backdrop { background: rgba(36, 29, 23, .28); }
 .update-dialog-close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted-strong); }
 .update-dialog-heading { display: flex; align-items: flex-start; gap: 12px; padding: 0 18px 16px 0; text-align: left; }
@@ -42,6 +44,8 @@
 .update-download small { color: var(--muted); font-variant-numeric: tabular-nums; }
 .update-verified { color: var(--accent); margin: 12px 0 6px; font-size: 12px; }
 @keyframes update-dialog-enter { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes update-dialog-exit { to { opacity: 0; transform: translateY(4px) scale(.99); } }
+@keyframes update-backdrop-exit { to { opacity: 0; } }
 @keyframes update-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .update-dialog[open], .update-state-icon svg { animation: none; } .update-download progress::-webkit-progress-value { transition: none; } }
 

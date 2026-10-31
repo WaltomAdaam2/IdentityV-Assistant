@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { Settings } from "./types";
 import SettingRow, { SettingIcon } from "./SettingRow";
+import { useDialog } from "./useDialog";
 import "./updates.css";
 import "./support.css";
 
@@ -56,19 +57,14 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
   const [restore, setRestore] = useState<RestorePreview | null>(null);
   const [bundle, setBundle] = useState<BundlePreview | null>(null);
   const [includeImages, setIncludeImages] = useState(false);
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    if (restore || bundle) element?.showModal();
-    return () => element?.close();
-  }, [restore, bundle]);
-  const closePreview = () => { dialog.current?.close(); setRestore(null); setBundle(null); };
+  const {dialog, closing, close} = useDialog(Boolean(restore || bundle), () => {setRestore(null); setBundle(null);});
+  const closePreview = () => close();
   const choose = (kind: string) => invoke<string | null>("support_choose_path", {kind});
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     try { await withSettings(action); } catch (error) {
-      closePreview();
-      onNotice(zh ? "操作未完成，请查看详情后重试。" : "The operation did not finish. Review the details and retry.", true, String(error));
+      const notify = () => onNotice(zh ? "操作未完成，请查看详情后重试。" : "The operation did not finish. Review the details and retry.", true, String(error));
+      if (restore || bundle) close(notify); else notify();
     }
     finally { setBusy(false); }
   };
@@ -89,7 +85,7 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
     return JSON.stringify(value);
   };
   const bytes = (size: number) => size >= 1048576 ? `${(size / 1048576).toFixed(1)} MiB` : size >= 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${size} B`;
-  const modal = (restore || bundle) && createPortal(<dialog ref={dialog} className="update-dialog support-dialog" aria-labelledby="support-title" aria-busy={busy}
+  const modal = (restore || bundle) && createPortal(<dialog ref={dialog} data-closing={closing || undefined} className="update-dialog support-dialog" aria-labelledby="support-title" aria-busy={busy}
     onCancel={event => {event.preventDefault(); if (!busy) closePreview();}}>
     <button className="update-dialog-close" disabled={busy} aria-label={zh ? "关闭预览" : "Close preview"} onClick={closePreview}>×</button>
     <header className="update-dialog-heading">
@@ -114,11 +110,11 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
       <button autoFocus disabled={busy} onClick={closePreview}>{restore && !restore.changes.length ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}</button>
       {!!restore?.changes.length && <button className="primary" disabled={busy || taskActive} onClick={() => void run(async () => {
         const settings = await invoke<Settings>("restore_settings", {id: restore.id});
-        closePreview(); onRestored(settings); onNotice(zh ? "设置已应用，原配置备份已保留。" : "Settings applied; the original backup was retained.");
+        onRestored(settings); close(() => onNotice(zh ? "设置已应用，原配置备份已保留。" : "Settings applied; the original backup was retained."));
       })}>{busy ? (zh ? "正在应用…" : "Applying…") : (zh ? "确认应用" : "Confirm apply")}</button>}
       {bundle && <button className="primary" disabled={busy} onClick={() => void run(async () => {
         const path = await choose("export-diagnostics");
-        if (path) {await invoke("export_diagnostics", {id: bundle.id, path}); closePreview(); onNotice(zh ? "诊断包已保存，未上传。" : "Diagnostic bundle saved locally; nothing was uploaded.");}
+        if (path) {await invoke("export_diagnostics", {id: bundle.id, path}); close(() => onNotice(zh ? "诊断包已保存，未上传。" : "Diagnostic bundle saved locally; nothing was uploaded."));}
       })}>{busy ? (zh ? "正在保存…" : "Saving…") : (zh ? "保存 ZIP" : "Save ZIP")}</button>}
     </footer>
   </dialog>, document.body);

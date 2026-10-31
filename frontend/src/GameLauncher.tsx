@@ -41,6 +41,28 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   const [configuring, setConfiguring] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [setup, setSetup] = useState(false);
+  const [setupVisible, setSetupVisible] = useState(false);
+  const [setupMounted, setSetupMounted] = useState(false);
+  const setupPanel = useRef<HTMLElement>(null);
+  const setupTrigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    let frame = 0;
+    let timer = 0;
+    if (setup) {
+      setSetupMounted(true);
+      frame = requestAnimationFrame(() => {
+        if (setupPanel.current) setupPanel.current.inert = false;
+        setSetupVisible(true);
+        setupPanel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      });
+    } else {
+      setSetupVisible(false);
+      if (setupPanel.current?.contains(document.activeElement)) setupTrigger.current?.focus();
+      if (setupPanel.current) setupPanel.current.inert = true;
+      timer = window.setTimeout(() => setSetupMounted(false), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 180);
+    }
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, [setup]);
   const [updateInfo, setUpdateInfo] = useState<ComponentUpdateInfo | null>(null);
   const [updateError, setUpdateError] = useState("");
   const [updatePhase, setUpdatePhase] = useState<"checking" | "applying" | "idle">("idle");
@@ -234,7 +256,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
         {linkError && <p role="alert">{zh ? "无法打开公告，请检查默认浏览器。" : "Could not open the announcement. Check your default browser."}</p>}
       </section>
       <div className="launcher-actions">
-        {setup && <section className="launcher-setup" aria-labelledby="launcher-setup-title" onKeyDown={(event) => { if (event.key === "Escape") setSetup(false); }}>
+        {(setup || setupMounted) && <section ref={setupPanel} role="dialog" className={`launcher-setup${setupVisible ? " is-visible" : ""}`} aria-labelledby="launcher-setup-title" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setSetup(false); } }}>
           <div className="launcher-setup-heading"><h2 id="launcher-setup-title">{zh ? "启动设置" : "Launch settings"}</h2><button onClick={() => setSetup(false)} aria-label={zh ? "关闭启动设置" : "Close launch settings"}>×</button></div>
           <p>{zh ? "第五人格游戏程序" : "Identity V executable"}</p>
           <div className="launcher-setup-path" title={gamePath}>{gamePath || (zh ? "未找到游戏" : "Game not found")}</div>
@@ -250,7 +272,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
         {(launchError || statusError || (!busy && status?.message)) && <p className="launcher-game-error" role="alert">{launchError || statusError || status?.message}</p>}
         <div className="launcher-launch-controls">
           <button className="launcher-start" disabled={cancelling || status?.phase === "stopping" || (!starting && !installing && (choosing || locating || !gamePath || !status || !!statusError))} onClick={() => void launch()}>{cancelling ? (zh ? "正在取消…" : "Cancelling…") : installing ? (zh ? "取消配置" : "Cancel setup") : starting ? (zh ? "取消启动" : "Cancel launch") : (zh ? "启动游戏" : "Launch game")}</button>
-          <button className="launcher-choose" onClick={() => setSetup((open) => !open)} aria-expanded={setup} aria-label={zh ? "启动设置" : "Launch settings"} title={zh ? "启动设置" : "Launch settings"}><Icon name="settings" /></button>
+          <button ref={setupTrigger} className="launcher-choose" onClick={() => setSetup((open) => !open)} aria-expanded={setup} aria-label={zh ? "启动设置" : "Launch settings"} title={zh ? "启动设置" : "Launch settings"}><Icon name="settings" /></button>
         </div>
       </div>
     </div>

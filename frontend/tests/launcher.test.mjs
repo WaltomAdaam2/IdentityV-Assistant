@@ -214,6 +214,7 @@ test("component updates check at game launch only and share the dialog source ch
     browser("find", "role", "button", "click", "--name", "检查组件更新", "--exact");
     browser("wait", "--text", "组件已是最新版本");
     browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.update-dialog')");
     assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.launcher-setup input[type=checkbox]'))")), false);
     browser("find", "role", "button", "click", "--name", "关闭启动设置", "--exact");
     browser("eval", "window.__launcherTest.calls = []; window.__launcherTest.hasHotfix = true");
@@ -398,6 +399,8 @@ test("launcher fits the window with a long error banner and open launch settings
     browser("eval", "new MutationObserver((_, observer) => { const notice = document.querySelector('.notice'); if (notice) { notice.dispatchEvent(new MouseEvent('mouseover', {bubbles:true, relatedTarget:document.body})); observer.disconnect(); } }).observe(document.body, {childList:true, subtree:true})");
     browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
     browser("find", "role", "button", "click", "--name", "选择游戏程序", "--exact");
+    browser("wait", "--fn", "!!document.querySelector('.notice details')");
+    browser("find", "text", "查看详情", "click", "--exact");
     browser("wait", "--text", "Hotkey already registered");
     const layout = JSON.parse(JSON.parse(browser("eval", "JSON.stringify((() => {const w=document.querySelector('.workspace'), p=document.querySelector('.launcher-setup').getBoundingClientRect(), r=w.getBoundingClientRect(), b=document.querySelector('.launcher-start').getBoundingClientRect(); return {overflow:w.scrollHeight-w.clientHeight, top:p.top-r.top, bottom:r.bottom-p.bottom, button:r.bottom-b.bottom};})())")));
     assert.ok(layout.overflow <= 1 && layout.top >= 0 && layout.bottom >= 0 && layout.button >= 0, JSON.stringify(layout));

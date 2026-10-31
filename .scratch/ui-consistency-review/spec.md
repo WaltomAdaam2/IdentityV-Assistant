@@ -74,3 +74,7 @@ All recommendations were approved except these explicit corrections:
 - Q31/Q32: fix the layouts. Respect the native minimum window size and verify the
   smaller CSS viewport caused by the existing in-app zoom rather than claiming
   an unsupported native window size was tested.
+
+## Latest delivery decision
+
+User explicitly set version 0.1.10. Keep PR #3 open/draft on SNAPSHOT-v0.1.10; do not merge or create a new Draft Release until the user completes further bug investigation and confirms. Existing v0.1.9 draft remains unchanged.

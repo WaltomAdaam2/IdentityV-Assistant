@@ -1,9 +1,9 @@
 # Frontend decision inventory
 
 Baseline: SNAPSHOT-v0.1.10, e7713e1. Read-only review; no native app or game run.
-These are findings/proposals, not approved changes. Q1 preserves the incumbent
+This records the baseline findings/proposals. All decisions are now recorded in spec.md. Q1 preserves the incumbent
 cream/olive palette, typography and settings rows. Q2-Q6 recommendations were
-subsequently confirmed; additional proposals below remain pending.
+subsequently confirmed; Q7-Q32 were also confirmed with the explicit Q28/Q30 corrections in spec.md.
 
 The six screenshot topics are tracked in spec.md. The additional findings below
 must be presented individually for user decisions before optional implementation.
@@ -85,3 +85,7 @@ Screenshots (local artifacts, not source assets):
 - overview-1000.png, overview-narrow.png
 - logs-narrow.png, logs-long-path.png
 - launcher-narrow.png, launcher-setup-narrow.png
+
+## Implemented decisions
+
+A01-A24 and R02/R03 are implemented under the accepted choices. A03 follows the later universal 2-second hold / 0.5-second fade. A22 retains and completes decorative hover/sweep/float effects. A24 instead locks dismissal during download until cancellation. R04 uses matching native color-scheme. R01 did not demonstrate clipping and received no speculative redesign. Independent review found four interaction defects; all four are fixed and passed independent mock retests.

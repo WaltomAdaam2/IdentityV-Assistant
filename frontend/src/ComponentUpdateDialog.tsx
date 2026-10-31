@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
+import { useDialog } from "./useDialog";
 import type { ComponentUpdateInfo, ComponentUpdateProgress } from "./bridge";
 import DownloadProgress from "./DownloadProgress";
 import type { Settings } from "./types";
@@ -14,15 +15,15 @@ export default function ComponentUpdateDialog({ info, error, phase, progress, so
   onSource: (source: Settings["app"]["update_source"]) => void; onClose: () => void; onContinue: () => void; onCheck: () => void;
   onApply: () => void; onDownload: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const continueOnClose = useRef(false);
+  const {dialog, closing, close} = useDialog(true, () => continueOnClose.current ? onContinue() : onClose());
   const zh = language === "zh-CN";
   const available = !!info && (!!info.release_url || info.hotfixes.length > 0);
   const busy = phase !== "idle";
   const state = error ? "error" : busy ? phase === "checking" ? "checking" : "installing" : available ? "available" : "current";
   const labels = zh ? {checking:"正在检查组件更新…", installing:"正在应用组件更新…", error:"组件更新未完成", available:"发现组件更新", current:"组件已是最新版本"} : {checking:"Checking component updates…", installing:"Applying component updates…", error:"Component update failed", available:"Component update available", current:"Component is up to date"};
-  useEffect(() => { dialog.current?.showModal(); }, []);
-  return createPortal(<dialog ref={dialog} className={`update-dialog${available ? " has-release" : ""}`} aria-labelledby="component-update-title" onCancel={(event) => {event.preventDefault(); if (!busy) onClose();}}>
-    <button className="update-dialog-close" disabled={busy} aria-label={zh ? "关闭组件更新" : "Close component update"} onClick={onClose}>×</button>
+  return createPortal(<dialog ref={dialog} data-closing={closing || undefined} className={`update-dialog${available ? " has-release" : ""}`} aria-labelledby="component-update-title" onCancel={(event) => {event.preventDefault(); if (!busy) close();}}>
+    <button className="update-dialog-close" disabled={busy} aria-label={zh ? "关闭组件更新" : "Close component update"} onClick={() => close()}>×</button>
     <header className={`update-dialog-heading phase-${state}`}>
       <span className="update-state-icon" aria-hidden="true">{state === "current" ? <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg> : state === "error" ? <svg viewBox="0 0 24 24"><path d="M12 5v9m0 4h.01" /></svg> : <SettingIcon name="refresh" />}</span>
       <div><h2 id="component-update-title">{labels[state]}</h2><p>{zh ? "官方登录组件 · 更新前由你确认。" : "Official login component · Updates require your confirmation."}</p></div>
@@ -46,7 +47,7 @@ export default function ComponentUpdateDialog({ info, error, phase, progress, so
     </div> : <div className="update-download"><progress aria-label={labels[state]} /><small role="status">{phase === "checking" ? labels.checking : progress?.phase === "applying" ? (zh ? "正在编译并应用模块…" : "Compiling and applying module…") : progress?.phase === "restoring" ? (zh ? "正在恢复登录代理…" : "Restoring login proxy…") : (zh ? "正在准备热更新…" : "Preparing hotfixes…")}</small></div>)}
     <footer className="update-actions">
       <button disabled={busy} onClick={onCheck}>{zh ? "重新检查" : "Check again"}</button>
-      <button autoFocus disabled={busy} onClick={continuing ? onContinue : onClose}>{continuing ? (zh ? "继续启动游戏" : "Continue launching") : (zh ? "关闭" : "Close")}</button>
+      <button autoFocus disabled={busy} onClick={() => {continueOnClose.current = continuing; close();}}>{continuing ? (zh ? "继续启动游戏" : "Continue launching") : (zh ? "关闭" : "Close")}</button>
       {info?.release_url && <button className="primary" disabled={busy} onClick={onDownload}>{zh ? "下载官方新版" : "Download official release"}</button>}
       {!!info?.hotfixes.length && <button className="primary" disabled={busy} onClick={onApply}>{zh ? "应用热更新" : "Apply hotfixes"}</button>}
     </footer>

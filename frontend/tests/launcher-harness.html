@@ -6,6 +6,7 @@ import { emit } from "@tauri-apps/api/event";
 mockWindows("main");
 window.isTauri = new URLSearchParams(location.search).has("desktop");
 window.__launcherTest = { calls: [], newsFailure: true, selectedGamePath: "D:\\Games\\IdentityV\\dwrg.exe" };
+window.__launcherTest.loadFailure = new URLSearchParams(location.search).has("loadFail");
 window.__launcherTest.emitLog = (payload) => emit("engine-event", { type: "log", level: "info", data: { important: true }, ...payload });
 window.__launcherTest.emitComponentProgress = (payload) => emit("component-update-progress", payload);
 window.__launcherTest.updateStatus = { phase: "idle", info: null, downloaded: 0, total: null, error: null, source: "direct" };
@@ -16,6 +17,7 @@ window.__launcherTest.emitUpdate = async (patch) => {
 window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv-login\\python-embed\\python.exe", message: null };
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
+  if (command === "load_settings" && window.__launcherTest.loadFailure) return Promise.reject("Fixture: configuration unreadable");
   if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
   if (command === "save_settings" && window.__launcherTest.saveFailure) return Promise.reject("快捷键已被占用或无法注册：Hotkey already registered: HotKey { mods: Modifiers(0x0), key: F3, id: 162 }");
   if (command === "save_settings") { window.__launcherTest.savedSettings = structuredClone(args.settings); return null; }
@@ -30,6 +32,8 @@ mockIPC((command, args) => {
   if (command === "preview_diagnostics") return {id:"bundle-fixture",truncated:false,files:[{name:"environment.json",size:200},{name:"settings.redacted.json",size:500},{name:"session.redacted.jsonl",size:1000},...(args.includeImages ? [{name:"images/failure-fixture.png",size:2048}] : [])]};
   if (command === "send_engine_command" && window.__launcherTest.failPreflight && ["start_task","start_tasks"].includes(args.command.type)) return window.__launcherTest.emitLog({type:"task_preflight",ok:false,code:"capture_failed",for_start:true,warnings:[]});
   if (command === "task_preflight") return window.__launcherTest.emitLog({type:"task_preflight",ok:true,code:"ready",for_start:false,warnings:[]}).then(() => ({requested:true,request_id:"fixture"}));
+  if (command === "get_engine_snapshot" && window.__launcherTest.snapshotFailure) return Promise.reject("Fixture: status unavailable");
+  if (command === "restart_engine" && window.__launcherTest.deferRestart) return new Promise(resolve => {window.__launcherTest.finishRestart=resolve;});
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { ...window.__launcherTest.updateStatus };
   if (command === "check_update") {
@@ -43,7 +47,8 @@ mockIPC((command, args) => {
   if (command === "cancel_update") {
     return window.__launcherTest.emitUpdate({ phase: "cancelled" }).then(() => window.__launcherTest.finishDownload?.());
   }
-  if (command === "journal_list_packs") return { directory: "fixture", packs: [], errors: [] };
+  if (command === "journal_list_packs") return { directory: "fixture", packs: window.__launcherTest.packs || [], errors: [] };
+  if (command === "journal_read_image") return "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="tan"/></svg>');
   if (command === "journal_choose_pack_source") return window.__launcherTest.importSources ?? null;
   if (command === "journal_import_pack") {
     const finish = () => window.__launcherTest.importErrors?.[args.sourcePath]

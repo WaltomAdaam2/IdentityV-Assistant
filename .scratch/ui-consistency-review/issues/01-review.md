@@ -63,3 +63,11 @@ Type: improvement
 - Latest frontend production build and diff check passed. This is a verified
   checkpoint, not completion: launcher/settings/task controls, motion and the
   remaining Q7-Q32 work still require implementation and validation.
+
+- Second implementation slice covers all approved Q7-Q32 choices: persistent load/save/connection recovery, draft inputs, explicit preflight retry start, shared pending guards, global stop, restart confirmation, native map modality/focus, faster single page transitions, symmetric filters, retained/extended decoration and narrow layouts.
+- Four independent review findings were fixed and independently retested: repeated starts after preflight, last Stop losing to an in-flight restart, saved-notice focus retention across replacement, and dismissal before the first download progress event.
+- New mock tests passed for all four behavior groups (settings recovery/input validation/status reconnect; preflight/global stop/restart; download dismissal/launcher focus; map modality/focus/filter transitions). Ten log/download helper tests passed. Rust shell compiled and the release-link unit test passed. Impeccable detect returned an empty findings list. Existing UI regression subset is still running.
+- Version metadata updated to 0.1.10 at user request. PR remains open/draft; no merge, package or new Draft Release before further user confirmation. Original packageManager and pnpm-lock edits remain excluded.
+
+- Final local verification: all seven selected existing browser regressions passed (two required test updates for the newly approved exit delay and expandable error details); all four new behavior groups passed. Frontend final production build, Rust formatting and diff check passed. Eight application/lockfile version fields consistently read 0.1.10. Chinese light 1000x680 and English dark 667x453 CSS layouts were inspected, including reduced-motion dialog behavior. No native application/game/installer execution.
+- Ready for checkpoint commit/push and current-head CI. PR stays draft and the recognition investigation remains separate.
