@@ -7,6 +7,7 @@ import SettingRow, { SettingIcon } from "./SettingRow";
 import { version as appVersion } from "../package.json";
 import DownloadProgress from "./DownloadProgress";
 import ReleaseNotes from "./ReleaseNotes";
+import { useDialog } from "./useDialog";
 import "./updates.css";
 
 export interface UpdateInfo {
@@ -40,6 +41,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
   const [status, setStatus] = useState(initialStatus);
   const [checkedPrereleases, setCheckedPrereleases] = useState(settings.app.update_prereleases);
   const [pending, setPending] = useState(false);
+  const [updateRequest, setUpdateRequest] = useState(false);
   const [listening, setListening] = useState(false);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connectionFailed, setConnectionFailed] = useState(false);
@@ -48,7 +50,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
   const [preferenceError, setPreferenceError] = useState(false);
   const startupHandled = useRef(false);
   const promptCheck = useRef<"startup" | "manual" | null>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const { dialog, closing, close } = useDialog(showPrompt, () => { promptCheck.current = null; setShowPrompt(false); });
   const mounted = useRef(true);
   const requestPending = useRef(false);
   const desktop = isTauri();
@@ -56,10 +58,11 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
   const source = settings.app.update_source;
   const sourceNames = { direct: t.direct, proxy: t.proxy, ghfast: "GHFast" + (settings.app.language === "zh-CN" ? "代理" : " proxy"), ghproxy_net: "ghproxy.net" + (settings.app.language === "zh-CN" ? "代理" : " proxy") };
   const busy = pending || ["checking", "downloading", "verifying", "installing"].includes(status.phase);
+  const updateActive = updateRequest || ["downloading", "verifying", "installing"].includes(status.phase);
 
   const run = useCallback(async (action: () => Promise<unknown>, checking = false) => {
     if (requestPending.current || !isTauri()) return;
-    requestPending.current = true; setPending(true);
+    requestPending.current = true; setPending(true); setUpdateRequest(!checking);
     let timer: number | undefined;
     try {
       const operation = action().then(() => bridge.getUpdateStatus());
@@ -72,7 +75,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
       if (mounted.current) setStatus(next);
     } catch (error) {
       if (mounted.current) setStatus((previous) => ({ ...previous, phase: "error", error: String(error) }));
-    } finally { window.clearTimeout(timer); requestPending.current = false; if (mounted.current) setPending(false); }
+    } finally { window.clearTimeout(timer); requestPending.current = false; if (mounted.current) { setPending(false); setUpdateRequest(false); } }
   }, []);
 
   useEffect(() => {
@@ -116,8 +119,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
     } else if (["current", "error"].includes(status.phase)) promptCheck.current = null;
   }, [status, pending]);
 
-  useEffect(() => { if (showPrompt && dialog.current && !dialog.current.open) dialog.current.showModal(); }, [showPrompt]);
-  const closePrompt = () => { promptCheck.current = null; dialog.current?.close(); setShowPrompt(false); };
+  const closePrompt = () => { if (!updateActive) close(); };
   const savePromptPreference = (checked: boolean) => {
     if (!status.info) return;
     try {
@@ -133,8 +135,8 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
     if (connectionFailed) { setConnectionAttempt((attempt) => attempt + 1); return; }
     void run(() => bridge.checkUpdate(source, settings.app.update_prereleases), true);
   };
-  const modal = showPrompt ? createPortal(<dialog ref={dialog} className={`update-dialog${status.info ? " has-release" : ""}`} aria-labelledby="update-dialog-title" onCancel={(event) => { event.preventDefault(); closePrompt(); }}>
-    <button className="update-dialog-close" aria-label={t.close} onClick={closePrompt}>×</button>
+  const modal = showPrompt ? createPortal(<dialog ref={dialog} data-closing={closing || undefined} className={`update-dialog${status.info ? " has-release" : ""}`} aria-labelledby="update-dialog-title" onCancel={(event) => { event.preventDefault(); closePrompt(); }}>
+    <button className="update-dialog-close" disabled={updateActive} aria-label={t.close} onClick={closePrompt}>×</button>
     <header className={`update-dialog-heading phase-${status.phase}`}>
       <span className="update-state-icon" aria-hidden="true">{status.phase === "current" || status.phase === "ready" ? <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg> : status.phase === "error" ? <svg viewBox="0 0 24 24"><path d="M12 5v9m0 4h.01" /></svg> : <SettingIcon name="refresh" />}</span>
       <div><h2 id="update-dialog-title">{t.phases[status.phase]}</h2><p>{t.hints[status.phase]}</p></div>
@@ -151,8 +153,8 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
     {status.info && <label className="check-label update-skip"><input type="checkbox" checked={skipVersion} onChange={(event) => savePromptPreference(event.target.checked)} />{t.skip}</label>}
     {preferenceError && <p role="alert" className="update-error">{t.preferenceError}</p>}
     <footer className="update-actions">
-      <a href={releaseUrl} target="_blank" rel="noreferrer" onClick={(event) => { if (!desktop) return; event.preventDefault(); void bridge.openRepository().catch((error) => setStatus((previous) => ({ ...previous, phase: "error", error: String(error) }))); }}>{t.release}</a>
-      <button autoFocus className={status.phase === "current" ? "primary" : undefined} onClick={closePrompt}>{status.phase === "current" ? t.done : status.info ? t.later : t.close}</button>
+      <a href={releaseUrl} target="_blank" rel="noreferrer" onClick={(event) => { if (!desktop) return; event.preventDefault(); void bridge.openReleaseLink(releaseUrl).catch((error) => setStatus((previous) => ({ ...previous, phase: "error", error: String(error) }))); }}>{t.release}</a>
+      <button autoFocus disabled={updateActive} className={status.phase === "current" ? "primary" : undefined} onClick={closePrompt}>{status.phase === "current" ? t.done : status.info ? t.later : t.close}</button>
       {status.info && ["available", "cancelled", "error"].includes(status.phase) && <button className="primary" disabled={busy} onClick={() => void run(() => bridge.downloadUpdate(source))}>{t.download} · {megabytes(status.info.size)}</button>}
       {status.phase === "downloading" && <button onClick={() => { void bridge.cancelUpdate().catch((error) => setStatus((previous) => ({ ...previous, phase: "error", error: String(error) }))); }}>{t.cancel}</button>}
       {status.phase === "ready" && <button className="primary" disabled={busy} onClick={() => void run(bridge.installUpdate)}>{t.install}</button>}

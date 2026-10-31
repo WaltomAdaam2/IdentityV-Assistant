@@ -1,4 +1,7 @@
-param([Parameter(Mandatory = $true)][string] $NotesFile)
+param(
+    [Parameter(Mandatory = $true)][string] $NotesFile,
+    [ValidateRange(0, [int]::MaxValue)][int] $MergedPullRequest = 0
+)
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "file_hash.ps1")
 $NotesFile = (Resolve-Path -LiteralPath $NotesFile).Path
@@ -10,15 +13,32 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "Install GitHub
 $repo = "WaltomAdaam2/IdentityV-Assistant"
 $version = (Get-Content -LiteralPath "src-tauri/tauri.conf.json" -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $branch = & git branch --show-current
-if ($LASTEXITCODE -ne 0 -or $branch -cne "SNAPSHOT-v$version") { throw "Prepare drafts from SNAPSHOT-v$version only." }
-$merged = & gh api --paginate "repos/$repo/pulls?state=closed&head=WaltomAdaam2:$branch&per_page=100" --jq '.[] | select(.merged_at != null) | .number'
-if ($LASTEXITCODE -ne 0) { throw "Could not inspect the SNAPSHOT branch's PR state." }
-if ($merged) { throw "This SNAPSHOT branch is frozen after PR merge. Do not change it or build another draft from it." }
+$snapshotBranch = "SNAPSHOT-v$version"
+if ($LASTEXITCODE -ne 0 -or ($branch -cne $snapshotBranch -and -not ($MergedPullRequest -and -not $branch))) {
+    throw "Prepare drafts from $snapshotBranch only (a detached verified build is allowed with -MergedPullRequest)."
+}
 $changes = & git status --porcelain
 if ($LASTEXITCODE -ne 0 -or $changes) { throw "Commit all source changes before building and publishing." }
 $commit = & git rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw "Cannot read HEAD." }
-$remoteCommit = & gh api "repos/$repo/git/ref/heads/$branch" --jq '.object.sha'
+if ($MergedPullRequest) {
+    $prJson = & gh api "repos/$repo/pulls/$MergedPullRequest"
+    if ($LASTEXITCODE -ne 0) { throw "Could not inspect the merged PR." }
+    $pr = $prJson | ConvertFrom-Json
+    if (-not $pr.merged_at -or $pr.base.ref -cne "main" -or $pr.head.ref -cne $snapshotBranch -or
+        $pr.head.sha -ne $commit -or $pr.head.repo.full_name -ne $repo) {
+        throw "The merged PR must identify this exact SNAPSHOT build commit and repository."
+    }
+    $ancestry = & gh api "repos/$repo/compare/${commit}...main" --jq '.status'
+    if ($LASTEXITCODE -ne 0 -or $ancestry -notin @("ahead", "identical")) {
+        throw "The verified build commit must remain in main's history."
+    }
+} else {
+    $merged = & gh api --paginate "repos/$repo/pulls?state=closed&head=WaltomAdaam2:$snapshotBranch&per_page=100" --jq '.[] | select(.merged_at != null) | .number'
+    if ($LASTEXITCODE -ne 0) { throw "Could not inspect the SNAPSHOT branch's PR state." }
+    if ($merged) { throw "This SNAPSHOT is frozen. Use -MergedPullRequest only to upload its original verified build after explicit authorization." }
+}
+$remoteCommit = & gh api "repos/$repo/git/ref/heads/$snapshotBranch" --jq '.object.sha'
 if ($LASTEXITCODE -ne 0 -or $remoteCommit -ne $commit) {
     throw "Push the SNAPSHOT branch first; its remote head must match the built commit."
 }

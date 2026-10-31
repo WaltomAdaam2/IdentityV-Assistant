@@ -2,6 +2,8 @@
 .update-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 22px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 20px 65px var(--shadow); overflow: auto; }
 .update-dialog.has-release { width: min(560px, calc(100vw - 32px)); }
 .update-dialog[open] { animation: update-dialog-enter 220ms var(--ease-out); }
+.update-dialog[open][data-closing] { animation: update-dialog-exit 180ms ease-in both; pointer-events: none; }
+.update-dialog[data-closing]::backdrop { animation: update-backdrop-exit 180ms ease-in both; }
 .update-dialog::backdrop { background: rgba(36, 29, 23, .28); }
 .update-dialog-close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted-strong); }
 .update-dialog-heading { display: flex; align-items: flex-start; gap: 12px; padding: 0 18px 16px 0; text-align: left; }
@@ -22,9 +24,16 @@
 .update-dialog-notes > p { margin-top: 8px; max-height: 28vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 12px; }
 .update-skip { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--muted-strong); }
 .update-skip input { accent-color: var(--accent); }
+.update-hint { margin-top: 6px; color: var(--muted-strong); font-size: 12px; line-height: 1.6; }
 .update-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
 .update-actions button { padding: 7px 13px; font-size: 12px; border-radius: 6px; }
 .update-actions a { color: var(--accent); margin-right: auto; font-size: 12px; }
+.preflight-dialog { width: min(520px, calc(100vw - 32px)); padding: 28px; }
+.preflight-dialog h2 { margin: 0 28px 16px 0; line-height: 1.5; }
+.preflight-dialog p { font-size: 14px; line-height: 1.75; }
+.preflight-dialog p + p { margin-top: 12px; }
+.preflight-dialog .update-actions { gap: 12px; margin-top: 24px; padding-top: 20px; }
+.preflight-dialog .update-actions button { padding: 9px 16px; font-size: 13px; }
 .update-error { color: var(--danger); overflow-wrap: anywhere; margin-top: 12px; font-size: 12px; }
 .update-error summary { cursor: pointer; }
 .update-error p { color: var(--danger); margin-top: 6px; max-height: 110px; overflow: auto; font-size: 11px; }
@@ -35,12 +44,14 @@
 .update-download small { color: var(--muted); font-variant-numeric: tabular-nums; }
 .update-verified { color: var(--accent); margin: 12px 0 6px; font-size: 12px; }
 @keyframes update-dialog-enter { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes update-dialog-exit { to { opacity: 0; transform: translateY(4px) scale(.99); } }
+@keyframes update-backdrop-exit { to { opacity: 0; } }
 @keyframes update-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .update-dialog[open], .update-state-icon svg { animation: none; } .update-download progress::-webkit-progress-value { transition: none; } }
 
-.update-progress-row { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.update-progress-row progress { flex: 1; min-width: 48px; }
-.update-transfer { display: grid; gap: 3px; text-align: right; flex-shrink: 0; font-size: 11px; line-height: 1.5; }
+.update-progress-details { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; min-width: 0; }
+.update-progress-details small { font-size: 11px; line-height: 1.5; }
+.update-transfer { display: flex; gap: 12px; margin-left: auto; white-space: nowrap; }
 .release-markdown { max-height: 28vh; overflow: auto; overflow-wrap: anywhere; margin-top: 8px; font-size: 12px; line-height: 1.7; }
 .release-markdown > :first-child { margin-top: 0; }
 .release-markdown h1 { font-size: 16px; margin: 14px 0 8px; }

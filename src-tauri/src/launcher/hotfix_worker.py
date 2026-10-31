@@ -80,6 +80,12 @@ def apply(source_dir, data_dir, request, cancelled=None):
         if not target.is_relative_to(source_dir.resolve()) or not target.is_file():
             raise RuntimeError("热更新目标不在组件目录内")
         targets[module] = str(target)
+    # The pinned runtime normally tolerates cache write failures. Require an
+    # actual atomic write before replacing any module, even after an old probe.
+    try:
+        genv.set("hotfix_probed", True, True, require_saved=True)
+    except OSError as error:
+        raise RuntimeError("无法写入组件更新记录，请检查组件数据目录的写入权限后重试") from error
     # Keep official backup/compile/replace/pending/rollback handling. Constrain
     # resolution to the reviewed runtime, and honor the selected download source.
     hotfixmgr._resolve_module_target_path = lambda module: (targets[module], "pyc")
@@ -108,6 +114,22 @@ def apply(source_dir, data_dir, request, cancelled=None):
     failures = [item["target_module"] + ": " + str(records.get(hotfixmgr._make_id(item), {}).get("error", "未完成")) for item in items if records.get(hotfixmgr._make_id(item), {}).get("status") not in {"pending_validate", "applied"}]
     if failures:
         raise RuntimeError("部分热更新未应用：" + ", ".join(failures))
+    # In-memory success is insufficient: upstream cached writes may silently
+    # fail. Preserve its records and verify that the next process can read them.
+    try:
+        saved = json.loads((data_dir / "config.json").read_text(encoding="utf-8-sig"))
+        saved_records = saved.get("hotfix_records", {})
+        saved_pending = saved.get("hotfix_pending_validate", [])
+        if isinstance(saved_pending, str):
+            saved_pending = [saved_pending]
+        if not isinstance(saved_records, dict) or not isinstance(saved_pending, list):
+            raise ValueError("Invalid validation records")
+        if any(saved_records.get(hotfixmgr._make_id(item)) != records.get(hotfixmgr._make_id(item)) for item in items):
+            raise ValueError("Update records were not persisted")
+        if pending and (any(key not in saved_pending for key in pending) or saved.get("last_run_state") != "restart"):
+            raise ValueError("Validation bookkeeping was not persisted")
+    except (OSError, ValueError, AttributeError) as error:
+        raise RuntimeError("组件热更新记录未保存，无法确认更新成功；请检查数据目录权限并重新检查更新") from error
 
 
 if __name__ == "__main__":

@@ -44,3 +44,13 @@ The user removed the optional component-check setting. This supersedes the separ
 Ordinary game launch preserves the game's window style and placement. Only running or paused automation tasks apply the engine's borderless layout; an idle service and capture diagnostics must not take over a newly launched game window. Service shutdown restores the engine's saved original window state.
 
 The user's subsequent correction supersedes the task-only condition: explicitly enabling the engine (including F3) activates its window layout even while idle. Process startup for temporary diagnostics does not activate layout. The shell sends an explicit layout activation command after normal engine readiness; ordinary game launch remains independent.
+
+### Exact-batch prompt suppression and persisted hotfix success
+
+Game launch still checks component metadata. The user can suppress the prompt for
+the exact offered version/module/commit IDs; manual checks bypass that preference
+and new IDs prompt again. This UI preference is separate from upstream skipped
+hotfixes and rollback records. Before applying, require a strict atomic write via
+the pinned runtime's cache API. Report success only after reading back the
+requested records and validation/restart bookkeeping from disk; in-memory records
+alone are insufficient because ordinary upstream cached writes tolerate failures.

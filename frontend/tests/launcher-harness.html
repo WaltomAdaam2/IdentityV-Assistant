@@ -6,6 +6,7 @@ import { emit } from "@tauri-apps/api/event";
 mockWindows("main");
 window.isTauri = new URLSearchParams(location.search).has("desktop");
 window.__launcherTest = { calls: [], newsFailure: true, selectedGamePath: "D:\\Games\\IdentityV\\dwrg.exe" };
+window.__launcherTest.loadFailure = new URLSearchParams(location.search).has("loadFail");
 window.__launcherTest.emitLog = (payload) => emit("engine-event", { type: "log", level: "info", data: { important: true }, ...payload });
 window.__launcherTest.emitComponentProgress = (payload) => emit("component-update-progress", payload);
 window.__launcherTest.updateStatus = { phase: "idle", info: null, downloaded: 0, total: null, error: null, source: "direct" };
@@ -16,6 +17,7 @@ window.__launcherTest.emitUpdate = async (patch) => {
 window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv-login\\python-embed\\python.exe", message: null };
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
+  if (command === "load_settings" && window.__launcherTest.loadFailure) return Promise.reject("Fixture: configuration unreadable");
   if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
   if (command === "save_settings" && window.__launcherTest.saveFailure) return Promise.reject("快捷键已被占用或无法注册：Hotkey already registered: HotKey { mods: Modifiers(0x0), key: F3, id: 162 }");
   if (command === "save_settings") { window.__launcherTest.savedSettings = structuredClone(args.settings); return null; }
@@ -23,12 +25,15 @@ mockIPC((command, args) => {
   if (command === "preview_settings_restore") {
     window.__launcherTest.restoreSettings = structuredClone(window.__launcherTest.savedSettings);
     window.__launcherTest.restoreSettings.app.theme = "dark";
-    return {id:"restore-fixture",changes:[{field:"settings.app.theme",before:"light",after:"dark"}],warnings:[]};
+    return {id:"restore-fixture",changes:window.__launcherTest.restoreChanges ?? [{field:"settings.app.theme",before:"light",after:"dark"}],warnings:[]};
   }
   if (command === "restore_settings") { window.__launcherTest.savedSettings = structuredClone(window.__launcherTest.restoreSettings); return window.__launcherTest.restoreSettings; }
+  if (["export_settings", "export_diagnostics"].includes(command) && window.__launcherTest.exportSupportFailure) return Promise.reject("无法写入所选位置 / Access denied");
   if (command === "preview_diagnostics") return {id:"bundle-fixture",truncated:false,files:[{name:"environment.json",size:200},{name:"settings.redacted.json",size:500},{name:"session.redacted.jsonl",size:1000},...(args.includeImages ? [{name:"images/failure-fixture.png",size:2048}] : [])]};
   if (command === "send_engine_command" && window.__launcherTest.failPreflight && ["start_task","start_tasks"].includes(args.command.type)) return window.__launcherTest.emitLog({type:"task_preflight",ok:false,code:"capture_failed",for_start:true,warnings:[]});
   if (command === "task_preflight") return window.__launcherTest.emitLog({type:"task_preflight",ok:true,code:"ready",for_start:false,warnings:[]}).then(() => ({requested:true,request_id:"fixture"}));
+  if (command === "get_engine_snapshot" && window.__launcherTest.snapshotFailure) return Promise.reject("Fixture: status unavailable");
+  if (command === "restart_engine" && window.__launcherTest.deferRestart) return new Promise(resolve => {window.__launcherTest.finishRestart=resolve;});
   if (command === "get_engine_snapshot") return { state: "stopped", status: "stopped", pid: null, last_error: null };
   if (command === "get_update_status") return { ...window.__launcherTest.updateStatus };
   if (command === "check_update") {
@@ -42,7 +47,8 @@ mockIPC((command, args) => {
   if (command === "cancel_update") {
     return window.__launcherTest.emitUpdate({ phase: "cancelled" }).then(() => window.__launcherTest.finishDownload?.());
   }
-  if (command === "journal_list_packs") return { directory: "fixture", packs: [], errors: [] };
+  if (command === "journal_list_packs") return { directory: "fixture", packs: window.__launcherTest.packs || [], errors: [] };
+  if (command === "journal_read_image") return "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="tan"/></svg>');
   if (command === "journal_choose_pack_source") return window.__launcherTest.importSources ?? null;
   if (command === "journal_import_pack") {
     const finish = () => window.__launcherTest.importErrors?.[args.sourcePath]
@@ -52,7 +58,7 @@ mockIPC((command, args) => {
     return finish();
   }
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
-  if (command === "check_login_updates") return {current_version: "v6.3.2-stable", version: "v6.3.2-stable", notes: "", release_url: null, hotfixes: window.__launcherTest.hasHotfix ? [{target_module: "fixture", target_commit: "abcdef1234567", note: "测试热更新"}] : []};
+  if (command === "check_login_updates") return {current_version: "v6.3.2-stable", version: "v6.3.2-stable", notes: "", release_url: null, hotfixes: window.__launcherTest.hasHotfix ? [{target_module: "fixture", target_commit: window.__launcherTest.hotfixCommit || "abcdef1234567", note: "测试热更新"}] : []};
   if (command === "apply_login_hotfixes") { window.__launcherTest.hasHotfix = false; return window.__launcherTest.deferHotfix ? new Promise(resolve => { window.__launcherTest.finishHotfix = resolve; }) : null; }
   if (command === "cancel_game_launch") { window.__launcherTest.finishLaunch?.("操作已取消"); return null; }
   if (command === "configure_login_component") {

@@ -1,11 +1,19 @@
 .support-panel { min-width: 0; }
-.support-panel > h3 { margin: 16px 0 6px; }
-.support-panel .check-label { margin: 12px 0; line-height: 1.5; }
-.support-panel hr { border: 0; border-top: 1px solid var(--border); }
-.support-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
-.support-preview { margin-top: 18px; }
-.support-table { overflow: auto; max-height: 320px; }
-.support-table table { border-collapse: collapse; width: 100%; }
-.support-table th, .support-table td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-.support-preview ul { padding-left: 20px; }
-.support-preview li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin: 8px 0; overflow-wrap: anywhere; }
+.support-dialog { width: min(620px, calc(100vw - 32px)); padding: 24px; }
+.support-table { overflow: auto; max-height: 42vh; }
+.support-table table { border-collapse: collapse; table-layout: fixed; width: 100%; font-size: 13px; line-height: 1.6; }
+.support-table th, .support-table td { text-align: left; vertical-align: top; padding: 12px 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.support-table thead th { position: sticky; top: 0; background: var(--surface); color: var(--muted-strong); font-weight: 400; }
+.support-table tbody th { font-weight: 600; color: var(--title); }
+.support-table td:last-child { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.support-hint { margin: 12px 0; color: var(--muted-strong); font-size: 12px; line-height: 1.7; }
+.support-empty { padding: 20px 0; line-height: 1.7; }
+.support-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.support-summary strong { color: var(--title); font-size: 14px; }
+.support-summary > span { font-variant-numeric: tabular-nums; font-size: 13px; }
+.support-files { max-height: 38vh; overflow: auto; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.support-files li { display: flex; justify-content: space-between; gap: 20px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.support-files li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.support-files li > span:last-child { flex-shrink: 0; color: var(--muted-strong); font-variant-numeric: tabular-nums; }
+.support-dialog .update-actions { margin-top: 20px; padding-top: 16px; gap: 10px; }
+.support-dialog .update-actions button { padding: 9px 16px; font-size: 13px; }

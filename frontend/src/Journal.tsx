@@ -55,7 +55,14 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   const [detailImage, setDetailImage] = useState({ key: "", url: "", error: "" });
   const enterButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const previewDialog = useRef<HTMLDivElement>(null);
+  const previewDialog = useRef<HTMLDialogElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
+  const mapButtons = useRef(new Map<number, HTMLButtonElement>());
+  const lastSelected = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedNumber !== null) { lastSelected.current = selectedNumber; backButton.current?.focus(); }
+    else if (lastSelected.current !== null) { mapButtons.current.get(lastSelected.current)?.focus(); lastSelected.current = null; }
+  }, [selectedNumber]);
   useEffect(() => {
     if (settings.door === "td") onSettingsChange({ ...settings, door: "lf" });
   }, [settings, onSettingsChange]);
@@ -93,26 +100,19 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   useEffect(() => {
     if (selectedNumber === null) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault(); event.stopImmediatePropagation();
-        if (event.repeat) return;
-        if (preview === "open") setPreview("closing");
-        else if (preview === "closing") return;
-        else setSelectedNumber(null);
-      } else if (preview !== "closed" && event.key === "Tab") {
-        const buttons = [...(previewDialog.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
-        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-        const next = current < 0 ? (event.shiftKey ? buttons.length - 1 : 0) : (current + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
-        event.preventDefault(); buttons[next]?.focus();
+      if (event.key === "Escape" && !event.defaultPrevented && !event.repeat && preview === "closed" && !document.querySelector(":modal")) {
+        event.preventDefault(); setSelectedNumber(null);
       }
     };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [selectedNumber, preview]);
   useEffect(() => {
     if (preview === "closed") return;
+    const dialog = previewDialog.current;
+    if (dialog && !dialog.open) dialog.showModal();
     closeButton.current?.focus();
-    return () => { enterButton.current?.focus(); };
+    return () => { dialog?.close(); enterButton.current?.focus(); };
   }, [preview !== "closed"]);
   useEffect(() => {
     if (preview !== "closing") return;
@@ -153,7 +153,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           <h2 aria-hidden={settings.collapsed}>{zh ? "地图筛选" : "Map filters"}</h2>
           <button type="button" aria-expanded={!settings.collapsed} aria-controls="journal-filter-body" aria-label={zh ? (settings.collapsed ? "展开地图筛选" : "收起地图筛选") : (settings.collapsed ? "Expand filters" : "Collapse filters")} onClick={() => setCollapsed(!collapsed)}>{settings.collapsed ? "›" : "‹"}</button>
         </div>
-        <div id="journal-filter-body" hidden={settings.collapsed}>
+        <div id="journal-filter-body" ref={element => {if (element) element.inert = settings.collapsed;}} aria-hidden={settings.collapsed}><div className="journal-filter-content">
           <label className="journal-season">{zh ? "赛季" : "Season"}
             <select value={settings.season} onChange={(event) => change({ season: event.target.value })}>{seasons.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
           </label>
@@ -167,12 +167,12 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
             <button type="button" onClick={() => { void journalApi.openDirectory().catch((reason) => onNotice(String(reason), true)); }}>{zh ? "打开地图目录" : "Open map folder"}</button>
           </div>
           {library.directory && <p className="journal-directory">{library.directory}</p>}
-        </div>
+        </div></div>
       </aside>
       <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy}>
         {busy ? <div className="empty journal-empty">{zh ? "正在读取地图包…" : "Loading map packs…"}</div>
           : selectedNumber !== null ? <div className="journal-detail" key={`detail:${selectedNumber}`}>
-            <button type="button" className="journal-back" onClick={() => setSelectedNumber(null)}>{zh ? "‹ 返回列表" : "‹ Back to list"}</button>
+            <button ref={backButton} type="button" className="journal-back" onClick={() => setSelectedNumber(null)}>{zh ? "‹ 返回列表" : "‹ Back to list"}</button>
             {!selectedMap ? <p>{zh ? "当前楼层或显示模式暂无此地图。" : "This map is unavailable for the selected floor or display mode."}</p>
               : detailError ? <p role="alert">{zh ? "图片读取失败：" : "Could not read image: "}{detailError}</p>
               : detailUrl ? <img key={detailKey} src={detailUrl} alt={selectedName} onError={() => setDetailImage({ key: detailKey, url: "", error: zh ? "图片格式无效或已损坏" : "Invalid or damaged image" })} />
@@ -180,7 +180,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           </div>
           : maps.length ? <div className="journal-grid" key={`${settings.season}:${settings.difficulty}:${settings.door}:${settings.floor}:${settings.display}`}>{maps.map((map, index) => {
             const name = map.name || (zh ? `地图 ${map.index}` : `Map ${map.index}`);
-            return <button type="button" className="journal-map" style={{ "--map-delay": `${Math.min(index, 7) * 35}ms` } as CSSProperties} key={`${map.key}:${map.image.path}`} onClick={() => setSelectedNumber(map.index)} aria-label={zh ? `查看${name}` : `View ${name}`}><Thumbnail image={map.image} name={name} zh={zh} /><span className="journal-map-name">{name}</span></button>;
+            return <button ref={element => {if (element) mapButtons.current.set(map.index, element); else mapButtons.current.delete(map.index);}} type="button" className="journal-map" style={{ "--map-delay": `${Math.min(index, 7) * 35}ms` } as CSSProperties} key={`${map.key}:${map.image.path}`} onClick={() => setSelectedNumber(map.index)} aria-label={zh ? `查看${name}` : `View ${name}`}><Thumbnail image={map.image} name={name} zh={zh} /><span className="journal-map-name">{name}</span></button>;
           })}</div>
           : <div className="empty journal-empty"><span className="journal-empty-icon" aria-hidden="true">▤</span><h3>{zh ? "当前组合暂无地图" : "No maps in this group"}</h3><p>{zh ? "请导入地图包，或选择其他赛季、难度、门型及楼层。" : "Import a map pack or choose another season, difficulty, door type or floor."}</p></div>}
         <footer className={`journal-footer${selectedNumber !== null ? " journal-detail-footer" : ""}`} aria-live="polite"><div><span>{selectedNumber !== null ? selectedName : zh ? `当前组合共 ${maps.length} 张地图` : `${maps.length} maps in this group`}</span><small>{summary}</small></div>
@@ -188,11 +188,11 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
         </footer>
       </section>
     </div>
-    {preview !== "closed" && createPortal(<div ref={previewDialog} className={`journal-full-preview${preview === "closing" ? " is-closing" : ""}`} role="dialog" aria-modal="true" aria-label={zh ? `${selectedName}全窗口预览` : `${selectedName} full-window preview`}>
+    {preview !== "closed" && createPortal(<dialog ref={previewDialog} className={`journal-full-preview${preview === "closing" ? " is-closing" : ""}`} aria-label={zh ? `${selectedName}全窗口预览` : `${selectedName} full-window preview`} onCancel={event => {event.preventDefault(); setPreview("closing");}}>
       {detailUrl ? <img key={detailKey} src={detailUrl} alt={selectedName} onLoad={({ currentTarget: image }) => image.style.setProperty("--map-aspect-ratio", String(image.naturalWidth / image.naturalHeight))} onError={() => setDetailImage({ key: detailKey, url: "", error: zh ? "图片格式无效或已损坏" : "Invalid or damaged image" })} />
         : <p className="journal-preview-status" role={detailError ? "alert" : "status"}>{detailError || (zh ? "正在读取地图…" : "Loading map…")}</p>}
       <div className="journal-preview-floors">{floorSwitch()}</div>
       <button ref={closeButton} type="button" className="journal-preview-close" aria-label={zh ? "退出全窗口预览" : "Exit full-window preview"} title={zh ? "退出预览（Esc）" : "Exit preview (Esc)"} onClick={() => setPreview("closing")}>×</button>
-    </div>, document.body)}
+    </dialog>, document.body)}
   </div>;
 }

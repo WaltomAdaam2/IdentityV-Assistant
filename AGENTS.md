@@ -38,8 +38,8 @@ The frontend, Rust shell, and Python engine share one application domain.
 
 ### Engineering workflow
 
-For every user instruction, read and apply the available **ponytail** and **frontend-design** skills.
-Apply their guidance proportionately; a non-UI instruction does not require inventing UI changes.
+For every code change, read and apply **ponytail**: understand the flow, reuse existing
+code/native features, keep the diff focused, and verify the smallest meaningful behavior.
 Other skills are chosen by the agent when relevant or explicitly requested by the user.
 Read a skill before applying it; do not claim an unavailable skill was used.
 Agree meaningful test seams before TDD; write a failing behavior test, implement it, then verify.
@@ -47,6 +47,32 @@ Keep frontend game decisions in Python. Keep process ownership and lifecycle in 
 Review changes for concrete defects after implementation, with an independent reviewer when requested.
 Do not treat unit, emulated, offline, or build checks as proof of live gameplay or login success.
 For substantial coding work, report assumptions, changes, verification, and remaining risks concisely.
+
+### Required UI design workflow
+
+Whenever the user requests UI design, redesign, or interface improvement, read and
+combine these six skills in stages, keeping one coherent visual direction:
+
+1. **tauri-v2**: verify the actual Tauri version, frontend stack, window behavior,
+   IPC boundaries and capabilities before choosing an implementation.
+2. **frontend-design**: establish the shared visual direction, layout and component
+   style from the user's brief and existing application.
+3. **ui-ux-pro-max**: refine palette, typography, spacing, component states and UX
+   rules for this desktop tool, including window resizing and information density.
+4. **animate**: implement purposeful interaction motion; handle rapid interruption,
+   closing transitions, responsiveness and reduced-motion preferences. Prefer
+   existing tokens and native/CSS mechanisms over new dependencies.
+5. **impeccable**: review and refine hierarchy, alignment, details and consistency
+   against the same visual direction, using rendered evidence.
+6. **web-design-guidelines**: finish with keyboard, focus, accessibility, overflow
+   and interaction-quality checks, and fix applicable defects.
+
+Keep the existing stack and business behavior; change only the requested scope.
+The user's instructions and this project's rules take precedence over conflicting
+skill advice. Distinguish static, mock-browser, build and native-runtime validation;
+state what was actually verified and what remains unverified. When the user asks
+for item-by-item design decisions, collect those decisions before implementing
+the optional changes. Do not turn an audit into an unapproved broad redesign.
 
 ## GitHub version workflow
 

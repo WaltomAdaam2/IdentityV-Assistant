@@ -21,11 +21,18 @@ After publishing and verifying the bridge, the old repository can remain public 
 
 GitHub direct (default) is the default source; GH-Proxy, GHFast and ghproxy.net remain manual choices. Version 0.1.8 removes automatic speed tests and migrates old `auto` preferences to direct while preserving explicit proxy choices. Startup checks can be disabled. Release notes appear before the user chooses to download or install. Ignoring a version's startup reminder does not prevent a manual check. Prereleases are disabled by default.
 
-Downloads must pass repository/version URL validation, release-signature verification, signed-version validation, SHA-256, and size checks. Cancellation discards the partial download; retry starts over. Installation stops automation, releases input, cleans up the assistant's owned login proxy, and exits before starting the installer. Settings, logs, and imported maps remain in AppData.
+Downloads must pass repository/version URL validation, release-signature verification, signed-version validation, SHA-256, and size checks. Cancellation discards the partial download; retry starts over. During an assistant download, cancel the download before closing its dialog. The dialog also stays open during verification and installation. Installation stops automation, releases input, cleans up the assistant's owned login proxy, and exits before starting the installer. Settings, logs, and imported maps remain in AppData.
 
 The assistant download shows a five-second rolling speed and estimated remaining time beside the progress bar. The estimate is unknown at startup, for unknown sizes, or during a stall; it excludes verification and installation time. Release notes render Markdown headings, lists, emphasis, code and HTTP/HTTPS links without executing HTML/scripts or loading embedded images. Source choices also apply to the separate login component, whose updates have their own lifecycle.
 
 From 0.1.9, login-component hotfixes also report actual per-module downloaded bytes, reliable totals and speed, using B/KB for small files. Unknown totals do not produce fabricated percentages. Preparation, file application and proxy restoration have separate phases. Official validation, backup and rollback records remain in use.
+
+The component update dialog can suppress reminders for the current batch. Only
+the same version, module and commit IDs are ignored at game launch; new versions
+or commits prompt again, and manual checks remain available. Applying hotfixes
+first verifies configuration writes and then reads persisted update records back
+from disk. Missing records are reported as failure; finishing a download alone
+does not establish a successful update.
 
 ## Building
 
@@ -66,5 +73,7 @@ The script checks the clean version-matched SNAPSHOT branch, unmerged PR state, 
 
 5. The user reviews the PR, draft, checksums and build evidence. Once the PR merges into main, keep its SNAPSHOT branch permanently frozen: never commit, sync, merge, rebase or delete it. Later changes use a new version branch.
 6. The user personally publishes the reviewed draft on GitHub and makes a stable release Latest. Drafts are unavailable to the public updater until publication. The tag retains the verified build commit. Agents never publish for the user.
+
+If the user explicitly requests merging before draft creation, still build and verify the clean pushed SNAPSHOT commit before merging. Upload only that original build afterward with `-MergedPullRequest <number>`. The script verifies the merged PR's repository, version branch and original commit, main ancestry, unchanged remote branch and all existing artifact integrity checks. A clean detached worktree at that commit is supported; never modify or synchronize the frozen SNAPSHOT branch. This option cannot overwrite an existing tag/draft or publish a release.
 
 Updater signatures are not Windows Authenticode signatures; Windows may report an unknown publisher. Current first-party source and releases from 0.1.7 use GPL-3.0-only. Historical binaries and third-party materials retain their original terms; see [Third-party notices](../THIRD_PARTY_NOTICES.md).
