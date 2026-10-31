@@ -1,5 +1,5 @@
 {
-  "app": {"language": "zh-CN", "theme": "light", "launch_engine_on_start": false, "launch_on_login": false, "minimize_to_tray": false, "ui_scale_percent": 100, "engine_hotkey": "F3", "developer_mode": false, "prevent_system_sleep": false, "prevent_display_sleep": false, "check_updates_on_start": true, "update_prereleases": false, "update_source": "direct"},
+  "app": {"language": "zh-CN", "theme": "light", "launch_engine_on_start": false, "launch_on_login": false, "minimize_to_tray": false, "ui_scale_percent": 100, "engine_hotkey": "F3", "recognition_hotkey": "P", "developer_mode": false, "prevent_system_sleep": false, "prevent_display_sleep": false, "check_updates_on_start": true, "update_prereleases": false, "update_source": "direct"},
   "tasks": {"enabled": ["login_lobby"]},
   "engine": {"memory_protection": false, "heartbeat_interval_seconds": 2.0},
   "game_window": {

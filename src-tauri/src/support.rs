@@ -161,6 +161,7 @@ fn import_backup(value: &Value) -> Result<Value, String> {
     let mut result = defaults();
     merge_known(&mut result, &value["settings"]);
     // Parse the hotkey before any desktop effect or file replacement.
+    crate::journal_shortcut::validate(&result)?;
     result["app"]["engine_hotkey"]
         .as_str()
         .unwrap_or("")

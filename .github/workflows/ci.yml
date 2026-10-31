@@ -39,7 +39,7 @@ jobs:
         run: pnpm build
 
       - name: Test frontend helpers
-        run: node --test frontend/tests/logs.test.mjs frontend/tests/download-progress.test.mjs
+        run: node --test frontend/tests/logs.test.mjs frontend/tests/download-progress.test.mjs frontend/tests/journal-data.test.mjs
 
       - name: Test draft-only release gates
         shell: powershell

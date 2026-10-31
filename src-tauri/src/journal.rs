@@ -251,6 +251,73 @@ fn list(root: &Path) -> Result<JournalLibrary, String> {
     library.packs.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(library)
 }
+
+/// Recognition identity spans door categories; display eligibility stays strict.
+pub(crate) fn recognition_templates(
+    season: &str,
+    difficulty: &str,
+    display: &str,
+) -> Result<serde_json::Value, String> {
+    recognition_templates_at(&packs_root()?, season, difficulty, display)
+}
+
+fn recognition_templates_at(
+    root: &Path,
+    season: &str,
+    difficulty: &str,
+    display: &str,
+) -> Result<serde_json::Value, String> {
+    if season.is_empty()
+        || season.len() > 100
+        || !["hard", "nightmare"].contains(&difficulty)
+        || !["pure", "route"].contains(&display)
+    {
+        return Err("无效识图条件 / Invalid recognition filters".into());
+    }
+    let library = list(root)?;
+    let packs: Vec<_> = library
+        .packs
+        .iter()
+        .filter(|pack| pack.season_id == season && pack.difficulty == difficulty)
+        .collect();
+    let mut eligible = BTreeSet::new();
+    let mut sources = BTreeMap::new();
+    for pack in packs {
+        for map in &pack.maps {
+            let key = format!("{}:{}", map.category, map.index);
+            let layers = if display == "route" {
+                &map.display
+            } else {
+                &map.floors
+            };
+            if layers.contains_key("1") {
+                eligible.insert(key.clone());
+            }
+            if let Some(path) = map.floors.get("1") {
+                // Prefer an unannotated base pack for geometry, even in route view.
+                let annotated = !map.display.is_empty();
+                let replace = sources
+                    .get(&key)
+                    .is_none_or(|(old, _, _)| *old && !annotated);
+                if replace {
+                    sources.insert(key, (annotated, pack.id.clone(), path.clone()));
+                }
+            }
+        }
+    }
+    let mut templates = Vec::new();
+    for key in eligible {
+        if let Some((_, pack_id, path)) = sources.get(&key) {
+            let pack_root = inside(&root, pack_id)?;
+            let (path, _) = image_file(&pack_root, path)?;
+            templates.push(serde_json::json!({"key": key, "path": path}));
+        }
+    }
+    if templates.is_empty() {
+        return Err("当前分类缺少一楼地图，请导入对应地图包 / Import first-floor maps for the selected category".into());
+    }
+    Ok(serde_json::Value::Array(templates))
+}
 fn find_pack_folder(source: &Path) -> Result<PathBuf, String> {
     reject_link(source)?;
     if source.join("pack.json").exists() {
@@ -537,6 +604,43 @@ mod tests {
         fs::write(&json, b"{}").unwrap();
         assert!(validate_zip_source(&json).is_err());
         assert!(validate_zip_source(&dir.path().join("missing.zip")).is_err());
+    }
+
+    #[test]
+    fn recognition_index_is_first_floor_display_strict_and_prefers_clean_geometry() {
+        let root = tempfile::tempdir().unwrap();
+        for (id, maps) in [
+            (
+                "base",
+                serde_json::json!([
+                    {"index":1,"category":"lf","floors":{"1":"map.png"}},
+                    {"index":1,"category":"rf","floors":{"1":"map.png"}},
+                    {"index":2,"category":"rf","floors":{"2":"map.png"}}
+                ]),
+            ),
+            (
+                "a_route",
+                serde_json::json!([
+                    {"index":1,"category":"rf","floors":{"1":"map.png"},"display":{"1":"map.png"}},
+                    {"index":1,"category":"lf","floors":{"1":"map.png"},"display":{"2":"map.png"}}
+                ]),
+            ),
+        ] {
+            let path = root.path().join(id);
+            fs::create_dir(&path).unwrap();
+            fs::write(path.join("map.png"), b"fixture").unwrap();
+            fs::write(path.join("pack.json"), serde_json::json!({"id":id,"name":id,"season_id":"s0","difficulty":"hard","maps":maps}).to_string()).unwrap();
+        }
+        let pure = recognition_templates_at(root.path(), "s0", "hard", "pure").unwrap();
+        assert_eq!(pure.as_array().unwrap().len(), 2);
+        let route = recognition_templates_at(root.path(), "s0", "hard", "route").unwrap();
+        assert_eq!(route.as_array().unwrap().len(), 1);
+        assert_eq!(route[0]["key"], "rf:1");
+        assert_eq!(
+            Path::new(route[0]["path"].as_str().unwrap()),
+            root.path().join("base/map.png").canonicalize().unwrap()
+        );
+        assert!(recognition_templates_at(root.path(), "s1", "hard", "route").is_err());
     }
 
     #[test]

@@ -9,6 +9,7 @@ import GameLauncher from "./GameLauncher";
 import UpdatePanel from "./UpdatePanel";
 import SupportPanel from "./SupportPanel";
 import { useDialog } from "./useDialog";
+import { useJournalRecognition } from "./useJournalRecognition";
 import { NumberInput, KeywordsInput } from "./SettingsInput";
 import SettingRow from "./SettingRow";
 import Icon, { type IconName } from "./Icon";
@@ -674,6 +675,7 @@ const defaults: Settings = {
     minimize_to_tray: false,
     ui_scale_percent: 100,
     engine_hotkey: "F3",
+    recognition_hotkey: "P",
     update_prereleases: false,
     developer_mode: false,
     prevent_system_sleep: false,
@@ -1445,6 +1447,7 @@ export default function App() {
     document.title = t.about.name;
   }, [t.about.name]);
   useLayoutEffect(() => {
+    if (!document.hasFocus()) return;
     if (document.activeElement?.closest(".sidebar nav")) return;
     const heading = workspaceRef.current?.querySelector<HTMLElement>(page === "launcher" ? ".launcher-choose" : ".topbar h1");
     if (heading) { if (heading.tagName !== "BUTTON") heading.tabIndex = -1; heading.focus({preventScroll: true}); }
@@ -1503,6 +1506,15 @@ export default function App() {
     stop: () => { void lifecycle("stop"); },
     restart: () => { if (tasks.some(task => task.status !== "idle")) setRestartPrompt(true); else void lifecycle("restart"); },
   };
+  const journalRecognition = useJournalRecognition({ ...defaultJournalSettings, ...settings.journal }, page === "journal", settingsLoaded,
+    () => {
+      if (supportBusyRef.current || document.querySelector("dialog:modal:not(.journal-full-preview)")) return false;
+      // This changes only WebView content. Never show/activate the native window.
+      if (pageTransitionTimer.current !== null) { window.clearTimeout(pageTransitionTimer.current); pageTransitionTimer.current = null; }
+      pendingPageRef.current = "journal";
+      setPage("journal"); setPagePhase("idle");
+      return true;
+    }, message => setNotice(message, true));
   const content = {
     dashboard: (
       <Dashboard
@@ -1533,6 +1545,7 @@ export default function App() {
       onLog={(message) => appendLog("info", message, "launcher", true)}
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))}
+      recognition={journalRecognition.view} onRecognize={() => void journalRecognition.start()} onCancelRecognition={journalRecognition.cancel} shortcut={settings.app.recognition_hotkey}
       onNotice={(message, error = false) => { setNotice(message, error); appendLog(error ? "error" : "info", message, "journal", true); }} />,
     runtime: (
       <Runtime
@@ -2520,6 +2533,9 @@ function SettingsPage({
         </SettingRow>
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
           <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select>
+        </SettingRow>
+        <SettingRow icon="keyboard" title={language === "zh-CN" ? "识别一楼地图快捷键" : "Recognize first-floor map shortcut"} description={language === "zh-CN" ? "仅在游戏前台响应，保留原按键，不切走游戏焦点。先在手记中选择赛季、难度与显示方式。" : "Works only while the game is foreground; preserves game input and focus. Select the season, difficulty and display in Journal first."} language={language}>
+          <select value={settings.app.recognition_hotkey} onChange={event => updateApp({ recognition_hotkey: event.target.value })}>{[..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map(key => <option key={key} disabled={key === settings.app.engine_hotkey}>{key}</option>)}</select>
         </SettingRow>
         <SettingRow icon="play" title={t.launch} description={language === "zh-CN" ? "打开助手时自动启动自动化引擎" : "Start the automation engine when the assistant opens."} language={language}>
           <input

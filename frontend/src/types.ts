@@ -136,6 +136,7 @@ export interface Settings {
     minimize_to_tray: boolean;
     ui_scale_percent: number;
     engine_hotkey: string;
+    recognition_hotkey: string;
     developer_mode: boolean;
     prevent_system_sleep: boolean;
     prevent_display_sleep: boolean;
