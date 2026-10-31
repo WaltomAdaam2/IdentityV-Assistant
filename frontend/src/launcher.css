@@ -1,6 +1,5 @@
 .workspace.workspace-launcher { display: flex; flex-direction: column; background: linear-gradient(0deg, #19150f66, transparent 52%), url('/launcher/background.jpg') center / cover; }
 .workspace-launcher > .topbar { display: none; }
-.workspace-launcher > .notice { flex-shrink: 0; }
 .page-content.page-launcher { display: flex; flex: 1; flex-direction: column; width: 100%; min-height: 0; max-width: none; padding: 0; }
 .game-launcher { position: relative; display: flex; flex: 1; flex-direction: column; justify-content: space-between; min-height: 0; padding: 36px; color: #fff; }
 .launcher-logo { align-self: flex-start; width: clamp(180px, 28%, 300px); height: auto; filter: drop-shadow(0 3px 8px #201d1980); }

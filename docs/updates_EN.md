@@ -27,6 +27,13 @@ The assistant download shows a five-second rolling speed and estimated remaining
 
 From 0.1.9, login-component hotfixes also report actual per-module downloaded bytes, reliable totals and speed, using B/KB for small files. Unknown totals do not produce fabricated percentages. Preparation, file application and proxy restoration have separate phases. Official validation, backup and rollback records remain in use.
 
+The component update dialog can suppress reminders for the current batch. Only
+the same version, module and commit IDs are ignored at game launch; new versions
+or commits prompt again, and manual checks remain available. Applying hotfixes
+first verifies configuration writes and then reads persisted update records back
+from disk. Missing records are reported as failure; finishing a download alone
+does not establish a successful update.
+
 ## Building
 
 Prepare the [development environment](development.md), then build from a clean, pushed, unmerged version branch such as `SNAPSHOT-v0.1.8`:

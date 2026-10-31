@@ -5,6 +5,18 @@ import type { Settings } from "./types";
 import Icon from "./Icon";
 import "./launcher.css";
 
+const skippedUpdatesKey = "idv-assistant:skipped-component-updates";
+const updateIds = (info: ComponentUpdateInfo) => [
+  ...(info.release_url ? [`release:${info.version}`] : []),
+  ...info.hotfixes.map(item => `hotfix:${info.current_version}|${item.target_module}@${item.target_commit}`),
+];
+const readSkippedUpdates = (): string[] => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(skippedUpdatesKey) ?? "[]");
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  } catch { return []; }
+};
+
 export default function GameLauncher({ language, appSettings, onAppSettingsChange, executablePath, onExecutableChange, onLog }: {
   language: Settings["app"]["language"];
   executablePath: string;
@@ -33,6 +45,8 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   const [updateError, setUpdateError] = useState("");
   const [updatePhase, setUpdatePhase] = useState<"checking" | "applying" | "idle">("idle");
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [skipUpdates, setSkipUpdates] = useState(false);
+  const [preferenceError, setPreferenceError] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<ComponentUpdateProgress | null>(null);
   const continueAfterUpdate = useRef(false);
   const starting = launching || (updatePhase === "checking" && continueAfterUpdate.current) || status?.phase === "starting";
@@ -95,17 +109,29 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   const checkUpdates = async (forLaunch: boolean) => {
     if (forLaunch) onLog(zh ? "正在检查登录组件更新…" : "Checking login component updates…");
     continueAfterUpdate.current = forLaunch;
-    setUpdatePhase("checking"); setUpdateError(""); setUpdateInfo(null); setLaunchError("");
+    setUpdatePhase("checking"); setUpdateError(""); setUpdateInfo(null); setLaunchError(""); setPreferenceError(false);
     if (!forLaunch) setUpdateOpen(true);
     try {
       const info = await bridge.checkLoginUpdates(appSettings.update_source);
       setUpdateInfo(info);
-      if (info.release_url || info.hotfixes.length || !forLaunch) setUpdateOpen(true);
+      const ids = updateIds(info);
+      const ignored = readSkippedUpdates();
+      const skipped = ids.length > 0 && ids.every(id => ignored.includes(id));
+      setSkipUpdates(skipped);
+      if (!forLaunch || updateOpen || (ids.length > 0 && !skipped)) setUpdateOpen(true);
       else { setUpdatePhase("idle"); continueAfterUpdate.current = false; await startGame(); }
     } catch (error) {
       if (String(error).includes("取消")) { continueAfterUpdate.current = false; setLaunchError(String(error)); }
       else { setUpdateError(String(error)); setUpdateOpen(true); }
     } finally { setUpdatePhase("idle"); }
+  };
+  const saveUpdatePreference = (checked: boolean) => {
+    if (!updateInfo) return;
+    try {
+      if (checked) localStorage.setItem(skippedUpdatesKey, JSON.stringify(updateIds(updateInfo)));
+      else localStorage.removeItem(skippedUpdatesKey);
+      setSkipUpdates(checked); setPreferenceError(false);
+    } catch { setPreferenceError(true); }
   };
   const closeUpdate = (resume = false) => {
     setUpdateOpen(false);
@@ -186,6 +212,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   };
   return <section className="game-launcher" aria-label={zh ? "游戏启动" : "Game launch"}>
     {updateOpen && <ComponentUpdateDialog info={updateInfo} error={updateError} phase={updatePhase} progress={updateProgress} source={appSettings.update_source} language={language} continuing={continueAfterUpdate.current}
+      skipUpdates={skipUpdates} preferenceError={preferenceError} onSkipUpdates={saveUpdatePreference}
       onSource={(source) => onAppSettingsChange({...appSettings, update_source: source})} onClose={() => closeUpdate()} onContinue={() => closeUpdate(true)} onCheck={() => void checkUpdates(continueAfterUpdate.current)} onApply={() => void applyHotfixes()}
       onDownload={() => void bridge.openLoginUpdate(appSettings.update_source).catch((error) => setUpdateError(String(error)))} />}
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />

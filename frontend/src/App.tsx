@@ -846,10 +846,11 @@ export default function App() {
   const pendingLogsRef = useRef<LogEntry[]>([]);
   const logFlushTimer = useRef<number | null>(null);
   const nextLogId = useRef(2);
-  const [notice, setCurrentNotice] = useState<{ message: string; error: boolean } | null>(null);
+  const [notice, setCurrentNotice] = useState<{ message: string; error: boolean; details?: string } | null>(null);
   const [visibleNotice, setVisibleNotice] = useState<typeof notice>(null);
-  const setNotice = useCallback((message: string | null, error = false) => {
-    setCurrentNotice(message ? { message, error } : null);
+  const dismissedNotice = useRef<typeof notice>(null);
+  const setNotice = useCallback((message: string | null, error = false, details?: string) => {
+    setCurrentNotice(message ? { message, error, details } : null);
   }, []);
   const [noticeHovered, setNoticeHovered] = useState(false);
   const [noticeFocused, setNoticeFocused] = useState(false);
@@ -858,12 +859,12 @@ export default function App() {
     if (notice) { setVisibleNotice(notice); return; }
     if (noticeHeld) return;
     const timer = window.setTimeout(() => setVisibleNotice(null),
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 600);
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500);
     return () => window.clearTimeout(timer);
   }, [notice, noticeHeld]);
   useEffect(() => {
     if (!notice || noticeHeld) return;
-    const timer = window.setTimeout(() => setCurrentNotice(null), notice.error ? 8000 : 1000);
+    const timer = window.setTimeout(() => setCurrentNotice(null), 2000);
     return () => window.clearTimeout(timer);
   }, [notice, noticeHeld]);
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null);
@@ -1377,8 +1378,8 @@ export default function App() {
   }, [savedToast?.id]);
   useEffect(() => {
     if (!savedToast) return;
-    const exit = window.setTimeout(() => setSavedToast((value) => value ? { ...value, leaving: true } : null), 3000);
-    const remove = window.setTimeout(() => setSavedToast(null), 3340);
+    const exit = window.setTimeout(() => setSavedToast((value) => value ? { ...value, leaving: true } : null), 2000);
+    const remove = window.setTimeout(() => setSavedToast(null), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 2000 : 2500);
     return () => { window.clearTimeout(exit); window.clearTimeout(remove); };
   }, [savedToast?.id]);
   useEffect(() => {
@@ -1508,7 +1509,7 @@ export default function App() {
       language={language}
       settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
       setSettings={value => { if (!supportBusyRef.current) setSettings(value); }}
-      support={<SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")}
+      support={<SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")} onNotice={setNotice}
         withSettings={async action => {
           supportBusyRef.current = true;
           setSupportBusy(true);
@@ -1589,16 +1590,18 @@ export default function App() {
             </div>
           </header>
           {visibleNotice && (
-            <div className={`notice${notice ? "" : " notice-leave"}`} role={visibleNotice.error ? "alert" : "status"}
-              onMouseEnter={() => { setNoticeHovered(true); setCurrentNotice(visibleNotice); }}
+            <div className={`notice-slot${notice ? "" : " is-leaving"}`}><div className="notice-clip">
+            <div className={`notice${visibleNotice.error ? " notice-error" : ""}${notice ? "" : " notice-leave"}`} role={visibleNotice.error ? "alert" : "status"}
+              onMouseEnter={() => { if (dismissedNotice.current !== visibleNotice) { setNoticeHovered(true); setCurrentNotice(visibleNotice); } }}
               onMouseLeave={() => setNoticeHovered(false)}
-              onFocusCapture={() => { setNoticeFocused(true); setCurrentNotice(visibleNotice); }}
+              onFocusCapture={() => { if (dismissedNotice.current !== visibleNotice) { setNoticeFocused(true); setCurrentNotice(visibleNotice); } }}
               onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setNoticeFocused(false); }}>
-              <span>{visibleNotice.message}</span>
-              <button aria-label={t.closeNotice} onClick={() => { setNotice(null); setVisibleNotice(null); setNoticeHovered(false); setNoticeFocused(false); }}>
+              <div className="notice-copy"><span>{visibleNotice.message}</span>{visibleNotice.details && <details><summary>{language === "zh-CN" ? "查看详情" : "View details"}</summary><p>{visibleNotice.details}</p></details>}</div>
+              <button aria-label={t.closeNotice} onClick={() => { dismissedNotice.current = visibleNotice; setNotice(null); setNoticeHovered(false); setNoticeFocused(false); }}>
                 ×
               </button>
             </div>
+            </div></div>
           )}
           <div className={`page-content page-${page} page-${pagePhase}`} style={{ "--page-direction": pageDirection } as CSSProperties}
             onAnimationEnd={(event) => { if (event.target === event.currentTarget && event.animationName === "page-in") setPagePhase("idle"); }}>

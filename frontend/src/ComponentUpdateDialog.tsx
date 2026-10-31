@@ -6,10 +6,11 @@ import type { Settings } from "./types";
 import { SettingIcon } from "./SettingRow";
 import "./updates.css";
 
-export default function ComponentUpdateDialog({ info, error, phase, progress, source, language, continuing, onSource, onClose, onContinue, onCheck, onApply, onDownload }: {
+export default function ComponentUpdateDialog({ info, error, phase, progress, source, language, continuing, skipUpdates, preferenceError, onSkipUpdates, onSource, onClose, onContinue, onCheck, onApply, onDownload }: {
   info: ComponentUpdateInfo | null; error: string; phase: "checking" | "applying" | "idle";
   progress: ComponentUpdateProgress | null;
   source: Settings["app"]["update_source"]; language: Settings["app"]["language"]; continuing: boolean;
+  skipUpdates: boolean; preferenceError: boolean; onSkipUpdates: (checked: boolean) => void;
   onSource: (source: Settings["app"]["update_source"]) => void; onClose: () => void; onContinue: () => void; onCheck: () => void;
   onApply: () => void; onDownload: () => void;
 }) {
@@ -36,6 +37,9 @@ export default function ComponentUpdateDialog({ info, error, phase, progress, so
     {info?.hotfixes.length ? <p>{zh ? "应用热更新会暂时停止并恢复助手启动的代理，游戏会保留。" : "Applying hotfixes temporarily stops and restores the assistant's proxy; the game stays open."}</p> : null}
     {info?.release_url && <p>{zh ? "完整新版将从所选源下载。更换组件前需要确认与助手兼容。" : "Download the full release from the selected source. Check assistant compatibility before replacing the component."}</p>}
     {error && <details className="update-error" open><summary>{zh ? "错误详情" : "Error details"}</summary><p role="alert">{error}</p></details>}
+    {available && <label className="check-label update-skip"><input type="checkbox" disabled={busy} checked={skipUpdates} onChange={event => onSkipUpdates(event.target.checked)} />{zh ? "不再提醒本批组件更新" : "Don't remind me about these component updates"}</label>}
+    {available && <p className="update-hint">{zh ? "新版本或新提交仍会提醒，也可以随时手动检查。" : "New versions or commits will still prompt. You can check manually at any time."}</p>}
+    {preferenceError && <p role="alert" className="update-error">{zh ? "提醒偏好未保存，请重试。" : "Could not save this preference. Try again."}</p>}
     {busy && (progress?.phase === "downloading" ? <div>
       <small>{zh ? "正在下载模块：" : "Downloading module: "}{progress.module}</small>
       <DownloadProgress key={`${progress.module}@${progress.commit}`} downloaded={progress.downloaded} total={progress.total} language={language} />

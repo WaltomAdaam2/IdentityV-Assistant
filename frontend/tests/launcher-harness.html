@@ -23,9 +23,10 @@ mockIPC((command, args) => {
   if (command === "preview_settings_restore") {
     window.__launcherTest.restoreSettings = structuredClone(window.__launcherTest.savedSettings);
     window.__launcherTest.restoreSettings.app.theme = "dark";
-    return {id:"restore-fixture",changes:[{field:"settings.app.theme",before:"light",after:"dark"}],warnings:[]};
+    return {id:"restore-fixture",changes:window.__launcherTest.restoreChanges ?? [{field:"settings.app.theme",before:"light",after:"dark"}],warnings:[]};
   }
   if (command === "restore_settings") { window.__launcherTest.savedSettings = structuredClone(window.__launcherTest.restoreSettings); return window.__launcherTest.restoreSettings; }
+  if (["export_settings", "export_diagnostics"].includes(command) && window.__launcherTest.exportSupportFailure) return Promise.reject("无法写入所选位置 / Access denied");
   if (command === "preview_diagnostics") return {id:"bundle-fixture",truncated:false,files:[{name:"environment.json",size:200},{name:"settings.redacted.json",size:500},{name:"session.redacted.jsonl",size:1000},...(args.includeImages ? [{name:"images/failure-fixture.png",size:2048}] : [])]};
   if (command === "send_engine_command" && window.__launcherTest.failPreflight && ["start_task","start_tasks"].includes(args.command.type)) return window.__launcherTest.emitLog({type:"task_preflight",ok:false,code:"capture_failed",for_start:true,warnings:[]});
   if (command === "task_preflight") return window.__launcherTest.emitLog({type:"task_preflight",ok:true,code:"ready",for_start:false,warnings:[]}).then(() => ({requested:true,request_id:"fixture"}));
@@ -52,7 +53,7 @@ mockIPC((command, args) => {
     return finish();
   }
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
-  if (command === "check_login_updates") return {current_version: "v6.3.2-stable", version: "v6.3.2-stable", notes: "", release_url: null, hotfixes: window.__launcherTest.hasHotfix ? [{target_module: "fixture", target_commit: "abcdef1234567", note: "测试热更新"}] : []};
+  if (command === "check_login_updates") return {current_version: "v6.3.2-stable", version: "v6.3.2-stable", notes: "", release_url: null, hotfixes: window.__launcherTest.hasHotfix ? [{target_module: "fixture", target_commit: window.__launcherTest.hotfixCommit || "abcdef1234567", note: "测试热更新"}] : []};
   if (command === "apply_login_hotfixes") { window.__launcherTest.hasHotfix = false; return window.__launcherTest.deferHotfix ? new Promise(resolve => { window.__launcherTest.finishHotfix = resolve; }) : null; }
   if (command === "cancel_game_launch") { window.__launcherTest.finishLaunch?.("操作已取消"); return null; }
   if (command === "configure_login_component") {

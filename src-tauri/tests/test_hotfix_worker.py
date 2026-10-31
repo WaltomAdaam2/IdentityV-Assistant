@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
@@ -49,7 +50,7 @@ class HotfixWorkerTests(unittest.TestCase):
             root = Path(directory)
             (root / "fixture.pyc").write_bytes(b"unchanged")
             (root / "buildinfo.py").write_text("VERSION = 'v6.3.2-stable'", encoding="utf-8")
-            (root / "envmgr.py").write_text("class genv:\n    set = staticmethod(lambda *args: None)\n", encoding="utf-8")
+            (root / "envmgr.py").write_text("class genv:\n    set = staticmethod(lambda *args, **kwargs: None)\n", encoding="utf-8")
             (root / "ssl_utils.py").write_text("def should_verify_ssl(): return True\n", encoding="utf-8")
             (root / "requests.py").write_text(
                 "from pathlib import Path\nfrom time import sleep\n"
@@ -84,6 +85,7 @@ class HotfixWorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "fixture.pyc").write_bytes(b"fixture")
+            (root / "config.json").write_text(json.dumps({"hotfix_records": {"id": {"status": "pending_validate"}}, "hotfix_pending_validate": ["id"], "last_run_state": "restart"}), encoding="utf-8")
             item = {"target_module": "fixture", "target_commit": "abcdef1234567", "note": "test"}
             hotfix = types.SimpleNamespace(_get_records=lambda: {"id": {"status": "pending_validate"}}, _make_id=lambda item: "id", _set_pending_ids=Mock())
             observed = []
@@ -100,6 +102,51 @@ class HotfixWorkerTests(unittest.TestCase):
                     self.assertEqual(observed, [item])
                     with self.assertRaises(RuntimeError):
                         worker.apply(root, root, {"source": "direct", "current_version": "v6.3.2-stable", "hotfixes": [{**item, "target_module": "../escape"}]})
+            finally:
+                os.chdir(cwd)
+
+    def test_success_requires_persisted_records_and_validation_bookkeeping(self):
+        for missing in [None, "hotfix_records", "hotfix_pending_validate", "last_run_state"]:
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "fixture.pyc").write_bytes(b"fixture")
+                records = {"id": {"status": "pending_validate"}}
+                disk = {"hotfix_records": records, "hotfix_pending_validate": ["id"], "last_run_state": "restart"}
+                if missing:
+                    disk.pop(missing)
+                (root / "config.json").write_text(json.dumps(disk), encoding="utf-8")
+                hotfix = types.SimpleNamespace(_get_records=lambda: records, _make_id=lambda item: "id", _set_pending_ids=Mock(), handle_if_needed=Mock())
+                genv = Mock()
+                modules = {"buildinfo": types.SimpleNamespace(VERSION="v6.3.2-stable"), "hotfixmgr": hotfix, "envmgr": types.SimpleNamespace(genv=genv)}
+                request = {"source": "direct", "current_version": "v6.3.2-stable", "hotfixes": [{"target_module": "fixture", "target_commit": "abcdef1234567"}]}
+                cwd = Path.cwd()
+                try:
+                    with patch.dict(sys.modules, modules):
+                        if missing:
+                            with self.assertRaisesRegex(RuntimeError, "记录未保存"):
+                                worker.apply(root, root, request)
+                        else:
+                            worker.apply(root, root, request)
+                finally:
+                    os.chdir(cwd)
+
+    def test_read_only_config_stops_before_any_module_is_applied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "fixture.pyc").write_bytes(b"unchanged")
+            # A stale successful probe must not bypass this attempt's strict write.
+            (root / "config.json").write_text('{"hotfix_probed":true}', encoding="utf-8")
+            def set_value(key, value, cached=False, *, require_saved=False):
+                if require_saved:
+                    raise OSError("Persistent configuration write failed")
+            hotfix = types.SimpleNamespace(handle_if_needed=Mock(), _get_records=lambda: {"id": {"status": "pending_validate"}}, _make_id=lambda item: "id", _set_pending_ids=Mock())
+            modules = {"buildinfo": types.SimpleNamespace(VERSION="v6.3.2-stable"), "hotfixmgr": hotfix, "envmgr": types.SimpleNamespace(genv=types.SimpleNamespace(set=set_value))}
+            cwd = Path.cwd()
+            try:
+                with patch.dict(sys.modules, modules), self.assertRaisesRegex(RuntimeError, "无法写入"):
+                    worker.apply(root, root, {"source": "direct", "current_version": "v6.3.2-stable", "hotfixes": [{"target_module": "fixture", "target_commit": "abcdef1234567"}]})
+                hotfix.handle_if_needed.assert_not_called()
+                self.assertEqual((root / "fixture.pyc").read_bytes(), b"unchanged")
             finally:
                 os.chdir(cwd)
 

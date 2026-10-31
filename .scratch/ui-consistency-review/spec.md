@@ -35,7 +35,42 @@ Use grill-me/grilling for decision rounds; preserve all explicit requested outco
 
 Q1 confirmed: preserve incumbent cream/olive visual direction, existing font and
 settings rows; unify overlays/feedback/button hierarchy without a full redesign.
-Q2 diagnostic preview modal vs alternatives;
-Q3 top feedback; Q4 import settings modal/apply terminology; Q5 update suppression
-scope; Q6 launcher settings surface and motion remain pending. Recommendations are
-not approvals.
+Q2 confirmed: centered diagnostic preview with file list, total size, screenshot
+inclusion and normal-size Save ZIP/Cancel footer actions.
+Q3 confirmed: nonblocking top notices for export/apply/save, automatic dismissal,
+manual close, hover/focus retention, longer errors with expandable detail.
+Q4 confirmed: centered Apply imported settings dialog with readable field names,
+Current/After apply columns and Confirm apply; no-difference preview has Close only.
+Q5 confirmed: ignore only this exact batch at game launch; a new version/commit
+reminds again. Manual checking remains available.
+Q6 confirmed: preserve the dark launcher settings popover, group paths/actions,
+animate opening/closing and support Escape, return focus and reduced motion.
+
+The remaining audit proposals in audit.md are not yet approved. Present them as
+selectable questions, as requested again by the user after the first popup round.
+
+## Subsequent timing instruction
+
+All automatically dismissed notifications, including settings-saved feedback,
+must remain for 2 seconds and fade over 0.5 seconds. This supersedes earlier
+different success/error durations. Collapse the occupied layout space during the
+fade so surrounding content moves smoothly; preserve hover/focus retention.
+Interactive confirmation dialogs are manually closed, not timed out.
+
+## Decision round 2
+
+Q7-Q30 present audit items A01-A24 individually. Q31 asks to repair the reproduced
+narrow log toolbar (clear button becomes vertical); Q32 asks to widen the narrow
+launcher news column and prevent English header overlap.
+
+All recommendations were approved except these explicit corrections:
+- Q16: after clarification, confirmed to show a button that starts the originally
+  requested task/queue after a passed retry; execution requires the user's click.
+- Q28: retain decorative card/bubble effects and inspect comparable surfaces for
+  missing effects to complete. Do not remove hover, sweep or decorative movement
+  merely because it is optional; keep the approved faster main-page transition.
+- Q30: lock closing during an active update download; users cancel the download
+  before closing. Do not substitute a background-download discovery feature.
+- Q31/Q32: fix the layouts. Respect the native minimum window size and verify the
+  smaller CSS viewport caused by the existing in-app zoom rather than claiming
+  an unsupported native window size was tested.

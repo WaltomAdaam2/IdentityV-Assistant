@@ -2,7 +2,8 @@
 
 Baseline: SNAPSHOT-v0.1.10, e7713e1. Read-only review; no native app or game run.
 These are findings/proposals, not approved changes. Q1 preserves the incumbent
-cream/olive palette, typography and settings rows. Q2-Q6 remain pending.
+cream/olive palette, typography and settings rows. Q2-Q6 recommendations were
+subsequently confirmed; additional proposals below remain pending.
 
 The six screenshot topics are tracked in spec.md. The additional findings below
 must be presented individually for user decisions before optional implementation.
@@ -65,3 +66,22 @@ Line numbers refer to the baseline, not later changes.
 
 Guideline reference checked during this audit:
 https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md
+
+## Mock-browser follow-up
+
+At 1000x680, the overview renders without horizontal overflow. A 667x453 CSS
+viewport approximates the content area of 150% zoom; this is not a native DPI test.
+Overview content becomes dense but no clipping was demonstrated, so R01 remains
+an optional layout question rather than a confirmed fault.
+
+R02 reproduced: the clear-session-log button wraps into a tall single-character
+column next to the fixed-width search controls. Horizontal scroll width alone
+does not detect this. R03 reproduced as a visual density issue: in the stacked
+layout, the news column remains 213.5px within a 483px workspace; the Chinese
+header and setup controls did not overlap in this fixture. English is pending.
+
+Screenshots (local artifacts, not source assets):
+`C:/Users/Walto/.codex/visualizations/2026/10/30/01a18c21-06f4-7c92-86c5-77745992fe0f/ui-audit/`
+- overview-1000.png, overview-narrow.png
+- logs-narrow.png, logs-long-path.png
+- launcher-narrow.png, launcher-setup-narrow.png

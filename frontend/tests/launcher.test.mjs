@@ -25,6 +25,8 @@ test("journal import completion uses a dismissible top notice", () => {
     browser("wait", "--fn", "(() => { const notice = document.querySelector('.notice'); if (!notice?.textContent.includes('已导入 1 个地图包')) return false; notice.dispatchEvent(new MouseEvent('mouseover', {bubbles:true, relatedTarget:document.body})); return true; })()");
     assert.equal(JSON.parse(browser("eval", "document.querySelector('.notice')?.textContent.includes('已导入 1 个地图包') ?? false")), true);
     browser("find", "role", "button", "click", "--name", "关闭提示", "--exact");
+    browser("eval", "(() => {const notice = document.querySelector('.notice'); notice?.dispatchEvent(new MouseEvent('mouseout', {bubbles:true, relatedTarget:document.body})); notice?.dispatchEvent(new MouseEvent('mouseover', {bubbles:true, relatedTarget:document.body})); notice?.querySelector('button')?.focus();})()");
+    browser("wait", "--fn", "!document.querySelector('.notice')");
     assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.notice'))")), false);
   } finally { browser("close"); }
 });
@@ -44,6 +46,7 @@ test("journal import reports partial and total failures, retains details, and ig
     })()`)));
     assert.deepEqual(result, {role:"alert", details:true, visible:true, fits:true});
     browser("find", "role", "button", "click", "--name", "关闭提示", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.notice')");
     browser("eval", "window.__launcherTest.importSources = null; window.__launcherTest.calls = []");
     browser("find", "role", "button", "click", "--name", "导入地图包", "--exact");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'journal_import_pack') || Boolean(document.querySelector('.notice'))")), false);
@@ -88,7 +91,7 @@ test("identical notices restart their lifetime and keyboard focus retains them",
       const repeated = document.querySelector('.notice')?.classList.contains('notice-leave') === false;
       document.querySelector('.notice button')?.focus(); await delay(1600);
       const focused = document.querySelector('.notice')?.classList.contains('notice-leave') === false;
-      document.activeElement.blur(); await delay(1800);
+      document.activeElement.blur(); await delay(2700);
       return JSON.stringify({repeated, focused, removed:!document.querySelector('.notice')});
     })()`)));
     assert.deepEqual(result, {repeated:true, focused:true, removed:true});
@@ -154,24 +157,35 @@ test("normal logs show startup and a concise game launch sequence", () => {
   } finally { browser("close"); }
 });
 
-test("notices fade after a second and hovering during fade rescues them", () => {
+test("notices hold for two seconds, collapse during the half-second fade, and can be rescued", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
     browser("wait", "--text", "游戏启动");
     const result = JSON.parse(JSON.parse(browser("eval", `(async () => {
       const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       await window.__launcherTest.emitLog({type:'error', code:'WINDOW_NOT_FOUND', message:'停止请求已发送', recoverable:true});
-      await delay(1200);
+      await delay(100);
+      const fullTop = document.querySelector('.page-content').getBoundingClientRect().top;
+      const fullHeight = document.querySelector('.notice-slot')?.getBoundingClientRect().height;
+      await delay(1700);
+      const stayed = !!document.querySelector('.notice') && getComputedStyle(document.querySelector('.notice')).opacity === '1';
+      await delay(400);
       const notice = document.querySelector('.notice');
       const fading = !!notice && Number(getComputedStyle(notice).opacity) < 1;
+      const height = document.querySelector('.notice-slot')?.getBoundingClientRect().height;
+      const collapsedPartway = height > 0 && height < fullHeight && document.querySelector('.page-content').getBoundingClientRect().top < fullTop;
+      const duration = notice && getComputedStyle(notice).transitionDuration;
       notice?.dispatchEvent(new MouseEvent('mouseover', {bubbles:true, relatedTarget:document.body}));
       await delay(900);
       const held = !!document.querySelector('.notice') && Number(getComputedStyle(notice).opacity) === 1;
       notice?.dispatchEvent(new MouseEvent('mouseout', {bubbles:true, relatedTarget:document.body}));
-      await delay(1800);
-      return JSON.stringify({fading, held, removed:!document.querySelector('.notice')});
+      await delay(2480);
+      const nearEnd = document.querySelector('.page-content').getBoundingClientRect().top;
+      await delay(160);
+      const noFinalJump = Math.abs(document.querySelector('.page-content').getBoundingClientRect().top - nearEnd) < 2;
+      return JSON.stringify({stayed, fading, collapsedPartway, duration, held, noFinalJump, removed:!document.querySelector('.notice')});
     })()`)));
-    assert.deepEqual(result, {fading:true, held:true, removed:true});
+    assert.deepEqual(result, {stayed:true, fading:true, collapsedPartway:true, duration:"0.5s", held:true, noFinalJump:true, removed:true});
   } finally { browser("close"); }
 });
 
@@ -245,23 +259,86 @@ test("settings restore previews changes and avoids stale autosave; diagnostics r
     browser("wait", "--text", "识别与诊断");
     assert.equal(JSON.parse(browser("eval", "document.querySelector('.support-panel').closest('section.panel').querySelector('h2').textContent")), "识别与诊断");
     browser("find", "role", "button", "click", "--name", "导入设置并预览", "--exact");
-    browser("wait", "--text", "确认设置变化");
+    browser("wait", "--text", "应用导入的设置");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.support-dialog')?.matches(':modal')")), true);
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.support-table tbody th').textContent")), "界面主题");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'restore_settings')")), false);
-    browser("find", "role", "button", "click", "--name", "确认恢复设置", "--exact");
-    browser("wait", "--text", "设置已恢复，原配置备份已保留。");
+    browser("find", "role", "button", "click", "--name", "确认应用", "--exact");
+    browser("wait", "--text", "设置已应用，原配置备份已保留。");
     browser("eval", "new Promise(resolve => setTimeout(resolve, 700))");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.savedSettings.app.theme")), "dark");
     browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
     browser("wait", "--text", "session.redacted.jsonl");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.filter(c=>c.command==='preview_diagnostics').at(-1).args.includeImages")), false);
+    browser("press", "Escape");
+    browser("wait", "--fn", "!document.querySelector('.support-dialog')");
     browser("find", "role", "checkbox", "check", "--name", "诊断包包含截图", "--exact");
-    assert.equal(JSON.parse(browser("eval", "[...document.querySelectorAll('button')].some(b=>b.textContent==='保存诊断 ZIP')")), false);
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.support-dialog'))")), false);
     browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
     browser("wait", "--text", "images/failure-fixture.png");
-    browser("find", "role", "button", "click", "--name", "保存诊断 ZIP", "--exact");
+    browser("find", "role", "button", "click", "--name", "保存 ZIP", "--exact");
     browser("wait", "--text", "诊断包已保存，未上传。");
     browser("eval", "window.__launcherTest.emitLog({type:'task_started',task_id:'login_lobby'})");
     browser("wait", "--fn", "[...document.querySelectorAll('button')].find(b=>b.textContent==='导入设置并预览')?.disabled");
+  } finally { browser("close"); }
+});
+
+test("ignored component updates stay manually available and a new commit prompts again", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("eval", "window.__launcherTest.hasHotfix = true");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "启动游戏");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "发现组件更新");
+    browser("find", "role", "checkbox", "check", "--name", "不再提醒本批组件更新", "--exact");
+    browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
+    browser("wait", "--fn", "!document.querySelector('dialog[open]')");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--fn", "Boolean(window.__launcherTest.finishLaunch)");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('dialog[open]'))")), false);
+    browser("eval", "window.__launcherTest.finishLaunch()");
+    browser("wait", "--text", "登录代理已就绪");
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    browser("wait", "--text", "检查组件更新");
+    browser("find", "role", "button", "click", "--name", "检查组件更新", "--exact");
+    browser("wait", "--text", "发现组件更新");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.update-skip input').checked")), true);
+    browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
+    browser("wait", "--fn", "!document.querySelector('dialog[open]')");
+    browser("eval", "window.__launcherTest.hotfixCommit = 'abcdef2234567'");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "发现组件更新");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.update-skip input').checked")), false);
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.filter(c => c.command === 'launch_game').length")), 1);
+  } finally { browser("close"); }
+});
+
+test("support previews explain no differences and report failed exports at the top", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "设置", "--exact");
+    browser("wait", "--text", "识别与诊断");
+    browser("eval", "window.__launcherTest.restoreChanges = []");
+    browser("find", "role", "button", "click", "--name", "导入设置并预览", "--exact");
+    browser("wait", "--text", "导入的设置与当前一致，无需应用。");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.support-dialog').textContent.includes('确认应用')")), false);
+    browser("press", "Escape");
+    browser("wait", "--fn", "document.activeElement?.textContent === '导入设置并预览'");
+    browser("eval", "window.__launcherTest.restoreChanges = [{field:'settings.game_window.title_contains', before:['light'], after:['dark']}]");
+    browser("find", "role", "button", "click", "--name", "导入设置并预览", "--exact");
+    browser("wait", "--text", "应用导入的设置");
+    assert.deepEqual(JSON.parse(browser("eval", "[...document.querySelectorAll('.support-table td')].map(e => e.textContent)")), ["light", "dark"]);
+    browser("press", "Escape");
+    browser("wait", "--fn", "!document.querySelector('.support-dialog')");
+    browser("eval", "window.__launcherTest.exportSupportFailure = true; new MutationObserver((_, observer) => {const notice = document.querySelector('.notice'); if (notice) {notice.querySelector('summary')?.focus(); observer.disconnect();}}).observe(document.body, {childList:true, subtree:true})");
+    browser("find", "role", "button", "click", "--name", "导出设置", "--exact");
+    browser("wait", "--text", "操作未完成，请查看详情后重试。");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.notice').getAttribute('role')")), "alert");
+    browser("find", "text", "查看详情", "click", "--exact");
+    browser("wait", "--text", "无法写入所选位置");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.notice details').open")), true);
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.support-panel > p'))")), false);
   } finally { browser("close"); }
 });
 
