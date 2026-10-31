@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { bridge, type Announcement, type LauncherStatus, type ComponentUpdateInfo } from "./bridge";
+import { bridge, type Announcement, type LauncherStatus, type ComponentUpdateInfo, type ComponentUpdateProgress } from "./bridge";
 import ComponentUpdateDialog from "./ComponentUpdateDialog";
 import type { Settings } from "./types";
 import Icon from "./Icon";
@@ -33,6 +33,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   const [updateError, setUpdateError] = useState("");
   const [updatePhase, setUpdatePhase] = useState<"checking" | "applying" | "idle">("idle");
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<ComponentUpdateProgress | null>(null);
   const continueAfterUpdate = useRef(false);
   const starting = launching || (updatePhase === "checking" && continueAfterUpdate.current) || status?.phase === "starting";
   const installing = configuring || status?.phase === "configuring";
@@ -113,13 +114,15 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
     if (pending && resume) void startGame();
   };
   const applyHotfixes = async () => {
-    setUpdatePhase("applying"); setUpdateError("");
+    setUpdatePhase("applying"); setUpdateError(""); setUpdateProgress(null);
+    let unlisten: (() => void) | undefined;
     try {
+      unlisten = await bridge.onComponentUpdateProgress(setUpdateProgress);
       await bridge.applyLoginHotfixes(appSettings.update_source);
       setUpdateInfo((info) => info && {...info, hotfixes: []});
       if (continueAfterUpdate.current) closeUpdate(true);
     } catch (error) { setUpdateInfo(null); setUpdateError(String(error)); }
-    finally { setUpdatePhase("idle"); }
+    finally { unlisten?.(); setUpdatePhase("idle"); setUpdateProgress(null); }
   };
   const configureComponent = async (download: boolean) => {
     setConfiguring(true);
@@ -182,7 +185,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
     catch { setLinkError(true); }
   };
   return <section className="game-launcher" aria-label={zh ? "游戏启动" : "Game launch"}>
-    {updateOpen && <ComponentUpdateDialog info={updateInfo} error={updateError} phase={updatePhase} source={appSettings.update_source} language={language} continuing={continueAfterUpdate.current}
+    {updateOpen && <ComponentUpdateDialog info={updateInfo} error={updateError} phase={updatePhase} progress={updateProgress} source={appSettings.update_source} language={language} continuing={continueAfterUpdate.current}
       onSource={(source) => onAppSettingsChange({...appSettings, update_source: source})} onClose={() => closeUpdate()} onContinue={() => closeUpdate(true)} onCheck={() => void checkUpdates(continueAfterUpdate.current)} onApply={() => void applyHotfixes()}
       onDownload={() => void bridge.openLoginUpdate(appSettings.update_source).catch((error) => setUpdateError(String(error)))} />}
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />

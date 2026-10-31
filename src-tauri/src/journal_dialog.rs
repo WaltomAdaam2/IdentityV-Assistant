@@ -1,6 +1,33 @@
 //! Modern Windows common item dialogs; no helper process or custom file listing.
 
 #[tauri::command]
+pub async fn support_choose_path(
+    window: tauri::WebviewWindow,
+    kind: String,
+) -> Result<Option<String>, String> {
+    if !["import-settings", "export-settings", "export-diagnostics"].contains(&kind.as_str()) {
+        return Err("Unsupported file dialog".into());
+    }
+    #[cfg(windows)]
+    {
+        let owner = window.hwnd().map_err(|e| e.to_string())?.0 as usize;
+        let (send, receive) = tokio::sync::oneshot::channel();
+        std::thread::Builder::new()
+            .name("support-file-dialog".into())
+            .spawn(move || {
+                let _ = send.send(native::choose_support(owner, &kind));
+            })
+            .map_err(|e| e.to_string())?;
+        receive.await.map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window;
+        Err("Only Windows is supported".into())
+    }
+}
+
+#[tauri::command]
 pub async fn choose_game_executable(
     window: tauri::WebviewWindow,
 ) -> Result<Option<String>, String> {
@@ -110,6 +137,93 @@ mod native {
     impl Drop for DpiContext {
         fn drop(&mut self) {
             unsafe { SetThreadDpiAwarenessContext(self.0) };
+        }
+    }
+
+    pub fn choose_support(owner: usize, kind: &str) -> Result<Option<String>, String> {
+        use windows::{
+            core::Interface,
+            Win32::UI::Shell::{FileSaveDialog, IFileDialog, IFileSaveDialog, FOS_OVERWRITEPROMPT},
+        };
+        unsafe {
+            CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE)
+                .ok()
+                .map_err(|e| e.to_string())?;
+            let _apartment = ComApartment;
+            let previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            if previous.0.is_null() {
+                return Err("Cannot set file dialog DPI awareness".into());
+            }
+            let _dpi = DpiContext(previous);
+            let importing = kind == "import-settings";
+            let zip = kind == "export-diagnostics";
+            let dialog: IFileDialog = if importing {
+                let open: IFileOpenDialog =
+                    CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER)
+                        .map_err(|e| e.to_string())?;
+                open.cast().map_err(|e| e.to_string())?
+            } else {
+                let save: IFileSaveDialog =
+                    CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER)
+                        .map_err(|e| e.to_string())?;
+                save.cast().map_err(|e| e.to_string())?
+            };
+            dialog
+                .SetOptions(
+                    FOS_FORCEFILESYSTEM
+                        | FOS_PATHMUSTEXIST
+                        | FOS_NOCHANGEDIR
+                        | if importing {
+                            FOS_FILEMUSTEXIST
+                        } else {
+                            FOS_OVERWRITEPROMPT
+                        },
+                )
+                .map_err(|e| e.to_string())?;
+            dialog
+                .SetTitle(if importing {
+                    w!("导入助手设置 / Import settings")
+                } else if zip {
+                    w!("导出诊断包 / Export diagnostics")
+                } else {
+                    w!("导出助手设置 / Export settings")
+                })
+                .map_err(|e| e.to_string())?;
+            dialog
+                .SetFileTypes(&[COMDLG_FILTERSPEC {
+                    pszName: if zip {
+                        w!("ZIP (*.zip)")
+                    } else {
+                        w!("JSON (*.json)")
+                    },
+                    pszSpec: if zip { w!("*.zip") } else { w!("*.json") },
+                }])
+                .map_err(|e| e.to_string())?;
+            dialog
+                .SetDefaultExtension(if zip { w!("zip") } else { w!("json") })
+                .map_err(|e| e.to_string())?;
+            if !importing {
+                dialog
+                    .SetFileName(if zip {
+                        w!("IdentityV-diagnostics.zip")
+                    } else {
+                        w!("IdentityV-settings.json")
+                    })
+                    .map_err(|e| e.to_string())?;
+            }
+            if let Err(error) = dialog.Show(Some(HWND(owner as *mut _))) {
+                if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
+                    return Ok(None);
+                }
+                return Err(error.to_string());
+            }
+            let raw = dialog
+                .GetResult()
+                .and_then(|item| item.GetDisplayName(SIGDN_FILESYSPATH))
+                .map_err(|e| e.to_string())?;
+            let path = raw.to_string().map_err(|e| e.to_string());
+            CoTaskMemFree(Some(raw.0.cast()));
+            path.map(Some)
         }
     }
 

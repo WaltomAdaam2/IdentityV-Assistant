@@ -81,6 +81,7 @@ def test_window_layout_requires_explicit_engine_or_task_start(start_mode: str) -
     engine.writer = Writer()
     engine.reader = Reader()
     engine.context.window = window
+    engine.context.capture.capture = lambda *args: SimpleNamespace(width=1920, height=1080)
     engine.context.input = SimpleNamespace(release_all=lambda: None)
     engine._task_factories = lambda: {"login_lobby": Task}
 

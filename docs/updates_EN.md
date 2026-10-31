@@ -25,6 +25,8 @@ Downloads must pass repository/version URL validation, release-signature verific
 
 The assistant download shows a five-second rolling speed and estimated remaining time beside the progress bar. The estimate is unknown at startup, for unknown sizes, or during a stall; it excludes verification and installation time. Release notes render Markdown headings, lists, emphasis, code and HTTP/HTTPS links without executing HTML/scripts or loading embedded images. Source choices also apply to the separate login component, whose updates have their own lifecycle.
 
+From 0.1.9, login-component hotfixes also report actual per-module downloaded bytes, reliable totals and speed, using B/KB for small files. Unknown totals do not produce fabricated percentages. Preparation, file application and proxy restoration have separate phases. Official validation, backup and rollback records remain in use.
+
 ## Building
 
 Prepare the [development environment](development.md), then build from a clean, pushed, unmerged version branch such as `SNAPSHOT-v0.1.8`:

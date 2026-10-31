@@ -23,6 +23,8 @@ from ipc.writer import NdjsonWriter
 from runtime.cancellation import CancellationToken
 from runtime.metrics import RuntimeMetrics
 from runtime.memory_guard import MemoryGuard
+from runtime.task_feedback import TaskFeedback
+from runtime.failure_capture import save_failure_image
 from states.history import StateHistory
 from tasks.base import AutomationTask, TaskControl
 from tasks.blackjack_task import BlackjackTask
@@ -50,6 +52,7 @@ class AutomationEngine:
         self._window_style_error: str | None = None
         self._window_layout_enabled = False
         self._memory_pressure = False
+        self._feedback = TaskFeedback()
         window = WindowsWindowManager(config.window)
         self.context = AutomationContext(
             config,
@@ -66,9 +69,27 @@ class AutomationEngine:
             self.emit,
             MemoryGuard(config.memory_protection),
         )
+        self.context.capture.retain_last_frame = config.debug.get("save_failure_screenshots", True) is True
 
     async def emit(self, event_type: str, **payload: object) -> None:
+        if event_type == "task_started":
+            self._feedback.start(payload.get("task_id"), self._task_control)
+            self.context.capture.last_frame = None
+        elif event_type == "login_stage":
+            event_type = "task_progress"
+            payload["task_id"] = self._active_task_id
+        if event_type == "task_progress":
+            self._feedback.update(payload)
+            payload.update(self._feedback.snapshot())
+        elif event_type == "task_paused":
+            self._feedback.update({"pause_reason": payload.get("reason"), "pause_message": payload.get("message")})
+        elif event_type == "task_resumed":
+            self._feedback.update({"pause_reason": None, "pause_message": None})
+        elif event_type == "heartbeat":
+            payload["task_feedback"] = self._feedback.snapshot()
         await self.writer.send(event(event_type, **payload))
+        if event_type == "task_finished":
+            self._feedback.clear()
         if (event_type == "error" and payload.get("recoverable") is False
                 and asyncio.current_task() is self._task_runner):
             raise RuntimeError(str(payload.get("message", "Task failed")))
@@ -201,7 +222,11 @@ class AutomationEngine:
             self._window_layout_enabled = True
             await self._ensure_window_style(self.context.window.find_window())
         elif command_type == "start_task":
-            await self._start_task(str(command.get("task", "login_lobby")))
+            name = str(command.get("task", "login_lobby"))
+            if name not in self._task_factories() or (self._task_runner and not self._task_runner.done()):
+                await self._start_task(name)
+            elif await self._preflight(request_id, for_start=True):
+                await self._start_task(name)
         elif command_type == "start_tasks":
             names = command.get("tasks")
             if not isinstance(names, list) or not names or any(not isinstance(name, str) for name in names):
@@ -210,7 +235,7 @@ class AutomationEngine:
                 await self.emit("error", code="TASK_UNKNOWN", message="Unknown task in queue", recoverable=True, details={})
             elif self._task_runner and not self._task_runner.done():
                 await self.emit("error", code="TASK_ALREADY_RUNNING", message="A task is already running", recoverable=True, details={})
-            else:
+            elif await self._preflight(request_id, for_start=True):
                 self._task_queue = names[1:]
                 await self._start_task(names[0], preserve_queue=True)
         elif command_type == "pause_task" and self._task_control:
@@ -227,6 +252,8 @@ class AutomationEngine:
             await self._stop_task(TaskFinishReason.USER_STOPPED)
         elif command_type == "detect_window":
             await self._detect_window(request_id)
+        elif command_type == "task_preflight":
+            await self._preflight(request_id)
         elif command_type == "capture_frame":
             await self._capture_frame(request_id)
         elif command_type == "test_template":
@@ -264,6 +291,9 @@ class AutomationEngine:
         previous = self.config
         self.config = config
         self.context.config = config
+        self.context.capture.retain_last_frame = config.debug.get("save_failure_screenshots", True) is True
+        if not self.context.capture.retain_last_frame:
+            self.context.capture.last_frame = None
         self.context.window.config = config.window
         self.context.input.position_jitter_px = config.automation.click_position_jitter_px
         self.context.input.click_duration_jitter_ms = config.automation.click_duration_jitter_ms
@@ -277,6 +307,58 @@ class AutomationEngine:
             self.context.capture.last_error = None
 
         await self.emit("settings_reloaded", level="info", source="settings")
+
+    async def _preflight(self, request_id=None, for_start=False):
+        window = self.context.window.find_window()
+        code = "ready"
+        warnings = []
+        if window is None:
+            code = "window_missing"
+        elif not window.is_responding:
+            code = "window_unresponsive"
+        else:
+            if for_start:
+                self._window_layout_enabled = True
+            await self._ensure_window_style(window)
+            window = self.context.window.find_window()
+            if window is None:
+                code = "window_missing"
+            elif window.is_minimized:
+                code = "window_minimized"
+            else:
+                if f"{window.client_rect.width}x{window.client_rect.height}" != self.config.window.resolution:
+                    warnings.append("resolution_differs")
+                if not window.is_foreground:
+                    warnings.append("window_not_foreground")
+                try:
+                    frame = self.context.capture.capture(window.client_rect, window.hwnd)
+                    if frame.width <= 0 or frame.height <= 0:
+                        raise ValueError("Empty captured frame")
+                    self.context.metrics.screenshots += 1
+                except Exception:
+                    code = "capture_failed"
+        await self.emit("task_preflight", ok=code == "ready", code=code, warnings=warnings,
+                        request_id=request_id, for_start=for_start, **self._window_health_payload(window))
+        return code == "ready"
+
+    async def _record_failure(self, reason):
+        if self.config.debug.get("save_failure_screenshots", True) is not True:
+            return
+        capture = self.context.capture
+        frame = getattr(capture, "last_frame", None)
+        if frame is None or frame.source != "wgc":
+            await self.emit("failure_capture", saved=False, reason="no_recent_frame", task_id=self._active_task_id)
+            return
+        try:
+            import os
+            directory = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share")) / "IdentityV-Assistant/debug/failures"
+            captured_at = capture.last_frame_at
+            path = await asyncio.to_thread(save_failure_image, frame.image, captured_at, directory)
+            await self.emit("failure_capture", saved=True, path=str(path), task_id=self._active_task_id,
+                            reason=reason.value, captured_at=captured_at.isoformat(),
+                            message="Saved the most recent successful frame, which may predate the failure")
+        except Exception:
+            await self.emit("failure_capture", saved=False, reason="save_failed", task_id=self._active_task_id)
 
     async def _detect_window(self, request_id: str | None = None) -> None:
         window = self.context.window.find_window()
@@ -543,6 +625,10 @@ class AutomationEngine:
                     message = release_error
                     if reason != TaskFinishReason.WINDOW_RECOVERY_TIMEOUT:
                         reason = TaskFinishReason.ENGINE_ERROR
+            if control.cancelled.is_set():
+                reason = TaskFinishReason.USER_STOPPED
+            if reason not in (TaskFinishReason.COMPLETED, TaskFinishReason.USER_STOPPED):
+                await self._record_failure(reason)
             if control.cancelled.is_set():
                 reason = TaskFinishReason.USER_STOPPED
             if reason in (

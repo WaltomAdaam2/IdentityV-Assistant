@@ -1,4 +1,6 @@
 import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -18,13 +20,23 @@ class Writer:
             self.paused.set()
 
 
+def offline_engine():
+    # Queue routing has no dependency on desktop windows. Preflight behavior
+    # is exercised separately with synthetic windows in test_task_feedback.
+    engine = AutomationEngine(EngineConfig(debug={"save_failure_screenshots": False}))
+    engine.context.window = SimpleNamespace(find_window=lambda: None)
+    engine.context.input.release_all = lambda: None
+    engine._preflight = AsyncMock(return_value=True)
+    return engine
+
+
 @pytest.mark.parametrize("failure", [
     TaskFinishReason.TIMEOUT, TaskFinishReason.WINDOW_LOST,
     TaskFinishReason.ENGINE_ERROR, "exception", "event", "release",
 ])
 def test_error_pauses_preserves_queue_and_resume_reroutes(failure):
     async def exercise():
-        engine = AutomationEngine(EngineConfig())
+        engine = offline_engine()
         writer = Writer()
         engine.writer = writer
         released = []
@@ -79,7 +91,7 @@ def test_error_pauses_preserves_queue_and_resume_reroutes(failure):
 
 def test_stop_paused_error_does_not_start_next_task():
     async def exercise():
-        engine = AutomationEngine(EngineConfig())
+        engine = offline_engine()
         engine.writer = Writer()
 
         class Failing:
@@ -104,7 +116,7 @@ def test_pause_command_reports_release_failure_without_crashing_engine():
     from tasks.base import TaskControl
 
     async def exercise():
-        engine = AutomationEngine(EngineConfig())
+        engine = offline_engine()
         engine.writer = Writer()
         engine._task_control = TaskControl()
         engine._active_task_id = "blackjack"
@@ -126,7 +138,7 @@ def test_pause_command_reports_release_failure_without_crashing_engine():
 @pytest.mark.parametrize("release_fails", [False, True])
 def test_window_recovery_timeout_stops_queue_but_keeps_engine_available(release_fails):
     async def exercise():
-        engine = AutomationEngine(EngineConfig())
+        engine = offline_engine()
         engine.writer = Writer()
         releases = []
 

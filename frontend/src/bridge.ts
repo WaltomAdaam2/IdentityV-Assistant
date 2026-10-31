@@ -30,10 +30,20 @@ export interface ComponentUpdateInfo {
   hotfixes: { target_module: string; target_commit: string; note: string }[];
 }
 
+export interface ComponentUpdateProgress {
+  phase: "preparing" | "downloading" | "applying" | "restoring";
+  downloaded: number;
+  total: number | null;
+  module: string;
+  commit: string;
+}
+
 export const bridge = {
   minimizeToTaskbar: () => invoke<void>("minimize_to_taskbar"),
   checkLoginUpdates: (source: Settings["app"]["update_source"]) => invoke<ComponentUpdateInfo>("check_login_updates", {source}),
   applyLoginHotfixes: (source: Settings["app"]["update_source"]) => invoke<void>("apply_login_hotfixes", {source}),
+  onComponentUpdateProgress: (handler: (progress: ComponentUpdateProgress) => void): Promise<UnlistenFn> =>
+    listen<ComponentUpdateProgress>("component-update-progress", ({ payload }) => handler(payload)),
   openLoginUpdate: (source: Settings["app"]["update_source"]) => invoke<void>("open_login_update", {source}),
   resetWindowSize: () => invoke<void>("reset_window_size"),
   chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
@@ -68,6 +78,7 @@ export const bridge = {
     invoke<void>("set_power_prevention", { systemSleep, displaySleep }),
   appendUiLog: (entry: Record<string, unknown>) => invoke<void>("append_ui_log", { entry }),
   detectWindow: () => invoke<DiagnosticRequest>("detect_window"),
+  taskPreflight: () => invoke<DiagnosticRequest>("task_preflight"),
   captureFrame: () => invoke<DiagnosticRequest>("capture_frame"),
   readDebugFrame: (path: string) => invoke<string>("read_debug_frame", { path }),
   testTemplate: (template: string) =>

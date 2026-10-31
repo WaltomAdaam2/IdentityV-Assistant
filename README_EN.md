@@ -42,6 +42,7 @@
 - **Journal maps:** import multiple ZIP packs, filter by season, difficulty, doors, floor and base/route view, and open map details or an in-window preview.
 - **Window and input control:** capture the game window and send foreground-checked Windows input. Explicit engine startup applies window settings; shutdown attempts to restore the original window.
 - **Desktop controls:** global engine shortcut, close to tray, capture diagnostics, searchable logs and optional sleep/display controls.
+- **Task feedback and recovery:** preflight checks, stage timing and pause guidance, bounded local failure screenshots (on by default), settings backup/restore previews and diagnostic ZIP exports with screenshots separately selected.
 - **Updates:** GitHub direct by default with three manual proxies, download speed/time estimates and Markdown notes, with confirmation and signature, version, SHA-256 and size verification.
 
 See [Feature logic](docs/README_LOGIC_EN.md) for behavior, recovery, component responsibilities and map formats; [Development](docs/development.md) for builds and checks; and [Updates](docs/updates_EN.md) for release migration and publishing.

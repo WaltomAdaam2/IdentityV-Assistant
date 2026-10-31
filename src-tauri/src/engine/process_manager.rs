@@ -114,6 +114,21 @@ impl Default for EngineSupervisor {
 }
 
 impl EngineSupervisor {
+    pub async fn lock_idle_for_restore(&self) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
+        let guard = self.lifecycle.clone().lock_owned().await;
+        {
+            let state = self.inner.lock().await;
+            if matches!(state.task_status.as_str(), "running" | "paused")
+                || !state.pending_tasks.is_empty()
+                || matches!(state.status.as_str(), "starting" | "stopping")
+            {
+                return Err("请先停止任务再恢复设置 / Stop tasks before restoring settings".into());
+            }
+        }
+        self.stop_locked().await?;
+        Ok(guard)
+    }
+
     pub async fn start(&self, app: AppHandle) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock().await;
         // An explicit start adopts an engine temporarily started by diagnostics.
@@ -126,6 +141,7 @@ impl EngineSupervisor {
         let result_event = match command["type"].as_str() {
             Some("detect_window") => "window_diagnostics",
             Some("capture_frame") => "debug_frame",
+            Some("task_preflight") => "task_preflight",
             _ => return Err("Unsupported temporary diagnostic".into()),
         };
         let request_id = command["request_id"]
@@ -502,6 +518,11 @@ impl EngineSupervisor {
                 if let Some(status) = message.get("task_status").and_then(Value::as_str) {
                     state.task_status = status.to_string();
                 }
+            }
+            Some("task_preflight") if message["for_start"] == true && message["ok"] == false => {
+                state.pending_tasks.clear();
+                state.active_task_id = None;
+                state.task_status = "idle".into();
             }
             Some("task_started") => {
                 state.status = "running".into();
@@ -975,6 +996,25 @@ mod tests {
     use serde_json::json;
     use std::process::Stdio;
     use tokio::{process::Command, sync::oneshot};
+
+    #[test]
+    fn restore_rejects_active_or_queued_tasks_and_holds_lifecycle_until_done() {
+        tauri::async_runtime::block_on(async {
+            let supervisor = EngineSupervisor::default();
+            for status in ["running", "paused"] {
+                supervisor.inner.lock().await.task_status = status.into();
+                assert!(supervisor.lock_idle_for_restore().await.is_err());
+            }
+            supervisor.inner.lock().await.task_status = "idle".into();
+            supervisor.inner.lock().await.pending_tasks = vec!["login_lobby".into()];
+            assert!(supervisor.lock_idle_for_restore().await.is_err());
+            supervisor.inner.lock().await.pending_tasks.clear();
+            let guard = supervisor.lock_idle_for_restore().await.unwrap();
+            assert!(supervisor.lifecycle.try_lock().is_err());
+            drop(guard);
+            assert!(supervisor.lifecycle.try_lock().is_ok());
+        });
+    }
 
     #[test]
     fn installed_engine_uses_installation_path_and_launches_directly() {

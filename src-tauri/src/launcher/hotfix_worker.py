@@ -9,6 +9,54 @@ import time
 import types
 
 
+class UpdateCancelled(RuntimeError):
+    pass
+
+
+def download_source(url, fallbacks, report, cancelled):
+    """Keep the official byte-return contract while reporting actual transfer."""
+    def check_cancelled():
+        if cancelled is not None and cancelled.is_set():
+            raise UpdateCancelled("组件更新已取消")
+
+    check_cancelled()
+    import requests
+    from ssl_utils import should_verify_ssl
+    with requests.Session() as session:
+        session.trust_env = False
+        error = "Download failed"
+        for candidate in [url, *fallbacks]:
+            check_cancelled()
+            try:
+                with session.get(candidate, timeout=20, stream=True,
+                                 headers={"Accept": "text/plain, */*", "Accept-Encoding": "identity"},
+                                 verify=should_verify_ssl()) as response:
+                    if response.status_code != 200:
+                        return False, b"", f"HTTP {response.status_code}"
+                    length = response.headers.get("Content-Length", "")
+                    total = int(length) if length.isdigit() and response.headers.get("Content-Encoding", "identity") == "identity" else None
+                    content = bytearray()
+                    report("downloading", 0, total)
+                    last_report = time.monotonic()
+                    for chunk in response.iter_content(chunk_size=16 * 1024):
+                        check_cancelled()
+                        content.extend(chunk)
+                        if len(content) > 4 * 1024 * 1024:
+                            raise RuntimeError("热更新源文件超过 4 MiB 限制")
+                        if time.monotonic() - last_report >= 0.1:
+                            report("downloading", len(content), total)
+                            last_report = time.monotonic()
+                    check_cancelled()
+                    report("downloading", len(content), total)
+                    report("applying", len(content), total)
+                    return True, bytes(content), ""
+            except UpdateCancelled:
+                raise
+            except Exception as exc:
+                error = str(exc)
+        return False, b"", error
+
+
 def apply(source_dir, data_dir, request, cancelled=None):
     sys.path.insert(0, str(source_dir))
     os.chdir(data_dir)
@@ -35,17 +83,15 @@ def apply(source_dir, data_dir, request, cancelled=None):
     # Keep official backup/compile/replace/pending/rollback handling. Constrain
     # resolution to the reviewed runtime, and honor the selected download source.
     hotfixmgr._resolve_module_target_path = lambda module: (targets[module], "pyc")
-    hotfixmgr._build_remote_source_info = lambda module, commit: (prefix + f"https://raw.githubusercontent.com/KKeygen/idv-login/{commit}/src/{module.replace('.', '/')}.py", [])
-    if cancelled is not None:
-        original_download = hotfixmgr._download_text
-        def download(*args):
-            if cancelled.is_set():
-                raise RuntimeError("组件更新已取消")
-            result = original_download(*args)
-            if cancelled.is_set():
-                raise RuntimeError("组件更新已取消")
-            return result
-        hotfixmgr._download_text = download
+    current = {}
+    def source_info(module, commit):
+        current.update(module=module, commit=commit)
+        return prefix + f"https://raw.githubusercontent.com/KKeygen/idv-login/{commit}/src/{module.replace('.', '/')}.py", []
+    def report(phase, downloaded, total):
+        print("IDV_UPDATE_PROGRESS " + json.dumps({**current, "phase": phase,
+              "downloaded": downloaded, "total": total}), flush=True)
+    hotfixmgr._build_remote_source_info = source_info
+    hotfixmgr._download_text = lambda url, fallbacks: download_source(url, fallbacks, report, cancelled)
     # Confirmation already happened in the assistant dialog.
     hotfixmgr.time = types.SimpleNamespace(time=time.time, sleep=lambda seconds: None)
     hotfixmgr.restart_self = lambda reason="": genv.set("last_run_state", "restart", True)

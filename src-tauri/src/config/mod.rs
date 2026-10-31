@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, io::Write, path::PathBuf};
 
 use serde_json::{json, Value};
 
@@ -139,8 +139,14 @@ pub fn save(settings: &Value) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     let text = serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?;
-    fs::write(&path, format!("{text}\n"))
-        .map_err(|error| format!("Unable to write {}: {error}", path.display()))
+    let parent = path.parent().ok_or("Configuration parent is missing")?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    writeln!(temporary, "{text}").map_err(|e| e.to_string())?;
+    temporary.as_file().sync_all().map_err(|e| e.to_string())?;
+    temporary
+        .persist(&path)
+        .map_err(|e| format!("Unable to replace {}: {e}", path.display()))?;
+    Ok(())
 }
 
 #[cfg(test)]

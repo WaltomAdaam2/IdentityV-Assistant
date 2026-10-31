@@ -6,6 +6,7 @@ import { bridge } from "./bridge";
 import Journal from "./Journal";
 import GameLauncher from "./GameLauncher";
 import UpdatePanel from "./UpdatePanel";
+import SupportPanel from "./SupportPanel";
 import SettingRow from "./SettingRow";
 import Icon, { type IconName } from "./Icon";
 import { defaultJournalSettings } from "./journalData";
@@ -38,10 +39,14 @@ interface TaskProgress {
   role: "hunter" | "survivor" | "bad_child" | null;
   completedCycles: number;
   result?: string;
+  taskElapsed?: number;
+  stageElapsed?: number;
+  pauseReason?: string | null;
+  nextAction?: string;
 }
 interface TaskControlEvent {
   revision: number;
-  type: "task_started" | "task_paused" | "task_resumed" | "task_finished";
+  type: "task_started" | "task_paused" | "task_resumed" | "task_finished" | "task_preflight";
   taskId?: string;
 }
 
@@ -144,6 +149,7 @@ const translations = {
       unknown: "待确认",
       results: { completed: "已完成", user_stopped: "已停止", timeout: "等待超时", window_lost: "窗口已关闭", window_recovery_timeout: "窗口恢复超时", engine_error: "执行失败" },
       stages: {
+        platform_choice: "选择登录平台", login_landing: "等待登录", announcement: "处理公告", activity_popup: "处理活动弹窗", home_lobby: "已到大厅",
         starting: "正在启动", waiting_home: "等待归宿", home: "已到归宿",
         waiting_chaos: "等待混沌纷争", chaos: "混沌纷争",
         waiting_blackjack: "等待黑杰克", blackjack: "黑杰克",
@@ -429,6 +435,7 @@ const translations = {
       unknown: "Unconfirmed",
       results: { completed: "Completed", user_stopped: "Stopped", timeout: "Timed out", window_lost: "Game window lost", window_recovery_timeout: "Window recovery timed out", engine_error: "Failed" },
       stages: {
+        platform_choice: "Choosing login platform", login_landing: "Waiting for login", announcement: "Handling announcement", activity_popup: "Handling activity popup", home_lobby: "At lobby",
         starting: "Starting", waiting_home: "Waiting for home", home: "At home",
         waiting_chaos: "Waiting for Chaos", chaos: "Chaos mode",
         waiting_blackjack: "Waiting for Blackjack", blackjack: "Blackjack",
@@ -713,7 +720,7 @@ const defaults: Settings = {
     hide_seek_infinite_loop: false,
     camera_turn_scale_percent: 100,
   },
-  debug: { save_debug_screenshots: false, verbose_logs: false },
+  debug: { save_debug_screenshots: false, save_failure_screenshots: true, verbose_logs: false },
 };
 function now(language: Language) {
   return new Date().toLocaleTimeString(language, { hour12: false });
@@ -823,8 +830,12 @@ export default function App() {
     type: "task_finished",
   });
   const [progress, setProgress] = useState<TaskProgress | null>(null);
+  const [preflight, setPreflight] = useState<EngineEvent | null>(null);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const supportBusyRef = useRef(false);
+  const [supportBusy, setSupportBusy] = useState(false);
+  const [supportRevision, setSupportRevision] = useState(0);
   const startupHandled = useRef(false);
   const language = settings.app.language;
   const languageRef = useRef<Language>(language);
@@ -1035,6 +1046,9 @@ export default function App() {
               : "info";
         const eventMessage =
           stageMessage ??
+          (event.type === "failure_capture" ? (languageRef.current === "zh-CN"
+            ? (event.saved ? `失败截图已保存（拍摄于 ${event.captured_at}，可能早于失败）：${event.path}` : event.reason === "no_recent_frame" ? "未保存失败截图：没有可用的 WGC 游戏窗口画面。" : "失败截图保存失败，任务停止或恢复操作不受影响。")
+            : (event.saved ? `Failure image saved (captured at ${event.captured_at}, possibly before the failure): ${event.path}` : event.reason === "no_recent_frame" ? "No failure image saved: no WGC game-window frame was available." : "Could not save the failure image; stopping or recovering the task remains available.")) : undefined) ??
           (event.type === "ready" ? `${current.engine} ${current.states.idle}` : undefined) ??
           (event.type === "task_finished" ? current.finishedEvent(current.progress.results[event.reason as keyof typeof current.progress.results] ?? event.reason ?? "?") : undefined) ??
           event.message ??
@@ -1053,6 +1067,7 @@ export default function App() {
           event.type === "ready" ||
           event.type === "task_paused" ||
           event.type === "task_resumed" ||
+          event.type === "failure_capture" ||
           event.type === "task_finished";
         appendLog(level, eventMessage, event.source ?? event.task_id ?? event.type ?? "engine", important, false, isWindowDiagnostic(event));
         if (event.type === "heartbeat") {
@@ -1154,6 +1169,7 @@ export default function App() {
             ),
           );
         if (event.type === "task_paused") {
+          setProgress(previous => previous && {...previous, pauseReason: event.reason ?? "user_paused", nextAction: "review_and_resume"});
           setTasks((current) =>
             current.map((task) =>
               task.id === event.task_id ||
@@ -1176,6 +1192,7 @@ export default function App() {
           );
         }
         if (event.type === "task_resumed") {
+          setProgress(previous => previous && {...previous, pauseReason: null});
           setTasks((current) =>
             current.map((task) =>
               task.id === event.task_id ||
@@ -1197,17 +1214,29 @@ export default function App() {
             requestedTaskQueueRef.current = [event.task_id];
           setProgress({ taskId: event.task_id, stage: "running", role: null, completedCycles: 0 });
         }
-        if (event.type === "task_progress" && event.task_id) {
+        if (event.type === "task_preflight") {
+          setPreflight(event.ok === true && event.for_start === true && !(event.warnings as string[] | undefined)?.length ? null : event);
+          if (event.ok === false && event.for_start === true) {
+            requestedTaskQueueRef.current = [];
+            setTaskControlEvent(previous => ({revision: previous.revision + 1, type: "task_preflight"}));
+          }
+        }
+        const feedback = event.type === "heartbeat" ? event.task_feedback as EngineEvent | undefined : event;
+        if ((event.type === "task_progress" || event.type === "heartbeat") && feedback?.task_id) {
           const nextProgress: TaskProgress = {
-            taskId: event.task_id,
-            stage: event.stage ?? "running",
-            role: event.role ?? null,
-            completedCycles: event.completed_cycles ?? 0,
+            taskId: feedback.task_id,
+            stage: feedback.stage ?? "running",
+            role: feedback.role ?? null,
+            completedCycles: feedback.completed_cycles ?? 0,
+            taskElapsed: Number(feedback.task_elapsed_seconds ?? 0),
+            stageElapsed: Number(feedback.stage_elapsed_seconds ?? 0),
+            pauseReason: feedback.pause_reason as string | null,
+            nextAction: feedback.next_action as string | undefined,
           };
           setProgress((previous) =>
             previous && previous.taskId === nextProgress.taskId &&
             previous.stage === nextProgress.stage && previous.role === nextProgress.role &&
-            previous.completedCycles === nextProgress.completedCycles
+            previous.completedCycles === nextProgress.completedCycles && previous.taskElapsed === nextProgress.taskElapsed && previous.stageElapsed === nextProgress.stageElapsed && previous.pauseReason === nextProgress.pauseReason && previous.nextAction === nextProgress.nextAction
               ? previous : nextProgress,
           );
         }
@@ -1239,7 +1268,7 @@ export default function App() {
             ? requestedTaskQueueRef.current.slice(finishedIndex + 1)
             : [];
           activeTaskIdRef.current = null;
-          setProgress((current) => current && { ...current, result: event.reason ?? "finished" });
+          setProgress((current) => current && { ...current, pauseReason: null, result: event.reason ?? "finished" });
           setTasks((current) =>
             {
               const queuedIds = new Set(requestedTaskQueueRef.current);
@@ -1300,7 +1329,7 @@ export default function App() {
     let superseded = false;
     const timer = window.setTimeout(() => {
       const save = async () => {
-        if (superseded) return;
+        if (superseded || supportBusyRef.current) return;
         try {
           const nextSettings = { ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } };
           const serialized = JSON.stringify(nextSettings);
@@ -1336,7 +1365,7 @@ export default function App() {
       settingsSaveQueueRef.current = settingsSaveQueueRef.current.then(save, save);
     }, 250);
     return () => { superseded = true; window.clearTimeout(timer); };
-  }, [appendLog, settings, settingsLoaded, enabledTaskIds]);
+  }, [appendLog, settings, settingsLoaded, enabledTaskIds, supportRevision]);
   useLayoutEffect(() => {
     const workspace = workspaceRef.current;
     const banner = workspace?.querySelector<HTMLElement>(".topbar");
@@ -1373,6 +1402,7 @@ export default function App() {
   );
   const navigate = useCallback(
     (nextPage: Page) => {
+      if (supportBusyRef.current) return;
       pendingPageRef.current = nextPage;
       if (nextPage === page) {
         if (pageTransitionTimer.current !== null) {
@@ -1482,13 +1512,40 @@ export default function App() {
     logs: (
       <Logs language={language} entries={settings.app.developer_mode ? logs : normalLogs} verbose={settings.app.developer_mode} onClear={clearLogs} />
     ),
-    settings: (
+    settings: (<>
+      <SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")}
+        withSettings={async action => {
+          supportBusyRef.current = true;
+          setSupportBusy(true);
+          try {
+            await settingsSaveQueueRef.current;
+            const next = {...settings, tasks: {enabled: enabledTaskIds ? enabledTaskIds.split(",") : []}};
+            await bridge.saveSettings(next);
+            persistedSettingsRef.current = JSON.stringify(next);
+            const {journal: _journal, ...engineSettings} = next;
+            const engineSerialized = JSON.stringify(engineSettings);
+            if (engineSerialized !== savedEngineSettingsRef.current && !["stopped", "starting", "stopping", "error"].includes(engineStatusRef.current)) {
+              await bridge.sendEngineCommand({type: "reload_settings", settings: next});
+            }
+            savedEngineSettingsRef.current = engineSerialized;
+            await action();
+          } finally { supportBusyRef.current = false; setSupportBusy(false); setSupportRevision(value => value + 1); }
+        }}
+        onRestored={restored => {
+          persistedSettingsRef.current = JSON.stringify(restored);
+          const {journal: _journal, ...engineSettings} = restored;
+          savedEngineSettingsRef.current = JSON.stringify(engineSettings);
+          setSettings(restored);
+          setTasks(current => current.map(task => ({...task, enabled: restored.tasks.enabled.includes(task.id), status: "idle"})));
+          setProgress(null); setPreflight(null);
+          void refreshSnapshot();
+        }} />
       <SettingsPage
         language={language}
         settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
-        setSettings={setSettings}
+        setSettings={value => { if (!supportBusyRef.current) setSettings(value); }}
       />
-    ),
+    </>),
   }[page];
   const visibleNav = nav.filter(
     (item) =>
@@ -1509,6 +1566,7 @@ export default function App() {
             {visibleNav.map((item) => (
               <button
                 key={item.id}
+                disabled={supportBusy}
                 className={page === item.id ? "nav-item active" : "nav-item"}
                 aria-current={page === item.id ? "page" : undefined}
                 onClick={() => navigate(item.id)}
@@ -1523,6 +1581,9 @@ export default function App() {
               <strong>{t.progress.title} · {taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]}</strong>
               <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
               <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
+              <small>{language === "zh-CN" ? "有效用时" : "Active time"}: {Math.floor(progress.taskElapsed ?? 0)}s · {language === "zh-CN" ? "本阶段" : "Stage"}: {Math.floor(progress.stageElapsed ?? 0)}s</small>
+              {progress.pauseReason && <small>{language === "zh-CN" ? "暂停原因：" : "Paused: "}{t.progress.results[progress.pauseReason as keyof typeof t.progress.results] ?? (progress.pauseReason === "user_paused" ? (language === "zh-CN" ? "手动暂停" : "Paused by user") : progress.pauseReason)}</small>}
+              {!progress.result && <small>{language === "zh-CN" ? "下一步：" : "Next: "}{({review_and_resume: ["检查原因后恢复任务", "Review the cause, then resume"], recover_window: ["等待窗口恢复", "Wait for window recovery"], wait_for_screen: ["等待目标画面并确认", "Wait for and confirm the expected screen"], observe_match: ["继续识别对局状态", "Continue observing the match"], recognize_and_continue: ["识别画面后继续", "Recognize the screen and continue"]}[progress.nextAction ?? "recognize_and_continue"] ?? ["等待识别结果", "Wait for recognition"])[language === "zh-CN" ? 0 : 1]}</small>}
             </div>}
             <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv${appVersion}`}>
               <span className={`local-status-dot ${engineState(snapshot)}`} />
@@ -1562,6 +1623,14 @@ export default function App() {
             <UpdatePanel settings={settings} loaded={settingsLoaded} expanded={page === "settings"}
               onSettingsChange={(app) => setSettings((previous) => ({ ...previous, app }))}
               onOpen={() => navigate("settings")} />
+            {preflight && <section className="panel" aria-label={language === "zh-CN" ? "任务启动检查" : "Task preflight"}>
+              <h3>{language === "zh-CN" ? "任务启动检查" : "Task preflight"}</h3>
+              <p role={preflight.ok ? "status" : "alert"}>{({ready: ["检查通过，可以启动任务。", "Checks passed. Ready to start."], window_missing: ["未找到游戏窗口，请先启动游戏。", "Game window not found. Start the game first."], window_unresponsive: ["游戏窗口无响应，请等待恢复。", "Game window is not responding. Wait for it to recover."], window_minimized: ["游戏窗口仍处于最小化，请还原后重试。", "Restore the minimized game window and retry."], capture_failed: ["无法获取游戏画面，请检查捕捉设置。", "Could not capture the game. Check capture settings."]}[preflight.code ?? ""] ?? ["检查未完成", "Checks incomplete"])[language === "zh-CN" ? 0 : 1]}</p>
+              {Array.isArray(preflight.warnings) && preflight.warnings.length > 0 && <p>{language === "zh-CN" ? "窗口尺寸或前台状态与期望不同，任务仍会遵循现有窗口恢复规则。" : "Window size or focus differs; existing window recovery still applies."}</p>}
+              <button onClick={() => void run("Preflight", async () => { await bridge.taskPreflight(); })}>{language === "zh-CN" ? "重新检查" : "Check again"}</button>
+              <button onClick={() => navigate("debug")}>{t.nav.debug}</button>
+              <button onClick={() => setPreflight(null)}>{language === "zh-CN" ? "关闭" : "Close"}</button>
+            </section>}
             {content}
           </div>
         </section>
@@ -1734,7 +1803,7 @@ function Tasks({
     if (!pendingCommand || taskControlEvent.revision <= pendingCommand.afterRevision)
       return;
     if (
-      (pendingCommand.type === "start" && ["task_started", "task_paused", "task_finished"].includes(taskControlEvent.type)) ||
+      (pendingCommand.type === "start" && ["task_started", "task_paused", "task_finished", "task_preflight"].includes(taskControlEvent.type)) ||
       (pendingCommand.type === "pause" && ["task_paused", "task_finished"].includes(taskControlEvent.type)) ||
       (pendingCommand.type === "resume" && ["task_resumed", "task_paused", "task_finished"].includes(taskControlEvent.type)) ||
       (pendingCommand.type === "stop" && taskControlEvent.type === "task_finished")
@@ -2356,6 +2425,11 @@ function SettingsPage({
       .filter(Boolean);
   return (
     <section className="settings-form">
+      <section className="panel"><h2>{language === "zh-CN" ? "失败现场记录" : "Failure screenshots"}</h2>
+        <SettingRow icon="screenshots" title={language === "zh-CN" ? "任务失败时保存游戏画面" : "Save game frames on task failure"} description={language === "zh-CN" ? "默认开启，仅保存 WGC 游戏窗口画面，最多 20 张、共 100 MiB。可能包含昵称或聊天，也可能早于失败；其他捕捉后端不自动留图。导出需另行选择。" : "On by default for WGC game-window frames, up to 20 images / 100 MiB. May include names or chat and predate the failure. Other backends do not save automatic images; export requires separate selection."} language={language}>
+          <input type="checkbox" checked={settings.debug.save_failure_screenshots} onChange={event => setSettings({...settings, debug: {...settings.debug, save_failure_screenshots: event.target.checked}})} />
+        </SettingRow>
+      </section>
       {settingsActionError && <p className="form-error" role="alert">{settingsActionError}</p>}
       <section className="panel">
         <h2>{t.general}</h2>

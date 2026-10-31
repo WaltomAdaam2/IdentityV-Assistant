@@ -17,13 +17,24 @@ async fn request(
     if let (Some(command), Some(extra)) = (command.as_object_mut(), extra.as_object()) {
         command.extend(extra.clone());
     }
-    if matches!(command_type, "detect_window" | "capture_frame") {
+    if matches!(
+        command_type,
+        "detect_window" | "capture_frame" | "task_preflight"
+    ) {
         supervisor.run_diagnostic(app, command).await?;
     } else {
         supervisor.start(app).await?;
         supervisor.send(command).await?;
     }
     Ok(json!({"requested": true, "request_id": request_id}))
+}
+
+#[tauri::command]
+pub async fn task_preflight(
+    app: AppHandle,
+    supervisor: State<'_, EngineSupervisor>,
+) -> Result<Value, String> {
+    request(app, supervisor, "task_preflight", json!({})).await
 }
 
 #[tauri::command]

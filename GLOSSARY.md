@@ -21,3 +21,12 @@ A signed installer update of this application, distinct from an update to the in
 
 **Migration bridge**:
 The one-time 0.1.7 release in the old download repository. Its old-repository manifest lets compatible existing clients install the same signed binary that switches future checks to the source repository.
+
+**Task preflight**:
+A window/response/capture check before a newly requested task or queue. It does not authenticate accounts or prove gameplay readiness.
+
+**Failure screenshot**:
+The most recent successful WGC game-window frame saved when a task fails. Its capture timestamp may precede the failure; screen-region backends are excluded.
+
+**Diagnostic bundle**:
+A user-saved ZIP containing a bounded snapshot of redacted current-session diagnostics. Screenshots require separate selection; login-component account data is excluded.

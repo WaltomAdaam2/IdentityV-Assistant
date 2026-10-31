@@ -32,6 +32,8 @@ The assistant manages only processes it started and can identify. A pre-existing
 
 Enabled tasks run in list order, starting the engine if needed. Infinite match loops default off. Pause releases held input and excludes paused time from deadlines; resume captures and recognizes the current screen before continuing.
 
+From 0.1.9, a new task or queue checks the game window, responsiveness and capture before starting. Failure blocks the start and offers recheck and capture-diagnostic actions. Actual starts retain existing engine layout handling; resolution or foreground differences produce warnings without switching capture backends. Match loops do not repeat preflight. The sidebar shows the current stage, task/stage active time, pause reason and next-step guidance. Paused time is excluded; timings do not persist across engine restarts.
+
 Ordinary unrecoverable failures and login timeouts pause the current task and preserve the queue. The four match tasks attempt foreground/capture recovery for up to 300 active seconds; exhaustion stops the task and clears the queue while the engine remains running. The task-row Stop button also clears pending tasks. Recognized matchmaking/result waits differ from unknown-screen timeouts.
 
 Hunter tasks attempt surrender when the recognized game timer reaches six minutes. If valid OCR has been unavailable for at least 30 seconds, a local six-minute active-combat timer can provide a fallback; actual clicks still require screen confirmation. Detailed stages and action schedules are in [state-machine.md](state-machine.md).
@@ -75,16 +77,30 @@ Season, difficulty, doors and display mode save silently. Reopening the page res
   config.json                 Settings and enabled tasks
   logs\YYYY-MM-DD.jsonl       Complete engine and UI events
   debug\captures\            Explicitly requested debug captures
+  debug\failures\            Automatic failure screenshots
+  backups\                   Settings saved before restoration
   journal\packs\<packId>\    Imported maps
   login-data\idv-login\      Independent login-component data
 ```
 
 Dated logs retain the latest thirty days. The interface shows the current session, up to 99,000 entries at 1,000 per page; clearing it does not delete disk logs. Developer mode reveals retained details. Check logs and screenshots for personal information before sharing them.
 
-Diagnostics discover windows, capture frames manually and inspect templates. Debug frames are currently saved only on explicit capture requests, not automatically on task failures or timeouts. Diagnostic input needs separate enabling and is unavailable while a task runs or is paused.
+Diagnostics discover windows, capture frames manually and inspect templates. Diagnostic input needs separate enabling and is unavailable while a task runs or is paused.
+
+Failure screenshots default on and can be disabled in Settings. An error pause or window-recovery timeout saves at most one most recent successful WGC game-window frame per failure, skipping when none is available. Automatic saving excludes DXcam/MSS screen-region frames to avoid capturing other windows covering the game. Filenames and logs preserve the actual capture time, which may precede the failure. Retention is limited to 20 images and 100 MiB total, with a 20 MiB per-image limit. Only generated failure images are pruned; manual captures remain untouched. Images stay local and may contain names or chat.
+
+### Settings backup and restore
+
+Backup and diagnostics in Settings exports assistant preferences and task parameters without accounts, maps or logs. Import accepts this feature's versioned JSON, up to 1 MiB, validating fields, types, version and hotkey. An unavailable imported game path retains the local value. Review differences before confirming a whole-settings restore. Running, paused or queued tasks block restoration; an idle engine stops and reads restored settings on its next start. Original settings are retained under `backups`; configuration writes use atomic replacement, and failed desktop preference application attempts rollback. Save exports outside the assistant data directory.
+
+### Diagnostic bundles
+
+Preview files and sizes, then choose a ZIP destination; nothing uploads automatically. Defaults include assistant/engine state and versions, necessary environment, up to 4 MiB of the current assistant session's logs, and redacted settings. Account directories, credentials, private keys, maps and component runtimes are excluded. Sensitive fields and text containing paths, URLs or credential markers are filtered, but review logs before sharing. Screenshots require a separate selection and include only recent application-generated debug/failure images, up to 20 images / 100 MiB. Images are not text-redacted. The preview reports when the log limit was reached.
 
 ## Updates and validation limits
 
 Assistant and login-component updates are separate. Assistant startup checking can be disabled; a new version is shown for review before download or installation. All sources enforce signature, signed version, installer URL, SHA-256 and size validation. GitHub direct is the default, with three manually selected proxies. Version 0.1.8 removes automatic probes. Speed and remaining-time estimates use the last five seconds of actual byte changes; stalled transfers show an unknown remaining time.
 
-See [Updates and releases](updates_EN.md) for repository migration, legacy compatibility and publishing. Tests cover screenshot recognition, logic, mocked IPC and package integrity. Per user instruction, 0.1.7 does not receive installation, native-app execution, live account authentication or live gameplay validation.
+Component hotfixes in 0.1.9 also show actual per-module byte counts and download speed. Reliable server lengths enable totals and percentages; otherwise the total remains unknown. Applying files and restoring the proxy have separate stages and are not presented as downloading.
+
+See [Updates and releases](updates_EN.md) for repository migration, legacy compatibility and publishing. Tests cover screenshot recognition, logic, mocked IPC and package integrity. Per user instruction, 0.1.9 does not receive installation, native-app execution, live account authentication or live gameplay validation.

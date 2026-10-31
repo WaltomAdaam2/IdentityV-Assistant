@@ -15,6 +15,34 @@ spec.loader.exec_module(worker)
 
 
 class HotfixWorkerTests(unittest.TestCase):
+    def test_download_stream_reports_real_bytes_and_unknown_compressed_total(self):
+        for encoding, expected_total in [("identity", 6), ("gzip", None)]:
+            response = Mock(status_code=200, headers={"Content-Length": "6", "Content-Encoding": encoding})
+            response.iter_content.return_value = iter([b"abc", b"def"])
+            response_context = Mock()
+            response_context.__enter__ = Mock(return_value=response)
+            response_context.__exit__ = Mock(return_value=False)
+            session = Mock()
+            session.get.return_value = response_context
+            session_context = Mock()
+            session_context.__enter__ = Mock(return_value=session)
+            session_context.__exit__ = Mock(return_value=False)
+            modules = {"requests": types.SimpleNamespace(Session=lambda: session_context), "ssl_utils": types.SimpleNamespace(should_verify_ssl=lambda: True)}
+            events = []
+            with patch.dict(sys.modules, modules):
+                result = worker.download_source("https://fixture.invalid/source.py", [], lambda *args: events.append(args), None)
+            self.assertEqual(result, (True, b"abcdef", ""))
+            self.assertEqual(events[0], ("downloading", 0, expected_total))
+            self.assertEqual(events[-2:], [("downloading", 6, expected_total), ("applying", 6, expected_total)])
+            self.assertFalse(session.trust_env)
+            self.assertTrue(session.get.call_args.kwargs["stream"])
+
+    def test_already_cancelled_download_never_imports_or_contacts_http(self):
+        cancelled = worker.threading.Event()
+        cancelled.set()
+        with self.assertRaisesRegex(worker.UpdateCancelled, "取消"):
+            worker.download_source("unused", [], Mock(), cancelled)
+
     def test_worker_stdin_cancel_finishes_before_mutating_a_module(self):
         import json
         with tempfile.TemporaryDirectory() as directory:
@@ -22,6 +50,16 @@ class HotfixWorkerTests(unittest.TestCase):
             (root / "fixture.pyc").write_bytes(b"unchanged")
             (root / "buildinfo.py").write_text("VERSION = 'v6.3.2-stable'", encoding="utf-8")
             (root / "envmgr.py").write_text("class genv:\n    set = staticmethod(lambda *args: None)\n", encoding="utf-8")
+            (root / "ssl_utils.py").write_text("def should_verify_ssl(): return True\n", encoding="utf-8")
+            (root / "requests.py").write_text(
+                "from pathlib import Path\nfrom time import sleep\n"
+                "class Session:\n"
+                "    status_code = 200\n    headers = {}\n"
+                "    def __enter__(self): return self\n"
+                "    def __exit__(self, *args): pass\n"
+                "    def get(self, *args, **kwargs): return self\n"
+                "    def iter_content(self, **kwargs):\n"
+                "        Path('started').write_text('ready')\n        sleep(0.5)\n        yield b'new'\n", encoding="utf-8")
             (root / "hotfixmgr.py").write_text("import time\nfrom pathlib import Path\n"
                 "def _download_text(*args):\n    Path('started').write_text('ready')\n    from time import sleep\n    sleep(0.5)\n    return True, b'new', ''\n"
                 "def handle_if_needed(snapshot):\n    _download_text('url', [])\n    Path('fixture.pyc').write_bytes(b'changed')\n"
@@ -78,7 +116,7 @@ class HotfixWorkerTests(unittest.TestCase):
             module.write_text("value = 'before'", encoding="utf-8")
             py_compile.compile(str(module), cfile=str(root / "fixture.pyc"), doraise=True)
             try:
-                with patch.object(hotfixmgr, "_download_text", return_value=(True, b"value = 'after'", "")), patch.object(hotfixmgr.time, "sleep"):
+                with patch.object(worker, "download_source", return_value=(True, b"value = 'after'", "")), patch.object(hotfixmgr.time, "sleep"):
                     worker.apply(root, root, {"source": "direct", "current_version": "v6.3.2-stable", "hotfixes": [{"target_module": "fixture", "target_commit": "abcdef1234567"}]})
                 loaded = importlib.util.spec_from_file_location("updated_fixture", root / "fixture.pyc")
                 updated = importlib.util.module_from_spec(loaded)
@@ -88,10 +126,10 @@ class HotfixWorkerTests(unittest.TestCase):
                 before_cancel = (root / "fixture.pyc").read_bytes()
                 cancelled = worker.threading.Event()
                 cancelled.set()
-                with patch.object(hotfixmgr, "_download_text") as download:
+                with patch.object(worker, "download_source", wraps=worker.download_source) as download:
                     with self.assertRaisesRegex(RuntimeError, "取消"):
                         worker.apply(root, root, {"source": "direct", "current_version": "v6.3.2-stable", "hotfixes": [{"target_module": "fixture", "target_commit": "abcdef2234567"}]}, cancelled)
-                    download.assert_not_called()
+                    download.assert_called_once()
                 self.assertEqual((root / "fixture.pyc").read_bytes(), before_cancel)
                 self.assertIn("v6.3.2-stable|fixture@abcdef1234567", hotfixmgr._get_pending_ids())
             finally:
