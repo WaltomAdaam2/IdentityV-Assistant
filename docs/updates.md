@@ -34,7 +34,7 @@ pnpm install --frozen-lockfile
 pnpm tauri build
 ```
 
-`打包.bat` 是交互式入口。构建会打包 Python 引擎并运行离线自检，不需要游戏或账号。
+构建会打包 Python 引擎并运行离线自检，不需要游戏或账号。
 
 签名私钥默认位于 `%LOCALAPPDATA%\IdentityV-Assistant\release-keys\updater.key`；也可用 `TAURI_SIGNING_PRIVATE_KEY` 指定原始密钥文件，加密密钥另设 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。脚本不打印密钥、不生成替代密钥。备份原密钥且不要提交或上传；更换密钥会使旧客户端无法验证后续更新。仓库只保存公钥。
 

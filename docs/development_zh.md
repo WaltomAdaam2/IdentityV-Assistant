@@ -45,4 +45,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## 打包与发布
 
-`pnpm tauri build` 或 `打包.bat` 生成签名安装包，但不会自动发布。签名密钥、干净源码校验、附件命名和发布步骤见 [更新与发布](updates.md)。
+`pnpm tauri build` 生成签名安装包，但不会自动发布。签名密钥、干净源码校验、附件命名和发布步骤见 [更新与发布](updates.md)。

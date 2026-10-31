@@ -45,4 +45,4 @@ Keep local work specifications and issues under `.scratch/` according to [the is
 
 ## Packaging and publishing
 
-Use `pnpm tauri build` or `打包.bat` for a signed installer. Packaging alone never publishes a release. The signing key, clean-source checks, asset names, and release procedure are documented separately in [Updates and releases](updates_EN.md).
+Use `pnpm tauri build` for a signed installer. Packaging alone never publishes a release. The signing key, clean-source checks, asset names, and release procedure are documented separately in [Updates and releases](updates_EN.md).

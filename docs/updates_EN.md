@@ -34,7 +34,7 @@ pnpm install --frozen-lockfile
 pnpm tauri build
 ```
 
-`打包.bat` provides an interactive entry point. Packaging builds a standalone Python engine and runs its offline self-check, without requiring a game or account.
+Packaging builds a standalone Python engine and runs its offline self-check, without requiring a game or account.
 
 The original signing key defaults to `%LOCALAPPDATA%\IdentityV-Assistant\release-keys\updater.key`. Alternatively, point `TAURI_SIGNING_PRIVATE_KEY` to the original key file; encrypted keys also need `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Scripts neither print the key nor create a replacement. Back it up securely and never commit or upload it. Changing the key breaks verification in existing clients. Only the public key belongs in the repository.
 
