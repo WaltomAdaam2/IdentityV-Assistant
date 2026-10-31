@@ -16,10 +16,10 @@ export default function DownloadProgress({ downloaded, total, language }: { down
   const progress = total && total > 0 ? Math.min(100, downloaded / total * 100) : undefined;
   const mb = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
   return <div className="update-download">
-    <div className="update-progress-row">
-      <progress max="100" value={progress} aria-label={language === "zh-CN" ? "正在下载更新" : "Downloading update"} />
+    <progress max="100" value={progress} aria-label={language === "zh-CN" ? "正在下载更新" : "Downloading update"} />
+    <div className="update-progress-details">
+      <small>{mb(downloaded)}{total ? ` / ${mb(total)}` : ""}{progress !== undefined ? ` · ${Math.floor(progress)}%` : ""}</small>
       <small className="update-transfer"><span>{formatSpeed(rate.speed)}</span><span>{formatRemaining(rate.remaining, language === "zh-CN")}</span></small>
     </div>
-    <small>{mb(downloaded)}{total ? ` / ${mb(total)}` : ""}{progress !== undefined ? ` · ${Math.floor(progress)}%` : ""}</small>
   </div>;
 }

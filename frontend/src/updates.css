@@ -38,9 +38,9 @@
 @keyframes update-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .update-dialog[open], .update-state-icon svg { animation: none; } .update-download progress::-webkit-progress-value { transition: none; } }
 
-.update-progress-row { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.update-progress-row progress { flex: 1; min-width: 48px; }
-.update-transfer { display: grid; gap: 3px; text-align: right; flex-shrink: 0; font-size: 11px; line-height: 1.5; }
+.update-progress-details { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; min-width: 0; }
+.update-progress-details small { font-size: 11px; line-height: 1.5; }
+.update-transfer { display: flex; gap: 12px; margin-left: auto; white-space: nowrap; }
 .release-markdown { max-height: 28vh; overflow: auto; overflow-wrap: anywhere; margin-top: 8px; font-size: 12px; line-height: 1.7; }
 .release-markdown > :first-child { margin-top: 0; }
 .release-markdown h1 { font-size: 16px; margin: 14px 0 8px; }
