@@ -14,7 +14,7 @@ export default function DownloadProgress({ downloaded, total, language }: { down
     return () => window.clearInterval(timer);
   }, []);
   const progress = total && total > 0 ? Math.min(100, downloaded / total * 100) : undefined;
-  const mb = (bytes: number) => `${(bytes / 1048576).toFixed(1)} MB`;
+  const mb = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
   return <div className="update-download">
     <div className="update-progress-row">
       <progress max="100" value={progress} aria-label={language === "zh-CN" ? "正在下载更新" : "Downloading update"} />

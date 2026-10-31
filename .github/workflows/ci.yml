@@ -60,6 +60,10 @@ jobs:
         working-directory: engine
         run: uv run pytest
 
+      - name: Test component hotfix worker
+        working-directory: engine
+        run: uv run python -m unittest discover -s ../src-tauri/tests -p test_hotfix_worker.py -v
+
       - name: Select stable Rust toolchain
         run: |
           rustup default stable-msvc

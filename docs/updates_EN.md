@@ -27,6 +27,8 @@ The assistant download shows a five-second rolling speed and estimated remaining
 
 ## Building
 
+From 0.1.9, login-component hotfixes also report actual per-module downloaded bytes, reliable totals and speed, using B/KB for small files. Unknown totals do not produce fabricated percentages. Preparation, file application and proxy restoration have separate phases. Official validation, backup and rollback records remain in use.
+
 Prepare the [development environment](development.md), then build from a clean, pushed, unmerged version branch such as `SNAPSHOT-v0.1.8`:
 
 ```powershell

@@ -8,6 +8,8 @@ mod launcher;
 mod launcher_news;
 mod logs;
 mod power;
+mod support;
+mod support_bundle;
 mod update_source;
 mod updates;
 mod window_size;
@@ -54,6 +56,8 @@ pub fn run() {
         .manage(updates::UpdateManager::default())
         .manage(desktop::DesktopSettings::default())
         .manage(window_size::WindowSizeState::default())
+        .manage(support::SupportState::default())
+        .manage(support_bundle::BundleState::default())
         .invoke_handler(tauri::generate_handler![
             commands::open_project_repository,
             commands::open_release_link,
@@ -72,6 +76,7 @@ pub fn run() {
             desktop::minimize_to_taskbar,
             window_size::reset_window_size,
             journal_dialog::choose_game_executable,
+            journal_dialog::support_choose_path,
             journal_dialog::choose_login_component,
             updates::get_update_status,
             updates::check_update,
@@ -85,6 +90,11 @@ pub fn run() {
             commands::engine::get_engine_snapshot,
             commands::settings::load_settings,
             commands::settings::save_settings,
+            support::export_settings,
+            support::preview_settings_restore,
+            support::restore_settings,
+            support_bundle::preview_diagnostics,
+            support_bundle::export_diagnostics,
             commands::settings::append_ui_log,
             commands::settings::set_power_prevention,
             journal::journal_list_packs,
@@ -93,6 +103,7 @@ pub fn run() {
             journal::journal_open_directory,
             journal_dialog::journal_choose_pack_source,
             commands::diagnostics::detect_window,
+            commands::diagnostics::task_preflight,
             commands::diagnostics::capture_frame,
             commands::diagnostics::test_template,
             commands::diagnostics::input_test,

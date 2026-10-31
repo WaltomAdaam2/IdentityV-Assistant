@@ -1,6 +1,8 @@
 from config.schema import CaptureConfig
 from core.models import Rect
 from capture.base import CaptureBackend, Frame
+from dataclasses import replace
+from datetime import datetime, timezone
 
 
 class CaptureManager:
@@ -9,6 +11,22 @@ class CaptureManager:
         self.backend: CaptureBackend | None = None
         self.backend_name = "not_initialized"
         self.last_error: str | None = None
+        self.retain_last_frame = False
+        self.last_frame = None
+        self.last_frame_at = None
+        self.last_frame_hwnd = None
+
+    def _remember(self, frame, hwnd):
+        if self.retain_last_frame and frame.source == "wgc" and hwnd:
+            try:
+                self.last_frame = replace(frame, image=frame.image.copy())
+                self.last_frame_at = datetime.now(timezone.utc)
+                self.last_frame_hwnd = hwnd
+            except MemoryError:
+                self.last_frame = None
+        else:
+            self.last_frame = None
+        return frame
 
     @staticmethod
     def _create_backend(name: str) -> CaptureBackend:
@@ -44,7 +62,7 @@ class CaptureManager:
             raise ValueError("capture region must have positive width and height")
         errors: list[str] = []
         try:
-            return self._ensure_backend().capture(region, hwnd)
+            return self._remember(self._ensure_backend().capture(region, hwnd), hwnd)
         except Exception as primary_error:
             errors.append(f"{self.backend_name}: {primary_error}")
             if self.config.backend == "auto":
@@ -56,7 +74,7 @@ class CaptureManager:
                         self.backend_name = name
                         frame = self.backend.capture(region, hwnd)
                         self.last_error = "; ".join(errors)
-                        return frame
+                        return self._remember(frame, hwnd)
                     except Exception as fallback_error:
                         errors.append(f"{name}: {fallback_error}")
                 self.backend, self.backend_name = None, "unavailable"

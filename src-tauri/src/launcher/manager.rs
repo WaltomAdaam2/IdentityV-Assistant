@@ -13,6 +13,7 @@ use std::{
     },
     time::Duration,
 };
+use tauri::Emitter;
 use tokio::sync::Mutex as AsyncMutex;
 
 #[derive(Clone, Serialize)]
@@ -127,6 +128,7 @@ impl Launcher {
             return Err("助手正在退出或更新".into());
         }
         self.report_proxy("updating");
+        let _ = app.emit("component-update-progress", serde_json::json!({"phase":"preparing", "downloaded":0,"total":null,"module":"","commit":""}));
         let was_running = owned
             .as_ref()
             .is_some_and(|component| component.session.is_running());
@@ -145,7 +147,7 @@ impl Launcher {
             }
             let data = directory.join("login-data");
             runtime::prepare_data(&data)?;
-            component_updates::apply(&checked, &data, source, &self.closing).await
+            component_updates::apply(&checked, &data, source, &self.closing, app).await
         }
         .await;
         if was_running && !self.closing.load(Ordering::Relaxed) {
@@ -154,6 +156,7 @@ impl Launcher {
                 .filter(|component| !component.session.is_running())
             {
                 self.report_proxy("restarting");
+                let _ = app.emit("component-update-progress", serde_json::json!({"phase":"restoring", "downloaded":0,"total":null,"module":"","commit":""}));
                 if let Err(recovery) = component
                     .session
                     .restart_after_update(&self.closing, |phase| self.report_proxy(phase))

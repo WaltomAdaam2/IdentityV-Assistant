@@ -171,7 +171,7 @@ export interface Settings {
     hide_seek_infinite_loop: boolean;
     camera_turn_scale_percent: number;
   };
-  debug: { save_debug_screenshots: boolean; verbose_logs: boolean };
+  debug: { save_debug_screenshots: boolean; save_failure_screenshots: boolean; verbose_logs: boolean };
 }
 
 export interface TaskItem {

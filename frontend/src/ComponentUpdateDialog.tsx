@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import type { ComponentUpdateInfo } from "./bridge";
+import type { ComponentUpdateInfo, ComponentUpdateProgress } from "./bridge";
+import DownloadProgress from "./DownloadProgress";
 import type { Settings } from "./types";
 import { SettingIcon } from "./SettingRow";
 import "./updates.css";
 
-export default function ComponentUpdateDialog({ info, error, phase, source, language, continuing, onSource, onClose, onContinue, onCheck, onApply, onDownload }: {
+export default function ComponentUpdateDialog({ info, error, phase, progress, source, language, continuing, onSource, onClose, onContinue, onCheck, onApply, onDownload }: {
   info: ComponentUpdateInfo | null; error: string; phase: "checking" | "applying" | "idle";
+  progress: ComponentUpdateProgress | null;
   source: Settings["app"]["update_source"]; language: Settings["app"]["language"]; continuing: boolean;
   onSource: (source: Settings["app"]["update_source"]) => void; onClose: () => void; onContinue: () => void; onCheck: () => void;
   onApply: () => void; onDownload: () => void;
@@ -34,7 +36,10 @@ export default function ComponentUpdateDialog({ info, error, phase, source, lang
     {info?.hotfixes.length ? <p>{zh ? "应用热更新会暂时停止并恢复助手启动的代理，游戏会保留。" : "Applying hotfixes temporarily stops and restores the assistant's proxy; the game stays open."}</p> : null}
     {info?.release_url && <p>{zh ? "完整新版将从所选源下载。更换组件前需要确认与助手兼容。" : "Download the full release from the selected source. Check assistant compatibility before replacing the component."}</p>}
     {error && <details className="update-error" open><summary>{zh ? "错误详情" : "Error details"}</summary><p role="alert">{error}</p></details>}
-    {busy && <div className="update-download"><progress aria-label={labels[state]} /></div>}
+    {busy && (progress?.phase === "downloading" ? <div>
+      <small>{zh ? "正在下载模块：" : "Downloading module: "}{progress.module}</small>
+      <DownloadProgress key={`${progress.module}@${progress.commit}`} downloaded={progress.downloaded} total={progress.total} language={language} />
+    </div> : <div className="update-download"><progress aria-label={labels[state]} /><small role="status">{phase === "checking" ? labels.checking : progress?.phase === "applying" ? (zh ? "正在编译并应用模块…" : "Compiling and applying module…") : progress?.phase === "restoring" ? (zh ? "正在恢复登录代理…" : "Restoring login proxy…") : (zh ? "正在准备热更新…" : "Preparing hotfixes…")}</small></div>)}
     <footer className="update-actions">
       <button disabled={busy} onClick={onCheck}>{zh ? "重新检查" : "Check again"}</button>
       <button autoFocus disabled={busy} onClick={continuing ? onContinue : onClose}>{continuing ? (zh ? "继续启动游戏" : "Continue launching") : (zh ? "关闭" : "Close")}</button>

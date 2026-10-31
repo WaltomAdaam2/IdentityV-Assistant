@@ -10,7 +10,8 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-use tokio::io::AsyncWriteExt;
+use tauri::Emitter;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Hotfix {
@@ -193,6 +194,7 @@ pub(super) async fn apply(
     data: &Path,
     source: &str,
     closing: &AtomicBool,
+    app: &tauri::AppHandle,
 ) -> Result<(), String> {
     crate::updates::route("https://github.com/", source)?;
     let worker = data.join("assistant-hotfix.py");
@@ -217,10 +219,30 @@ pub(super) async fn apply(
         .write_all(format!("{request}\n").as_bytes())
         .await
         .map_err(|e| e.to_string())?;
-    let wait = child.wait_with_output();
+    let stdout = child.stdout.take().ok_or("无法读取组件更新进度")?;
+    let read = async {
+        let mut lines = BufReader::new(stdout).lines();
+        let mut result = None;
+        while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
+            if let Some(payload) = line.strip_prefix("IDV_UPDATE_PROGRESS ") {
+                if let Some(progress) = parse_progress(payload) {
+                    let _ = app.emit("component-update-progress", progress);
+                }
+            } else if let Some(payload) = line.strip_prefix("IDV_UPDATE_RESULT ") {
+                result = serde_json::from_str::<Value>(payload).ok();
+            }
+        }
+        Ok::<_, String>(result)
+    };
+    let wait = async {
+        tokio::try_join!(
+            async { child.wait().await.map_err(|e| e.to_string()) },
+            read
+        )
+    };
     tokio::pin!(wait);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
-    let output = loop {
+    let (status, result) = loop {
         if closing.load(Ordering::Relaxed) || tokio::time::Instant::now() >= deadline {
             // The worker checks cancellation before and after downloads, before
             // replacing a module. Give an in-flight HTTP request time to return.
@@ -233,13 +255,8 @@ pub(super) async fn apply(
             _ = tokio::time::sleep(Duration::from_millis(100)) => {}
         }
     };
-    let result: Value = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .rev()
-        .find_map(|line| line.strip_prefix("IDV_UPDATE_RESULT "))
-        .and_then(|line| serde_json::from_str(line).ok())
-        .ok_or("组件未返回更新结果")?;
-    if !output.status.success() || result["ok"] != true {
+    let result = result.ok_or("组件未返回更新结果")?;
+    if !status.success() || result["ok"] != true {
         return Err(result["error"]
             .as_str()
             .unwrap_or("组件热更新失败")
@@ -248,9 +265,44 @@ pub(super) async fn apply(
     Ok(())
 }
 
+fn parse_progress(payload: &str) -> Option<Value> {
+    let value: Value = serde_json::from_str(payload).ok()?;
+    let phase = value["phase"].as_str()?;
+    if !matches!(phase, "downloading" | "applying") {
+        return None;
+    }
+    let downloaded = value["downloaded"].as_u64()?;
+    if downloaded > 4 * 1024 * 1024 {
+        return None;
+    }
+    let module = value["module"].as_str()?;
+    if module.len() > 256 {
+        return None;
+    }
+    Some(json!({"phase": phase, "downloaded": downloaded,
+        "total": value["total"].as_u64().filter(|n| *n > 0 && *n <= 4 * 1024 * 1024 && *n >= downloaded),
+        "module": module, "commit": value["commit"].as_str().unwrap_or("")}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn progress_rejects_invalid_counts_and_does_not_invent_unknown_totals() {
+        let value = json!({"phase":"downloading","module":"fixture","commit":"abc1234","downloaded":2048,"total":null});
+        let parsed = parse_progress(&value.to_string()).unwrap();
+        assert_eq!(parsed["downloaded"], 2048);
+        assert!(parsed["total"].is_null());
+        let mut invalid = value.clone();
+        invalid["downloaded"] = json!(-1);
+        assert!(parse_progress(&invalid.to_string()).is_none());
+        invalid = value.clone();
+        invalid["phase"] = json!("finished");
+        assert!(parse_progress(&invalid.to_string()).is_none());
+        invalid = value;
+        invalid["total"] = json!(1000);
+        assert!(parse_progress(&invalid.to_string()).unwrap()["total"].is_null());
+    }
     #[tokio::test]
     #[ignore = "Reads public official update metadata; no component is started or updated"]
     async fn public_update_metadata_uses_official_feed() {

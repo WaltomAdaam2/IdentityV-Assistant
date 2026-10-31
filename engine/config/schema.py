@@ -80,4 +80,6 @@ class EngineConfig(_ConfigModel):
     def require_debug_object(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             raise ValueError("debug must be an object")
+        if "save_failure_screenshots" in value and not isinstance(value["save_failure_screenshots"], bool):
+            raise ValueError("save_failure_screenshots must be boolean")
         return value

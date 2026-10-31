@@ -76,7 +76,7 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .progress-card { display: grid; gap: 4px; padding: 11px; overflow: hidden; }
 .progress-card strong, .progress-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .progress-card strong { color: var(--title); font-size: 11px; }
-.progress-card small { color: var(--muted); font-size: 10px; }
+.progress-card small { color: var(--muted); font-size: 11px; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
 .progress-stage, .task-status { animation: status-update 180ms ease-out both; }
 @keyframes status-update { from { opacity: .45; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .progress-card:hover strong, .progress-card:hover small { white-space: normal; overflow: visible; }

@@ -8,6 +8,7 @@ engine/build/
 engine/dist/
 engine/.venv/
 engine/.pytest_cache/
+.scratch/pytest-*/
 engine/**/__pycache__/
 *.py[cod]
 logs/

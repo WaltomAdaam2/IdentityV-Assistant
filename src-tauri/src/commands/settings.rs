@@ -8,9 +8,14 @@ pub fn load_settings() -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn save_settings(app: tauri::AppHandle, settings: Value) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || crate::desktop::save(&app, &settings))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = crate::support::SETTINGS_OPERATION
+            .lock()
+            .map_err(|e| e.to_string())?;
+        crate::desktop::save(&app, &settings)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

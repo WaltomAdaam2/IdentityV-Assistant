@@ -209,6 +209,78 @@ test("component updates check at game launch only and share the dialog source ch
   } finally { browser("close"); }
 });
 
+test("component hotfix progress shows actual transfer and distinct apply/recovery phases", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("eval", "window.__launcherTest.hasHotfix = true; window.__launcherTest.deferHotfix = true");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--text", "测试热更新");
+    browser("find", "role", "button", "click", "--name", "应用热更新", "--exact");
+    browser("wait", "--fn", "Boolean(window.__launcherTest.finishHotfix)");
+    browser("eval", "window.__launcherTest.emitComponentProgress({phase:'downloading',module:'fixture',commit:'abcdef1',downloaded:0,total:4096})");
+    browser("wait", "--text", "正在下载模块：fixture");
+    browser("eval", "new Promise(resolve => setTimeout(resolve, 600)).then(() => window.__launcherTest.emitComponentProgress({phase:'downloading',module:'fixture',commit:'abcdef1',downloaded:2048,total:4096}))");
+    browser("wait", "--text", "2.0 KB / 4.0 KB");
+    browser("wait", "--fn", "document.querySelector('.update-transfer')?.textContent.includes('/s') && !document.querySelector('.update-transfer')?.textContent.startsWith('0 B/s')");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.update-download progress').value")), 50);
+    browser("eval", "window.__launcherTest.emitComponentProgress({phase:'downloading',module:'second',commit:'abcdef2',downloaded:100,total:null})");
+    browser("wait", "--text", "100 B");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.update-download progress').hasAttribute('value')")), false);
+    browser("eval", "window.__launcherTest.emitComponentProgress({phase:'applying',module:'second',commit:'abcdef2',downloaded:100,total:null})");
+    browser("wait", "--text", "正在编译并应用模块");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.update-transfer'))")), false);
+    browser("eval", "window.__launcherTest.emitComponentProgress({phase:'restoring',module:'',commit:'',downloaded:0,total:null})");
+    browser("wait", "--text", "正在恢复登录代理");
+    browser("eval", "window.__launcherTest.finishHotfix()");
+    browser("wait", "--fn", "!document.querySelector('dialog[open]')");
+  } finally { browser("close"); }
+});
+
+test("settings restore previews changes and avoids stale autosave; diagnostics require separate image consent", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("find", "role", "button", "click", "--name", "设置", "--exact");
+    browser("wait", "--text", "备份与诊断");
+    browser("find", "role", "button", "click", "--name", "导入设置并预览", "--exact");
+    browser("wait", "--text", "确认设置变化");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'restore_settings')")), false);
+    browser("find", "role", "button", "click", "--name", "确认恢复设置", "--exact");
+    browser("wait", "--text", "设置已恢复，原配置备份已保留。");
+    browser("eval", "new Promise(resolve => setTimeout(resolve, 700))");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.savedSettings.app.theme")), "dark");
+    browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
+    browser("wait", "--text", "session.redacted.jsonl");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.filter(c=>c.command==='preview_diagnostics').at(-1).args.includeImages")), false);
+    browser("find", "role", "checkbox", "check", "--name", "另外包含最近的调试／失败截图（最多 20 张、100 MiB）", "--exact");
+    assert.equal(JSON.parse(browser("eval", "[...document.querySelectorAll('button')].some(b=>b.textContent==='保存诊断 ZIP')")), false);
+    browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
+    browser("wait", "--text", "images/failure-fixture.png");
+    browser("find", "role", "button", "click", "--name", "保存诊断 ZIP", "--exact");
+    browser("wait", "--text", "诊断包已保存，未上传。");
+    browser("eval", "window.__launcherTest.emitLog({type:'task_started',task_id:'login_lobby'})");
+    browser("wait", "--fn", "[...document.querySelectorAll('button')].find(b=>b.textContent==='导入设置并预览')?.disabled");
+  } finally { browser("close"); }
+});
+
+test("failed preflight unlocks task controls and exposes diagnostic/recheck actions", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("eval", "window.__launcherTest.failPreflight = true");
+    browser("find", "role", "button", "click", "--name", "任务", "--exact");
+    browser("wait", "--text", "启动已启用任务");
+    browser("find", "role", "button", "click", "--name", "启动已启用任务", "--exact");
+    browser("wait", "--text", "无法获取游戏画面，请检查捕捉设置。");
+    browser("wait", "--fn", "![...document.querySelectorAll('button')].find(b=>b.textContent==='启动已启用任务')?.disabled");
+    browser("find", "role", "button", "click", "--name", "重新检查", "--exact");
+    browser("wait", "--text", "检查通过，可以启动任务。");
+    browser("eval", "window.__launcherTest.emitLog({type:'task_started',task_id:'login_lobby'}).then(() => window.__launcherTest.emitLog({type:'heartbeat',engine_status:'running',task_status:'running',task_feedback:{task_id:'login_lobby',stage:'matching',task_elapsed_seconds:12,stage_elapsed_seconds:4,next_action:'wait_for_screen'}}))");
+    browser("wait", "--text", "有效用时: 12s");
+    browser("wait", "--text", "等待目标画面并确认");
+  } finally { browser("close"); }
+});
+
 test("title bar minimize explicitly requests the taskbar", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
