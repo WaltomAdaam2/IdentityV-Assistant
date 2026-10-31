@@ -16,6 +16,7 @@ const fieldNames: Record<string, [string, string]> = {
   "app.launch_engine_on_start": ["启动应用时启动自动化服务", "Start automation on app launch"],
   "app.launch_on_login": ["开机启动助手", "Launch at sign-in"], "app.minimize_to_tray": ["关闭到托盘", "Close to tray"],
   "app.ui_scale_percent": ["界面缩放（%）", "Interface scale (%)"], "app.engine_hotkey": ["引擎快捷键", "Engine shortcut"],
+  "app.recognition_hotkey": ["识别一楼地图快捷键", "Recognize first-floor map shortcut"],
   "app.developer_mode": ["开发者模式", "Developer mode"], "app.prevent_system_sleep": ["禁止电脑自动休眠", "Prevent system sleep"],
   "app.prevent_display_sleep": ["禁止自动熄屏和闲置锁屏", "Prevent display sleep and idle lock"],
   "app.check_updates_on_start": ["自动检测更新", "Check for updates on startup"],

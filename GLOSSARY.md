@@ -30,3 +30,9 @@ The most recent successful WGC game-window frame saved when a task fails. Its ca
 
 **Diagnostic bundle**:
 A user-saved ZIP containing a bounded snapshot of redacted current-session diagnostics. Screenshots require separate selection; login-component account data is excluded.
+
+**Journal map identity**:
+A map's season, difficulty, door category and number. Different floor views and base/route illustrations can belong to the same map.
+
+**Recognition candidate**:
+A journal map whose first-floor geometry plausibly matches the visible game map. A candidate requires the user's selection; it is not a confirmed identification or an accuracy percentage.

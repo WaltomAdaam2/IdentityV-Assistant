@@ -48,7 +48,7 @@ Explicit engine startup, including F3, or task startup activates the game layout
 
 ## Journal and map-pack format
 
-Use Ctrl/Shift to select multiple ZIP files. Each pack imports independently; a failure does not stop later packs. Top notices show normal results for one second and errors for eight seconds, then fade over 600 ms. Hover or keyboard focus retains the notice; Close dismisses immediately. Completion stays visible after scrolling or leaving the journal, and details remain in logs.
+Use Ctrl/Shift to select multiple ZIP files. Each pack imports independently; a failure does not stop later packs. Top notices stay for two seconds, then fade and collapse over half a second. Hover or keyboard focus retains the notice; manual dismissal is also available. Completion stays visible after scrolling or leaving the journal, and details remain in logs.
 
 Import reads only PNG/JPEG/WebP files referenced by `pack.json`. It does not replace an existing `packId`, modify source ZIPs or read another application's data. Root or nested `pack.json` is supported; legacy `manifest.json` is not. Traversal, links, duplicate entries and excessive extraction are rejected. Current bounds include 20 MiB per image, 512 MiB per pack, 2 MiB per descriptor, 20,000 entries and 16 path levels.
 
@@ -69,6 +69,16 @@ Minimal example, with an actual `maps/1f.png` inside the ZIP:
 Door categories are `lf`, `rf`, `lr`, `triple` and `td`. `floors` maps base images; optional `display` maps route images. Use `1`, `2`, `b1f` floor keys and `/` in image paths. Legacy floor key `3` is read as basement.
 
 Season, difficulty, doors and display mode save silently. Reopening the page resets floor to 1F and expands filters. Detail and preview views stay inside the assistant, not over the game. Esc leaves preview first, then returns to the list.
+
+### Recognize a first-floor map (0.1.11)
+
+Select the season, difficulty and base/route display, show the minimap or expanded map in the game, then choose **Recognize 1F map**. The default **P** shortcut can be changed in Settings. It works only while the game is foreground, preserves the game's key input, and updates the Journal candidate grid without opening the in-game map or activating the assistant. Pause or stop automation first; recognition is blocked while tasks are running or starting.
+
+Recognition searches only first-floor templates for the selected season and difficulty, ignoring the door filter. Route mode requires an available first-floor route image and never silently substitutes a base display image. Door category and map number identify each candidate, so different doors can each have a Map 1. All candidates passing geometric checks remain selectable in match order, without accuracy percentages or automatic selection. After choosing a map, browse its available upper floor or basement normally.
+
+A separate read-only process captures through WGC, without starting the automation service, changing game layout, sending game input or falling back to desktop capture. The screenshot and collapsed **View recognized region** preview stay in memory. Cancellation, changed recognition filters and leaving Journal invalidate the old request; late results cannot replace newer choices. Failed matches clear old candidates and ask you to open the first-floor map and retry. Requests time out after 120 seconds; image decoding is capped at 16,777,216 pixels.
+
+Localization and geometry thresholds are heuristics. Limited exploration, occlusion, complex HUDs, game scaling and similar structures can cause missed or ambiguous matches. Generated fixtures and template-crop checks do not establish real gameplay accuracy. Check the candidates and recognized region before using the result.
 
 ## Local data, logs and diagnostics
 

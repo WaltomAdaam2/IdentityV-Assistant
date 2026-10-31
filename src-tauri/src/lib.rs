@@ -4,6 +4,8 @@ mod desktop;
 mod engine;
 mod journal;
 mod journal_dialog;
+mod journal_recognition;
+mod journal_shortcut;
 mod launcher;
 mod launcher_news;
 mod logs;
@@ -51,6 +53,7 @@ pub fn run() {
                 .build(),
         )
         .manage(EngineSupervisor::default())
+        .manage(journal_recognition::RecognitionState::default())
         .manage(launcher::Launcher::default())
         .manage(power::PowerManager::default())
         .manage(updates::UpdateManager::default())
@@ -101,6 +104,8 @@ pub fn run() {
             journal::journal_import_pack,
             journal::journal_read_image,
             journal::journal_open_directory,
+            journal_recognition::journal_recognize,
+            journal_recognition::journal_cancel_recognition,
             journal_dialog::journal_choose_pack_source,
             commands::diagnostics::detect_window,
             commands::diagnostics::task_preflight,
@@ -117,6 +122,9 @@ pub fn run() {
             launcher::manager::start_monitor(app.handle().clone());
             if let Err(error) = desktop::initialize(app.handle(), &settings) {
                 logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"DESKTOP_SETTINGS_FAILED","message":error,"recoverable":true,"details":{}}));
+            }
+            if let Err(error) = journal_shortcut::start(app.handle().clone(), &settings) {
+                logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"RECOGNITION_SHORTCUT_FAILED","message":error,"recoverable":true,"details":{}}));
             }
             let system = settings["app"]["prevent_system_sleep"]
                 .as_bool()

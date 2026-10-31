@@ -27,6 +27,7 @@ test("sidebar navigation retains its focus while content navigation focuses the 
     wait("Boolean(document.querySelector('.game-launcher'))");
     assert.equal(evaluate("document.activeElement.matches('.nav-item.active')"), true);
     click("概览");
+    browser("wait", "--text", "管理任务");
     click("管理任务");
     wait("document.querySelector('.topbar h1')?.textContent === '任务'");
     assert.equal(evaluate("document.activeElement.matches('.topbar h1')"), true);

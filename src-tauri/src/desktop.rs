@@ -72,6 +72,7 @@ pub fn initialize(app: &AppHandle, settings: &Value) -> Result<(), String> {
 }
 
 pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
+    crate::journal_shortcut::validate(settings)?;
     let (hotkey, scale, startup, tray) = preferences(settings)?;
     let manager = app.state::<DesktopSettings>();
     let mut registered = manager.hotkey.lock().unwrap();
@@ -140,6 +141,7 @@ pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
         *registered = Some(hotkey);
     }
     manager.tray.store(tray, Ordering::Relaxed);
+    crate::journal_shortcut::configure(settings)?;
     Ok(())
 }
 
@@ -228,6 +230,9 @@ fn set_startup(_: bool) -> Result<(), String> {
 }
 
 pub fn quit(app: &AppHandle) {
+    crate::journal_shortcut::stop();
+    app.state::<crate::journal_recognition::RecognitionState>()
+        .cancel_active();
     if app
         .state::<DesktopSettings>()
         .quitting
