@@ -16,6 +16,7 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | `ping` | — | Request a liveness response |
 | `shutdown` | — | Graceful engine shutdown |
 | `detect_window` | — | Run window diagnostics |
+| `task_preflight` | — | Check window responsiveness and capture without saving an image or starting tasks |
 | `capture_frame` | — | Save one debug frame |
 | `test_template` | `template` | Match one registered template |
 | `input_test` | `action` | Developer input test; first requires an explicit `set_enabled` action |
@@ -27,10 +28,12 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | Type | Main fields | Purpose |
 | --- | --- | --- |
 | `ready` | `engine_version` | Engine initialized |
-| `heartbeat` | `engine_status`, `task_status` | Liveness and lifecycle |
+| `heartbeat` | `engine_status`, `task_status`, `task_feedback` | Liveness, lifecycle and current active task/stage timings |
 | `planned_action` | `action`, `input`, `target` | Action sent to the game |
 | `task_started` | `task_id` | Task selected from the queue |
-| `task_progress` | `task_id`, `stage`, `role`, `completed_cycles`, `infinite_loop` | Current task progress |
+| `task_progress` | `task_id`, `stage`, `role`, `completed_cycles`, `infinite_loop`, `task_elapsed_seconds`, `stage_elapsed_seconds`, `pause_reason`, `next_action` | Current task progress; active time excludes pauses |
+| `task_preflight` | `ok`, `code`, `warnings`, `for_start`, `request_id` | Startup gate or explicitly requested check result |
+| `failure_capture` | `saved`, `reason`, `task_id`, optional `path`, `captured_at` | Saved most recent WGC frame or reason it could not be saved; capture may predate failure |
 | `task_paused` | `task_id`, `reason`, `message` | User pause or a paused nonrecoverable task failure |
 | `task_resumed` | `task_id` | Resume accepted; the task rechecks its screen before more input |
 | `recognition_evidence` | `task_id`, `stage`, `confidence`, `bbox` | Confirmed visual evidence |
@@ -39,7 +42,7 @@ Every message includes `version`, `type`, and an ISO-8601 `timestamp`. Commands 
 | `debug_frame` | `path`, dimensions, `state` | Safe local frame metadata |
 | `task_finished` | `reason`, `stats` | Final task result |
 | `error` | `code`, `message`, `recoverable`, `details` | Structured failure |
-| `login_stage` | `stage` | Login task progress |
+| `login_stage` | `stage` | Legacy login progress; engine now normalizes it into `task_progress` |
 | `settings_reloaded` | — | Configuration reload completed |
 | `window_diagnostics` | diagnostic details | Window discovery results |
 | `template_match` | match details | Explicit template test result |
@@ -52,6 +55,8 @@ Unknown message types may be logged and ignored for forward compatibility. A pro
 When a Tauri `start_task` or `start_tasks` command is issued while the automation service is stopped, the Rust supervisor starts the service before forwarding the command. A direct command written to the Python process still requires that process to be running.
 
 The queue preserves the order supplied in `start_tasks`. A task that completes normally starts the next queued task. `stop_task` clears both the active task and every remaining queued task.
+
+New task/queue commands run preflight once before creating a task runner. A failed `task_preflight` with `for_start: true` clears the shell's pending-start state; it must not leave task controls waiting for a `task_started` event. Existing loop and pause/resume recovery behavior remains separate.
 
 `task_finished` with reason `window_recovery_timeout` means the 300-second foreground/capture recovery budget expired. The task and pending queue are cleared, and the engine remains available. Recovery entry and success are logged once, allowing manual refocus during the retry period.
 
