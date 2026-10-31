@@ -5,6 +5,9 @@ Type: improvement
 
 ## Progress
 
+- Latest user authorization: preserve sidebar press motion, finish focused checks, merge PR #3 and then prepare the v0.1.10 draft. Native execution remains excluded. Original navigation CSS was unchanged; restored sidebar focus retention instead of forcing focus to the new page heading. Navigation from page content still transfers focus. Its focused browser regression and frontend production build passed.
+- Added an explicit merged-PR upload path for the original clean build, including exact PR/repository/branch/commit, main ancestry and unchanged remote checks. All 15 offline publisher cases passed; default frozen-branch rejection and draft-only/no-overwrite/integrity gates remain. Independent review reported no findings and independently passed the navigation regression. Final clean-build and remote CI evidence will be recorded in PR #3 before merge; the branch stays frozen afterward.
+
 - Read all six screenshots and invoked the requested skill workflow. First six
   concrete questions sent through the structured question popup. Q1 confirmed:
   preserve the existing cream/olive design. Q2-Q6 were reissued as selectable

@@ -69,4 +69,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1 
 5. 用户审核 PR、草稿说明、校验值和构建证据。PR 合并到 `main` 后，SNAPSHOT 分支永久保留并冻结：不再提交、同步、合并、变基或删除。后续改动使用新版本分支。
 6. 用户亲自在 GitHub 发布已审核的草稿，并确认正式版设为 Latest。发布前公众和软件自动更新都看不到草稿；发布后的新标签指向已验证的原构建提交。Agent 不代替用户发布。
 
+若用户明确要求先合并 PR、再创建草稿，仍须在合并前从干净且已推送的 SNAPSHOT 提交构建并验证。合并后只能上传这一份原构建，使用 `-MergedPullRequest <PR编号>`：脚本核对已合并 PR 的仓库、版本分支、原提交、main 历史与远端分支未变，再执行原有附件完整性检查。可在该原提交的干净 detached worktree 上传；不得修改或同步已冻结的 SNAPSHOT 分支。此选项不允许覆盖已有标签／草稿，也不允许正式发布。
+
 发布签名是更新校验，并非 Windows Authenticode 签名；Windows 可能显示未知发布者。当前源码和 0.1.7 起的自有代码使用 GPL-3.0-only，历史二进制及第三方材料保留原许可，详见 [第三方声明](../THIRD_PARTY_NOTICES.md)。

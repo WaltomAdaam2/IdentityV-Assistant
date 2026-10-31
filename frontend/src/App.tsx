@@ -1445,6 +1445,7 @@ export default function App() {
     document.title = t.about.name;
   }, [t.about.name]);
   useLayoutEffect(() => {
+    if (document.activeElement?.closest(".sidebar nav")) return;
     const heading = workspaceRef.current?.querySelector<HTMLElement>(page === "launcher" ? ".launcher-choose" : ".topbar h1");
     if (heading) { if (heading.tagName !== "BUTTON") heading.tabIndex = -1; heading.focus({preventScroll: true}); }
   }, [page]);

@@ -77,4 +77,4 @@ All recommendations were approved except these explicit corrections:
 
 ## Latest delivery decision
 
-User explicitly set version 0.1.10. Keep PR #3 open/draft on SNAPSHOT-v0.1.10; do not merge or create a new Draft Release until the user completes further bug investigation and confirms. Existing v0.1.9 draft remains unchanged.
+User explicitly set version 0.1.10. The latest instruction authorizes restoring sidebar press behavior, a focused final review, merging PR #3, then creating the v0.1.10 Draft Release. Build the clean pushed commit before merge and freeze the SNAPSHOT branch after merge; the draft targets that original build. Do not publish. Preserve the previously approved UI changes and the offline-only validation scope.

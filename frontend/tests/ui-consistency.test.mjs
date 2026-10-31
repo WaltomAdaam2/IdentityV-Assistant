@@ -15,6 +15,24 @@ const evaluate = code => JSON.parse(browser("eval", code));
 const click = name => browser("find", "role", "button", "click", "--name", name, "--exact");
 const wait = code => browser("wait", "--fn", code);
 
+test("sidebar navigation retains its focus while content navigation focuses the new page", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    click("任务");
+    wait("document.querySelector('.topbar h1')?.textContent === '任务'");
+    assert.equal(evaluate("document.activeElement.matches('.nav-item.active')"), true);
+    browser("press", "Tab");
+    assert.equal(evaluate("document.activeElement.textContent"), "游戏启动");
+    browser("press", "Enter");
+    wait("Boolean(document.querySelector('.game-launcher'))");
+    assert.equal(evaluate("document.activeElement.matches('.nav-item.active')"), true);
+    click("概览");
+    click("管理任务");
+    wait("document.querySelector('.topbar h1')?.textContent === '任务'");
+    assert.equal(evaluate("document.activeElement.matches('.topbar h1')"), true);
+  } finally { browser("close"); }
+});
+
 test("settings failures remain actionable and raw inputs commit only after valid blur", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html?loadFail`);

@@ -29,7 +29,7 @@ Write-Fixture (Join-Path $bundle "latest.json") ($manifest | ConvertTo-Json -Dep
 function git {
     $global:LASTEXITCODE = 0
     switch ($args[0]) {
-        "branch" { if ($global:idvDraftTestScenario -eq "wrong-branch") { "main" } else { "SNAPSHOT-v0.1.8" } }
+        "branch" { if ($global:idvDraftTestScenario -eq "wrong-branch") { "main" } elseif ($global:idvDraftTestScenario -ne "merged-detached") { "SNAPSHOT-v0.1.8" } }
         "status" { if ($global:idvDraftTestScenario -eq "dirty") { " M source.rs" } }
         "rev-parse" { "fixture-commit" }
         default { throw "Unexpected git call: $args" }
@@ -44,10 +44,19 @@ function gh {
             $payload = Get-Content -LiteralPath $args[([Array]::IndexOf($args, "--input") + 1)] -Raw | ConvertFrom-Json
             if (-not $payload.draft -or $payload.make_latest -ne "false" -or $payload.target_commitish -ne "fixture-commit") { throw "Unsafe draft payload" }
             "https://example.invalid/draft"
+        } elseif ($endpoint -match '/pulls/\d+$') {
+            $pr = @{ merged_at = "2026-10-31T00:00:00Z"; base = @{ ref = "main" }; head = @{ ref = "SNAPSHOT-v0.1.8"; sha = "fixture-commit"; repo = @{ full_name = "WaltomAdaam2/IdentityV-Assistant" } } }
+            if ($global:idvDraftTestScenario -eq "merged-open") { $pr.merged_at = $null }
+            if ($global:idvDraftTestScenario -eq "merged-wrong-head") { $pr.head.sha = "other-commit" }
+            if ($global:idvDraftTestScenario -eq "merged-wrong-repo") { $pr.head.repo.full_name = "other/repo" }
+            if ($global:idvDraftTestScenario -eq "merged-wrong-base") { $pr.base.ref = "other" }
+            $pr | ConvertTo-Json -Depth 5
+        } elseif ($endpoint -like "*/compare/*") {
+            if ($global:idvDraftTestScenario -eq "merged-diverged") { "diverged" } else { "ahead" }
         } elseif ($endpoint -like "*/pulls?*") {
             if ($global:idvDraftTestScenario -eq "frozen") { "1" }
         } elseif ($endpoint -like "*/git/ref/heads/*") {
-            if ($global:idvDraftTestScenario -eq "unpushed") { "other-commit" } else { "fixture-commit" }
+            if ($global:idvDraftTestScenario -in @("unpushed", "merged-advanced")) { "other-commit" } else { "fixture-commit" }
         } elseif ($endpoint -like "*/releases?*") {
             if ($global:idvDraftTestScenario -eq "existing") { "v0.1.8" }
         } elseif ($endpoint -notlike "*/git/matching-refs/tags/*") { throw "Unexpected API endpoint: $endpoint" }
@@ -58,13 +67,15 @@ function gh {
     } else { throw "Unexpected or publishing gh command: $args" }
 }
 try {
-    foreach ($scenario in @("success", "wrong-branch", "dirty", "frozen", "unpushed", "existing", "tampered")) {
+    foreach ($scenario in @("success", "merged-success", "merged-detached", "merged-open", "merged-wrong-head", "merged-wrong-repo", "merged-wrong-base", "merged-diverged", "merged-advanced", "wrong-branch", "dirty", "frozen", "unpushed", "existing", "tampered")) {
         $global:idvDraftTestScenario = $scenario
         $global:idvDraftTestCalls = [Collections.Generic.List[string]]::new()
         if ($scenario -eq "tampered") { Write-Fixture $asset "changed bytes" }
         $failure = $null
-        try { & (Join-Path $scripts "publish_release.ps1") -NotesFile (Join-Path $fixture "notes.md") | Out-Null } catch { $failure = $_ }
-        if ($scenario -eq "success") {
+        $parameters = @{ NotesFile = (Join-Path $fixture "notes.md") }
+        if ($scenario.StartsWith("merged-")) { $parameters.MergedPullRequest = 3 }
+        try { & (Join-Path $scripts "publish_release.ps1") @parameters | Out-Null } catch { $failure = $_ }
+        if ($scenario -in @("success", "merged-success", "merged-detached")) {
             if ($failure) { throw $failure }
             if (-not ($global:idvDraftTestCalls | Where-Object { $_ -like "release upload*" })) { throw "Missing draft upload" }
             $body = Get-Content -LiteralPath (Join-Path $bundle "release-body.txt") -Raw
