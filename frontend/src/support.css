@@ -1,9 +1,7 @@
 .support-panel { min-width: 0; }
-.support-panel > h3 { margin: 16px 0 6px; }
-.support-panel .check-label { margin: 12px 0; line-height: 1.5; }
-.support-panel hr { border: 0; border-top: 1px solid var(--border); }
+.support-panel > p { margin: 12px 0; line-height: 1.7; }
 .support-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
-.support-preview { margin-top: 18px; }
+.support-preview { display: grid; gap: 12px; margin: 16px 0; padding: 18px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 10px; }
 .support-table { overflow: auto; max-height: 320px; }
 .support-table table { border-collapse: collapse; width: 100%; }
 .support-table th, .support-table td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }

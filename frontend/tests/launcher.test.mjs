@@ -242,7 +242,8 @@ test("settings restore previews changes and avoids stale autosave; diagnostics r
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
     browser("find", "role", "button", "click", "--name", "设置", "--exact");
-    browser("wait", "--text", "备份与诊断");
+    browser("wait", "--text", "识别与诊断");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.support-panel').closest('section.panel').querySelector('h2').textContent")), "识别与诊断");
     browser("find", "role", "button", "click", "--name", "导入设置并预览", "--exact");
     browser("wait", "--text", "确认设置变化");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c => c.command === 'restore_settings')")), false);
@@ -253,7 +254,7 @@ test("settings restore previews changes and avoids stale autosave; diagnostics r
     browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
     browser("wait", "--text", "session.redacted.jsonl");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.filter(c=>c.command==='preview_diagnostics').at(-1).args.includeImages")), false);
-    browser("find", "role", "checkbox", "check", "--name", "另外包含最近的调试／失败截图（最多 20 张、100 MiB）", "--exact");
+    browser("find", "role", "checkbox", "check", "--name", "诊断包包含截图", "--exact");
     assert.equal(JSON.parse(browser("eval", "[...document.querySelectorAll('button')].some(b=>b.textContent==='保存诊断 ZIP')")), false);
     browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
     browser("wait", "--text", "images/failure-fixture.png");
@@ -267,17 +268,37 @@ test("settings restore previews changes and avoids stale autosave; diagnostics r
 test("failed preflight unlocks task controls and exposes diagnostic/recheck actions", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("wait", "--text", "暂无任务记录");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.sidebar .task-progress, .sidebar .progress-card'))")), false);
     browser("eval", "window.__launcherTest.failPreflight = true");
     browser("find", "role", "button", "click", "--name", "任务", "--exact");
     browser("wait", "--text", "启动已启用任务");
     browser("find", "role", "button", "click", "--name", "启动已启用任务", "--exact");
     browser("wait", "--text", "无法获取游戏画面，请检查捕捉设置。");
+    browser("wait", "--fn", "document.querySelector('.preflight-dialog')?.matches(':modal')");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.preflight-dialog').parentElement === document.body")), true);
     browser("wait", "--fn", "![...document.querySelectorAll('button')].find(b=>b.textContent==='启动已启用任务')?.disabled");
     browser("find", "role", "button", "click", "--name", "重新检查", "--exact");
     browser("wait", "--text", "检查通过，可以启动任务。");
+    browser("press", "Escape");
+    browser("wait", "--fn", "!document.querySelector('.preflight-dialog')");
+    browser("eval", "window.__launcherTest.emitLog({type:'task_preflight',ok:false,code:'window_missing',for_start:true,warnings:[]})");
+    browser("wait", "--text", "未找到游戏窗口，请先启动游戏。");
+    browser("find", "role", "button", "click", "--name", "捕捉诊断", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.preflight-dialog') && document.querySelector('.topbar h1')?.textContent === '捕捉诊断'");
+    browser("eval", "window.__launcherTest.emitLog({type:'task_preflight',ok:true,code:'ready',for_start:false,warnings:['window_size']})");
+    browser("wait", "--text", "窗口尺寸或前台状态与期望不同");
+    browser("find", "role", "button", "click", "--name", "关闭", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.preflight-dialog')");
+    browser("eval", "window.__launcherTest.emitLog({type:'task_preflight',ok:true,code:'ready',for_start:true,warnings:['window_size']}).then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))");
+    assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.preflight-dialog'))")), false);
+    browser("find", "role", "button", "click", "--name", "概览", "--exact");
+    browser("wait", "--text", "暂无任务记录");
     browser("eval", "window.__launcherTest.emitLog({type:'task_started',task_id:'login_lobby'}).then(() => window.__launcherTest.emitLog({type:'heartbeat',engine_status:'running',task_status:'running',task_feedback:{task_id:'login_lobby',stage:'matching',task_elapsed_seconds:12,stage_elapsed_seconds:4,next_action:'wait_for_screen'}}))");
     browser("wait", "--text", "有效用时: 12s");
     browser("wait", "--text", "等待目标画面并确认");
+    assert.match(browser("eval", "document.querySelector('.task-progress').textContent"), /有效用时: 12s/);
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.sidebar').textContent.includes('有效用时')")), false);
   } finally { browser("close"); }
 });
 

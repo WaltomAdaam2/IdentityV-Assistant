@@ -1,4 +1,5 @@
-import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { isTauri } from "@tauri-apps/api/core";
 import { version as appVersion } from "../package.json";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -114,13 +115,6 @@ const translations = {
       overview: "任务概况",
       overviewHint: "当前配置中的自动任务",
       manage: "管理任务",
-      quickStart: "快速开始",
-      quickHint: "连接游戏并检查环境",
-      steps: [
-        "在桌面启动第五人格。",
-        "在“设置”确认窗口标题。",
-        "启动服务后，从“任务”开始执行。",
-      ],
     },
     tasks: {
       title: "自动任务",
@@ -400,13 +394,6 @@ const translations = {
       overview: "Task overview",
       overviewHint: "Automated tasks in the current configuration",
       manage: "Manage tasks",
-      quickStart: "Quick start",
-      quickHint: "Connect the game and check the environment",
-      steps: [
-        "Launch Identity V on the desktop.",
-        "Confirm the window title in Settings.",
-        "Start the service, then run a task from Tasks.",
-      ],
     },
     tasks: {
       title: "Automated tasks",
@@ -831,6 +818,10 @@ export default function App() {
   });
   const [progress, setProgress] = useState<TaskProgress | null>(null);
   const [preflight, setPreflight] = useState<EngineEvent | null>(null);
+  const preflightDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (preflight && !preflightDialog.current?.open) preflightDialog.current?.showModal();
+  }, [preflight]);
   const [settings, setSettings] = useState<Settings>(defaults);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const supportBusyRef = useRef(false);
@@ -1215,7 +1206,7 @@ export default function App() {
           setProgress({ taskId: event.task_id, stage: "running", role: null, completedCycles: 0 });
         }
         if (event.type === "task_preflight") {
-          setPreflight(event.ok === true && event.for_start === true && !(event.warnings as string[] | undefined)?.length ? null : event);
+          setPreflight(event.ok === true && event.for_start === true ? null : event);
           if (event.ok === false && event.for_start === true) {
             requestedTaskQueueRef.current = [];
             setTaskControlEvent(previous => ({revision: previous.revision + 1, type: "task_preflight"}));
@@ -1462,6 +1453,7 @@ export default function App() {
   const content = {
     dashboard: (
       <Dashboard
+        progress={progress}
         language={language}
         snapshot={snapshot}
         tasks={tasks}
@@ -1512,8 +1504,11 @@ export default function App() {
     logs: (
       <Logs language={language} entries={settings.app.developer_mode ? logs : normalLogs} verbose={settings.app.developer_mode} onClear={clearLogs} />
     ),
-    settings: (<>
-      <SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")}
+    settings: (<SettingsPage
+      language={language}
+      settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
+      setSettings={value => { if (!supportBusyRef.current) setSettings(value); }}
+      support={<SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")}
         withSettings={async action => {
           supportBusyRef.current = true;
           setSupportBusy(true);
@@ -1539,13 +1534,8 @@ export default function App() {
           setTasks(current => current.map(task => ({...task, enabled: restored.tasks.enabled.includes(task.id), status: "idle"})));
           setProgress(null); setPreflight(null);
           void refreshSnapshot();
-        }} />
-      <SettingsPage
-        language={language}
-        settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
-        setSettings={value => { if (!supportBusyRef.current) setSettings(value); }}
-      />
-    </>),
+        }} />}
+    />),
   }[page];
   const visibleNav = nav.filter(
     (item) =>
@@ -1577,14 +1567,6 @@ export default function App() {
             ))}
           </nav>
           <div className="sidebar-bottom">
-            {progress && <div className="progress-card sidebar-card" title={`${taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]} · ${progress.stage}`}>
-              <strong>{t.progress.title} · {taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]}</strong>
-              <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (t.progress.results[progress.result as keyof typeof t.progress.results] ?? progress.result) : (t.progress.stages[progress.stage as keyof typeof t.progress.stages] ?? progress.stage)}</small>
-              <small>{t.progress.cycles}: {progress.completedCycles} · {t.progress.role}: {progress.role ? t.progress[progress.role] : t.progress.unknown}</small>
-              <small>{language === "zh-CN" ? "有效用时" : "Active time"}: {Math.floor(progress.taskElapsed ?? 0)}s · {language === "zh-CN" ? "本阶段" : "Stage"}: {Math.floor(progress.stageElapsed ?? 0)}s</small>
-              {progress.pauseReason && <small>{language === "zh-CN" ? "暂停原因：" : "Paused: "}{t.progress.results[progress.pauseReason as keyof typeof t.progress.results] ?? (progress.pauseReason === "user_paused" ? (language === "zh-CN" ? "手动暂停" : "Paused by user") : progress.pauseReason)}</small>}
-              {!progress.result && <small>{language === "zh-CN" ? "下一步：" : "Next: "}{({review_and_resume: ["检查原因后恢复任务", "Review the cause, then resume"], recover_window: ["等待窗口恢复", "Wait for window recovery"], wait_for_screen: ["等待目标画面并确认", "Wait for and confirm the expected screen"], observe_match: ["继续识别对局状态", "Continue observing the match"], recognize_and_continue: ["识别画面后继续", "Recognize the screen and continue"]}[progress.nextAction ?? "recognize_and_continue"] ?? ["等待识别结果", "Wait for recognition"])[language === "zh-CN" ? 0 : 1]}</small>}
-            </div>}
             <div className="sidebar-footer" title={`${t.localConsole}\n${t.localOnly}\nv${appVersion}`}>
               <span className={`local-status-dot ${engineState(snapshot)}`} />
               <span className="local-status-copy">
@@ -1623,14 +1605,18 @@ export default function App() {
             <UpdatePanel settings={settings} loaded={settingsLoaded} expanded={page === "settings"}
               onSettingsChange={(app) => setSettings((previous) => ({ ...previous, app }))}
               onOpen={() => navigate("settings")} />
-            {preflight && <section className="panel" aria-label={language === "zh-CN" ? "任务启动检查" : "Task preflight"}>
-              <h3>{language === "zh-CN" ? "任务启动检查" : "Task preflight"}</h3>
+            {preflight && createPortal(<dialog ref={preflightDialog} className="update-dialog preflight-dialog" aria-labelledby="preflight-title"
+              onCancel={(event) => { event.preventDefault(); setPreflight(null); }} onClose={() => setPreflight(null)}>
+              <button className="update-dialog-close" aria-label={language === "zh-CN" ? "关闭启动检查" : "Close task preflight"} onClick={() => setPreflight(null)}>×</button>
+              <h2 id="preflight-title">{language === "zh-CN" ? "任务启动检查" : "Task preflight"}</h2>
               <p role={preflight.ok ? "status" : "alert"}>{({ready: ["检查通过，可以启动任务。", "Checks passed. Ready to start."], window_missing: ["未找到游戏窗口，请先启动游戏。", "Game window not found. Start the game first."], window_unresponsive: ["游戏窗口无响应，请等待恢复。", "Game window is not responding. Wait for it to recover."], window_minimized: ["游戏窗口仍处于最小化，请还原后重试。", "Restore the minimized game window and retry."], capture_failed: ["无法获取游戏画面，请检查捕捉设置。", "Could not capture the game. Check capture settings."]}[preflight.code ?? ""] ?? ["检查未完成", "Checks incomplete"])[language === "zh-CN" ? 0 : 1]}</p>
               {Array.isArray(preflight.warnings) && preflight.warnings.length > 0 && <p>{language === "zh-CN" ? "窗口尺寸或前台状态与期望不同，任务仍会遵循现有窗口恢复规则。" : "Window size or focus differs; existing window recovery still applies."}</p>}
-              <button onClick={() => void run("Preflight", async () => { await bridge.taskPreflight(); })}>{language === "zh-CN" ? "重新检查" : "Check again"}</button>
-              <button onClick={() => navigate("debug")}>{t.nav.debug}</button>
-              <button onClick={() => setPreflight(null)}>{language === "zh-CN" ? "关闭" : "Close"}</button>
-            </section>}
+              <footer className="update-actions">
+                <button onClick={() => void run("Preflight", async () => { await bridge.taskPreflight(); })}>{language === "zh-CN" ? "重新检查" : "Check again"}</button>
+                <button onClick={() => { setPreflight(null); navigate("debug"); }}>{t.nav.debug}</button>
+                <button className="primary" autoFocus onClick={() => setPreflight(null)}>{language === "zh-CN" ? "关闭" : "Close"}</button>
+              </footer>
+            </dialog>, document.body)}
             {content}
           </div>
         </section>
@@ -1640,6 +1626,7 @@ export default function App() {
 }
 
 function Dashboard({
+  progress,
   language,
   snapshot,
   tasks,
@@ -1648,6 +1635,7 @@ function Dashboard({
   onRestart,
   onNavigate,
 }: {
+  progress: TaskProgress | null;
   language: Language;
   snapshot: EngineSnapshot;
   tasks: TaskItem[];
@@ -1657,6 +1645,7 @@ function Dashboard({
   onNavigate: (page: Page) => void;
 }) {
   const t = translations[language].dashboard;
+  const progressCopy = translations[language].progress;
   const state = engineState(snapshot);
   return (
     <>
@@ -1727,18 +1716,16 @@ function Dashboard({
             ))}
           </div>
         </section>
-        <section className="panel">
-          <div className="panel-title">
-            <div>
-              <h3>{t.quickStart}</h3>
-              <p>{t.quickHint}</p>
-            </div>
-          </div>
-          <ol className="steps">
-            {t.steps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
+        <section className="panel task-progress" aria-label={progressCopy.title}>
+          <div className="panel-title"><h3>{progressCopy.title}</h3></div>
+          {progress ? <div className="task-progress-details">
+              <strong>{taskCopy(initialTasks.find((task) => task.id === progress.taskId) ?? initialTasks[0], language)[0]}</strong>
+              <small className="progress-stage" key={`${progress.taskId}:${progress.stage}:${progress.result ?? ""}`} aria-live="polite">{progress.result ? (progressCopy.results[progress.result as keyof typeof progressCopy.results] ?? progress.result) : (progressCopy.stages[progress.stage as keyof typeof progressCopy.stages] ?? progress.stage)}</small>
+              <small>{progressCopy.cycles}: {progress.completedCycles} · {progressCopy.role}: {progress.role ? progressCopy[progress.role] : progressCopy.unknown}</small>
+              <small>{language === "zh-CN" ? "有效用时" : "Active time"}: {Math.floor(progress.taskElapsed ?? 0)}s · {language === "zh-CN" ? "本阶段" : "Stage"}: {Math.floor(progress.stageElapsed ?? 0)}s</small>
+              {progress.pauseReason && <small>{language === "zh-CN" ? "暂停原因：" : "Paused: "}{progressCopy.results[progress.pauseReason as keyof typeof progressCopy.results] ?? (progress.pauseReason === "user_paused" ? (language === "zh-CN" ? "手动暂停" : "Paused by user") : progress.pauseReason)}</small>}
+              {!progress.result && <small>{language === "zh-CN" ? "下一步：" : "Next: "}{({review_and_resume: ["检查原因后恢复任务", "Review the cause, then resume"], recover_window: ["等待窗口恢复", "Wait for window recovery"], wait_for_screen: ["等待目标画面并确认", "Wait for and confirm the expected screen"], observe_match: ["继续识别对局状态", "Continue observing the match"], recognize_and_continue: ["识别画面后继续", "Recognize the screen and continue"]}[progress.nextAction ?? "recognize_and_continue"] ?? ["等待识别结果", "Wait for recognition"])[language === "zh-CN" ? 0 : 1]}</small>}
+          </div> : <p>{language === "zh-CN" ? "暂无任务记录。开始任务后，这里会显示当前阶段和用时。" : "No task activity yet. Start a task to see its stage and timing here."}</p>}
         </section>
       </div>
     </>
@@ -2392,10 +2379,12 @@ function SettingsPage({
   language,
   settings,
   setSettings,
+  support,
 }: {
   language: Language;
   settings: Settings;
   setSettings: (value: Settings) => void;
+  support: ReactNode;
 }) {
   const t = translations[language].settings;
   const [settingsActionError, setSettingsActionError] = useState("");
@@ -2425,11 +2414,6 @@ function SettingsPage({
       .filter(Boolean);
   return (
     <section className="settings-form">
-      <section className="panel"><h2>{language === "zh-CN" ? "失败现场记录" : "Failure screenshots"}</h2>
-        <SettingRow icon="screenshots" title={language === "zh-CN" ? "任务失败时保存游戏画面" : "Save game frames on task failure"} description={language === "zh-CN" ? "默认开启，仅保存 WGC 游戏窗口画面，最多 20 张、共 100 MiB。可能包含昵称或聊天，也可能早于失败；其他捕捉后端不自动留图。导出需另行选择。" : "On by default for WGC game-window frames, up to 20 images / 100 MiB. May include names or chat and predate the failure. Other backends do not save automatic images; export requires separate selection."} language={language}>
-          <input type="checkbox" checked={settings.debug.save_failure_screenshots} onChange={event => setSettings({...settings, debug: {...settings.debug, save_failure_screenshots: event.target.checked}})} />
-        </SettingRow>
-      </section>
       {settingsActionError && <p className="form-error" role="alert">{settingsActionError}</p>}
       <section className="panel">
         <h2>{t.general}</h2>
@@ -2601,6 +2585,9 @@ function SettingsPage({
       </section>
       <section className="panel developer-panel">
         <h2>{t.recognition}</h2>
+        <SettingRow icon="screenshots" title={language === "zh-CN" ? "任务失败时保存游戏画面" : "Save game frames on task failure"} description={language === "zh-CN" ? "默认开启，仅保存 WGC 游戏窗口画面，最多 20 张、共 100 MiB。可能包含昵称或聊天，也可能早于失败；其他捕捉后端不自动留图。导出需另行选择。" : "On by default for WGC game-window frames, up to 20 images / 100 MiB. May include names or chat and predate the failure. Other backends do not save automatic images; export requires separate selection."} language={language}>
+          <input type="checkbox" checked={settings.debug.save_failure_screenshots} onChange={event => setSettings({...settings, debug: {...settings.debug, save_failure_screenshots: event.target.checked}})} />
+        </SettingRow>
         <SettingRow icon="logFolder" title={language === "zh-CN" ? "日志文件" : "Log files"} description={language === "zh-CN" ? "打开本机保存的每日运行日志" : "Open the daily log archives on this computer."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></SettingRow>
         <SettingRow icon="threshold" title={t.threshold} description={language === "zh-CN" ? "仅用于开发者模板诊断，不影响任务内的识别规则" : "Used for template diagnostics only; task recognition rules are unchanged."} language={language}>
           <input
@@ -2614,6 +2601,7 @@ function SettingsPage({
             }
           />
         </SettingRow>
+        {support}
       </section>
       <About language={language} />
     </section>
