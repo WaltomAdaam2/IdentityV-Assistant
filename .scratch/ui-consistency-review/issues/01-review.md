@@ -1,6 +1,6 @@
 # Confirm UI decisions and implement the agreed surfaces
 
-Status: claimed
+Status: resolved
 Type: improvement
 
 ## Progress
@@ -71,3 +71,5 @@ Type: improvement
 
 - Final local verification: all seven selected existing browser regressions passed (two required test updates for the newly approved exit delay and expandable error details); all four new behavior groups passed. Frontend final production build, Rust formatting and diff check passed. Eight application/lockfile version fields consistently read 0.1.10. Chinese light 1000x680 and English dark 667x453 CSS layouts were inspected, including reduced-motion dialog behavior. No native application/game/installer execution.
 - Ready for checkpoint commit/push and current-head CI. PR stays draft and the recognition investigation remains separate.
+
+- Implementation issue resolved under the approved offline scope. Source checkpoint 6e99097 is pushed and PR #3 remains open/draft. Its GitHub frontend, Python engine, hotfix-worker and formatting steps passed; Rust CI is in progress and final remote results will be recorded in the PR. The separate task-recognition issue remains needs-info for user investigation; no native validation or release preparation is claimed.
