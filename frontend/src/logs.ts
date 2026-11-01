@@ -32,6 +32,7 @@ export function appendNormalLogBatch(current: LogEntry[], pending: LogEntry[]): 
 
 export function filterLogs(entries: LogEntry[], level: "all" | LogLevel, query: string, verbose: boolean): LogEntry[] {
   const search = query.toLocaleLowerCase();
+  if (verbose && level === "all" && !search) return entries;
   return entries.filter((entry) => {
     // The launcher outcome summarizes these upstream startup instructions.
     // Keep unknown messages (including sign-in prompts) and real failures visible.

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import OrderedDict
-from threading import Event
+from threading import Event, Lock
+from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 from typing import Callable, Iterable
 
@@ -407,17 +408,19 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
     # The cache belongs to this call and is released on completion/cancellation.
     resized = OrderedDict()
     resized_bytes = 0
+    resize_lock = Lock()
 
     def cached(key, create):
         nonlocal resized_bytes
-        values = resized.pop(key, None)
-        if values is None:
-            values = create()
-            resized_bytes += sum(value.nbytes for value in values)
-        resized[key] = values
-        while resized_bytes > 32 * 1024 * 1024:
-            resized_bytes -= sum(value.nbytes for value in resized.popitem(last=False)[1])
-        return values
+        with resize_lock:
+            values = resized.pop(key, None)
+            if values is None:
+                values = create()
+                resized_bytes += sum(value.nbytes for value in values)
+            resized[key] = values
+            while resized_bytes > 32 * 1024 * 1024:
+                resized_bytes -= sum(value.nbytes for value in resized.popitem(last=False)[1])
+            return values
 
     def resize(edges, scale):
         width, height = (max(1, round(length * scale)) for length in edges.shape[::-1])
@@ -433,31 +436,54 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
     found: dict[int, dict[str, Match]] = {}
     completed = 0
     shown_region = queries[0][2]
-    for index, template in enumerate(templates):
-        _check(cancel)
-        if progress:
-            progress("matching", index, template_count)
+    def evaluate(template):
+        outcomes = []
         for region_index, (query, coarse_weights) in enumerate(zip(queries, samples)):
             audit = {"attempts": 0, "outcomes": {}, "closest": None}
             started = perf_counter()
             match = _match_query(template, query, cancel, coarse_weights, resize, audit, fields)
-            if diagnostic:
-                diagnostic({"stage": "template_region", "key": template.key, "region_index": region_index,
-                            "region": vars(query[2]), **audit,
-                            "elapsed_ms": round((perf_counter() - started) * 1000),
-                            "accepted": match is not None,
-                            "match": None if match is None else {"geometry_cost": match.score,
-                                "coverage": match.coverage, "unexplained": match.unexplained}})
-            if match is not None:
-                found.setdefault(region_index, {})[match.key] = match
-        if found and preview:
-            # Queries are ordered by visible wall evidence. Rank identities
-            # against one coherent view, not unrelated low-error fragments.
-            leading = min(found[min(found)].values(), key=lambda match: (match.score, match.key))
-            if leading.region != shown_region:
-                shown_region = leading.region
-                preview(shown_region)
-        completed = index + 1
+            outcomes.append((region_index, query, audit, match, round((perf_counter() - started) * 1000)))
+        return outcomes
+
+    def batches(pool):
+        # Schedule at most two searches at once instead of loading the library.
+        # Image/diagnostic callbacks stay on the caller thread, in template order.
+        source = iter(templates)
+        while True:
+            pending = []
+            for _ in range(2):
+                _check(cancel)
+                template = next(source, None)
+                if template is None:
+                    break
+                pending.append((template, pool.submit(evaluate, template)))
+            if not pending:
+                return
+            yield from pending
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for index, (template, future) in enumerate(batches(pool)):
+            _check(cancel)
+            if progress:
+                progress("matching", index, template_count)
+            for region_index, query, audit, match, elapsed in future.result():
+                if diagnostic:
+                    diagnostic({"stage": "template_region", "key": template.key, "region_index": region_index,
+                                "region": vars(query[2]), **audit,
+                                "elapsed_ms": elapsed,
+                                "accepted": match is not None,
+                                "match": None if match is None else {"geometry_cost": match.score,
+                                    "coverage": match.coverage, "unexplained": match.unexplained}})
+                if match is not None:
+                    found.setdefault(region_index, {})[match.key] = match
+            if found and preview:
+                # Queries are ordered by visible wall evidence. Rank identities
+                # against one coherent view, not unrelated low-error fragments.
+                leading = min(found[min(found)].values(), key=lambda match: (match.score, match.key))
+                if leading.region != shown_region:
+                    shown_region = leading.region
+                    preview(shown_region)
+            completed = index + 1
     _check(cancel)
     if progress:
         progress("matching", completed, template_count or completed)

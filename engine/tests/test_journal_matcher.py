@@ -80,6 +80,51 @@ def test_scaled_query_reuse_preserves_all_candidate_geometry(monkeypatch):
     assert recognize(frame, templates) == cached
 
 
+@pytest.mark.parametrize("cancel_after_first", [False, True])
+def test_parallel_search_bounds_templates_and_preserves_caller_order(monkeypatch, cancel_after_first):
+    from threading import Barrier, get_ident
+
+    caller = get_ident()
+    rendezvous = Barrier(2)
+    cancelled = Event()
+    region = Region(0, 0, 80, 80)
+    pixels = np.ones((80, 80), np.float32)
+    monkeypatch.setattr(journal_matcher, "locate_regions", lambda *_: [region])
+    monkeypatch.setattr(journal_matcher, "_query", lambda *_: (pixels, pixels, region))
+    monkeypatch.setattr(journal_matcher, "_coarse_weights", lambda *_: [])
+    produced, reported = [], []
+
+    def search(template, *_):
+        assert get_ident() != caller
+        rendezvous.wait(timeout=5)
+        return journal_matcher.Match(template.key, 1, 1, 0, region, 500)
+
+    def templates():
+        for index in range(6):
+            assert get_ident() == caller
+            assert len(produced) - len(reported) < 2
+            produced.append(str(index))
+            yield journal_matcher.Template(str(index), pixels, pixels, pixels)
+
+    def diagnostic(step):
+        assert get_ident() == caller
+        if step["stage"] == "template_region":
+            reported.append(step["key"])
+            if cancel_after_first:
+                cancelled.set()
+
+    monkeypatch.setattr(journal_matcher, "_match_query", search)
+    if cancel_after_first:
+        with pytest.raises(RecognitionCancelled):
+            recognize(np.zeros((80, 80, 3), np.uint8), templates(), cancelled, diagnostic=diagnostic)
+        assert produced == ["0", "1"]
+        assert reported == ["0"]
+    else:
+        matches = recognize(np.zeros((80, 80, 3), np.uint8), templates(), cancelled, diagnostic=diagnostic)
+        assert reported == produced == [str(i) for i in range(6)]
+        assert [match.key for match in matches] == reported
+
+
 @pytest.mark.parametrize("size", [(55, 98), (65, 70)])
 def test_tiny_visible_geometry_cannot_use_padding_to_pass_region_size_gate(size):
     # A large proposal can shrink to icon-sized geometry after background is

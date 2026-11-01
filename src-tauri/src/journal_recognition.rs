@@ -34,9 +34,14 @@ impl RecognitionDiagnostics {
         crate::diagnostic_files::ensure_directory(&self.directory)?;
         let mut file =
             tempfile::NamedTempFile::new_in(&self.directory).map_err(|e| e.to_string())?;
-        serde_json::to_writer(file.as_file_mut(), &crate::logs::redacted(&self.report))
-            .map_err(|e| e.to_string())?;
-        file.flush().map_err(|e| e.to_string())?;
+        {
+            // JSON serialization emits thousands of small tokens. Buffer them
+            // without postponing the atomic, per-image diagnostic checkpoint.
+            let mut writer = std::io::BufWriter::new(file.as_file_mut());
+            serde_json::to_writer(&mut writer, &crate::logs::redacted(&self.report))
+                .map_err(|e| e.to_string())?;
+            writer.flush().map_err(|e| e.to_string())?;
+        }
         file.persist(self.directory.join("flow.json"))
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -563,6 +568,29 @@ async fn recognize(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn large_diagnostic_checkpoint_is_complete_and_redacted_before_replacement() {
+        let root = tempfile::tempdir().unwrap();
+        let report = json!({"steps": (0..500).map(|index| json!({
+            "stage":"template_region", "key":format!("triple:{index}"),
+            "detail":"地图匹配记录", "access_token":"never-persist"
+        })).collect::<Vec<_>>()});
+        let mut diagnostics = RecognitionDiagnostics {
+            report,
+            directory: root.path().to_path_buf(),
+        };
+        for status in ["running", "completed"] {
+            diagnostics.report["status"] = json!(status);
+            diagnostics.save().unwrap();
+            let bytes = std::fs::read(root.path().join("flow.json")).unwrap();
+            assert!(bytes.len() > 8192);
+            assert_eq!(
+                serde_json::from_slice::<Value>(&bytes).unwrap(),
+                crate::logs::redacted(&diagnostics.report)
+            );
+        }
+    }
+
     #[test]
     fn feedback_is_editable_and_bound_to_a_completed_session_attempt() {
         let root = tempfile::tempdir().unwrap();

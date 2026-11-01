@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
-    io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write},
+    io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -417,19 +417,18 @@ fn prepare_bundle(
         }
         // Spool only selected, redacted log rows. Multi-session data never forms
         // one giant Vec in memory, and other sessions cannot consume its budget.
-        let mut logs: BTreeMap<String, tempfile::NamedTempFile> = BTreeMap::new();
+        let mut logs: BTreeMap<String, BufWriter<tempfile::NamedTempFile>> = BTreeMap::new();
         for id in &selected {
             logs.insert(
                 id.clone(),
-                tempfile::NamedTempFile::new().map_err(|e| e.to_string())?,
+                BufWriter::new(tempfile::NamedTempFile::new().map_err(|e| e.to_string())?),
             );
         }
         let mut groups: Vec<(DateTime<Utc>, String, Vec<(String, PathBuf)>)> = Vec::new();
         let mut seen_images = HashSet::new();
         read_logs(root, now, |id, value| {
             if let Some(file) = logs.get_mut(id) {
-                serde_json::to_writer(file.as_file_mut(), &redact(value, ""))
-                    .map_err(|e| e.to_string())?;
+                serde_json::to_writer(&mut *file, &redact(value, "")).map_err(|e| e.to_string())?;
                 file.write_all(b"\n").map_err(|e| e.to_string())?;
                 if include_images && !id.starts_with("legacy:") {
                     if let Some(path) =
@@ -452,7 +451,9 @@ fn prepare_bundle(
         let mut log_keys: Vec<_> = logs.keys().cloned().collect();
         log_keys.sort_by_key(|id| id != &current_key);
         for id in log_keys {
-            let file = logs.get_mut(&id).unwrap();
+            let writer = logs.get_mut(&id).unwrap();
+            writer.flush().map_err(|e| e.to_string())?;
+            let file = writer.get_mut();
             let total = file.as_file().metadata().map_err(|e| e.to_string())?.len();
             let remaining = budget.saturating_sub(used);
             let offset = total.saturating_sub(remaining);

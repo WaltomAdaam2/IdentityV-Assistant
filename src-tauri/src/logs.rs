@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter};
 
 static WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static SESSION_STARTED: OnceLock<chrono::DateTime<chrono::Utc>> = OnceLock::new();
-static IMAGE_PRUNE: OnceLock<Mutex<Option<std::time::Instant>>> = OnceLock::new();
+static RETENTION_CHECK: OnceLock<Mutex<Option<std::time::Instant>>> = OnceLock::new();
 
 pub(crate) fn session_started() -> chrono::DateTime<chrono::Utc> {
     *SESSION_STARTED.get_or_init(chrono::Utc::now)
@@ -183,12 +183,15 @@ pub fn append(value: &Value) -> Result<(), String> {
         .lock()
         .map_err(|error| error.to_string())?;
     let directory = root()?;
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let today = Local::now().date_naive();
     // Opportunistic retention while the app stays open; no background schedule.
-    let mut last = IMAGE_PRUNE
+    let mut last = RETENTION_CHECK
         .get_or_init(|| Mutex::new(None))
         .lock()
         .map_err(|e| e.to_string())?;
     if last.is_none_or(|at| at.elapsed().as_secs() >= 3600) {
+        prune_at(&directory, today)?;
         if let Err(error) = crate::diagnostic_files::root()
             .and_then(|root| crate::diagnostic_files::prune(&root, chrono::Utc::now()))
         {
@@ -197,9 +200,6 @@ pub fn append(value: &Value) -> Result<(), String> {
         *last = Some(std::time::Instant::now());
     }
     drop(last);
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    let today = Local::now().date_naive();
-    prune_at(&directory, today)?;
     let path = directory.join(format!("{today}.jsonl"));
     let mut file = OpenOptions::new()
         .create(true)
