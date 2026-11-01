@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import type { Settings } from "./types";
 import type { RecognitionView } from "./useJournalRecognition";
 import JournalPreviewMap from "./JournalPreviewMap";
-import JournalFeedback from "./JournalFeedback";
 import { importJournalPacks, journalApi, matchingMaps, type JournalLibrary, type JournalSettings, type MapImage } from "./journalData";
 import "./journal.css";
 
@@ -215,8 +214,6 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
       <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy || recognizing}>
         {recognition.status !== "idle" && <div className="journal-recognition">
           <div className="journal-recognition-heading"><h2>{zh ? "一楼识图结果" : "First-floor matches"}</h2>
-            {recognition.status === "done" && recognition.result && <JournalFeedback key={recognition.result.request_id} requestId={recognition.result.request_id} zh={zh} onNotice={onNotice}
-              maps={[...new Set(library.packs.flatMap(pack => pack.maps.map(map => map.category)))].flatMap(door => matchingMaps(library.packs, {...settings, door, floor: "1"})).map(map => ({key: map.key, name: `${groups[1].options.find(option => option[0] === map.category)?.[zh ? 1 : 2] ?? map.category} · ${zh ? "地图" : "Map"} ${map.index}`}))} />}
             <div className="journal-options">{recognizing
               ? <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>
               : <><button type="button" onClick={onRecognize}>{zh ? "重新识别" : "Recognize again"}</button><button type="button" onClick={() => { setSelectedKey(null); onCancelRecognition(); }}>{zh ? "返回全部地图" : "Show all maps"}</button></>}

@@ -36,14 +36,7 @@ test("recognition updates existing grid, keeps same-number doors distinct, and o
     assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.journal-map-name'),e=>e.textContent)"), ["右前 · 地图 1", "左前 · 地图 1"]);
     assert.equal(evaluate("!!document.querySelector('.journal-detail')"), false);
     assert.equal(evaluate("document.querySelector('.journal-region-preview').open"), false);
-    click("反馈并保存至诊断包");
-    browser("find", "role", "radio", "check", "--name", "不正确", "--exact");
-    browser("select", ".journal-feedback-map select", "lf:1"); click("保存反馈");
-    wait("!document.querySelector('#journal-feedback-title')");
-    assert.deepEqual(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='journal_save_feedback').args"),{requestId:evaluate("window.__launcherTest.recognitionRequest.requestId"),verdict:"incorrect",correctKey:"lf:1"});
-    click("反馈并保存至诊断包");
-    assert.equal(evaluate("document.querySelector('input[value=incorrect]').checked"),true); click("关闭反馈");
-    wait("!document.querySelector('#journal-feedback-title')");
+    assert.equal(evaluate("Array.from(document.querySelectorAll('button')).some(e=>e.textContent.includes('反馈'))"),false);
     click("查看右前 · 地图 1"); click("2F");
     wait("window.__launcherTest.calls.some(c=>c.command==='journal_read_image' && c.args.path==='right-upper.png')");
     assert.equal(evaluate("!!document.querySelector('.journal-detail')"), true);
@@ -104,8 +97,44 @@ test("diagnostic screenshot selection persists through navigation and a fresh se
     browser("reload"); click("设置");
     wait("!!document.querySelector('.support-panel')");
     assert.equal(evaluate("Array.from(document.querySelectorAll('.setting-row')).find(e=>e.textContent.includes('诊断包包含截图')).querySelector('input').checked"), true);
-    click("预览诊断包"); browser("wait", "--text", "已选择包含截图");
+    click("导出诊断包"); click("预览"); browser("wait", "--text", "已选择包含截图");
     assert.equal(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='preview_diagnostics').args.includeImages"), true);
+  } finally { browser("close"); }
+});
+
+test("diagnostics choose sessions before preview, preserve the snapshot, and reset history on reopen", () => {
+  try {
+    setup(); click("设置"); wait("!!document.querySelector('.support-panel')");
+    browser("set", "viewport", "1000", "680");
+    click("导出诊断包"); wait("!!document.querySelector('.support-sessions')");
+    assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='preview_diagnostics')"),false);
+    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.support-session input'),e=>({checked:e.checked,disabled:e.disabled}))"),[{checked:true,disabled:true},{checked:false,disabled:false},{checked:false,disabled:false},{checked:false,disabled:false}]);
+    assert.equal(evaluate("document.activeElement.id"),"support-title");
+    browser("check", ".support-session input[value=recent]"); browser("check", ".support-session input[value=older]");
+    browser("wait", "--text", "不限制总大小");
+    evaluate("window.__launcherTest.deferPreview=true"); click("预览");
+    wait("!!window.__launcherTest.finishPreview"); browser("press", "Escape");
+    assert.equal(evaluate("!!document.querySelector('.support-dialog:modal')"),true);
+    assert.equal(evaluate("document.querySelector('.support-dialog .primary').disabled"),true);
+    evaluate("window.__launcherTest.finishPreview()"); wait("!!document.querySelector('.support-files')");
+    assert.deepEqual(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='preview_diagnostics').args"),{includeImages:false,historicalSessions:["recent","older"]});
+    assert.equal(evaluate("document.activeElement.id"),"support-title");
+    assert.equal(evaluate("(()=>{const e=document.querySelector('.support-dialog .update-actions').getBoundingClientRect();return e.right<=innerWidth && e.bottom<=innerHeight})()"),true);
+    click("返回选择"); wait("!!document.querySelector('.support-sessions')");
+    assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='discard_diagnostics')"),true);
+    assert.equal(evaluate("document.querySelector('.support-session input[value=recent]').checked"),true);
+    click("取消"); wait("!document.querySelector('.support-dialog')");
+    click("导出诊断包"); wait("!!document.querySelector('.support-sessions')");
+    assert.equal(evaluate("document.querySelectorAll('.support-session input:checked').length"),1);
+    evaluate("window.__launcherTest.deferPreview=false;window.__launcherTest.previewFailure=true"); click("预览");
+    wait("!!document.querySelector('.support-error')");
+    assert.equal(evaluate("!!document.querySelector('.support-sessions')"),true);
+    evaluate("window.__launcherTest.previewFailure=false"); click("预览"); wait("!!document.querySelector('.support-files')");
+    assert.deepEqual(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='preview_diagnostics').args.historicalSessions"),[]);
+    evaluate("window.__launcherTest.exportSupportFailure=true"); click("保存 ZIP"); wait("!!document.querySelector('.support-error')");
+    assert.equal(evaluate("!!document.querySelector('.support-files')"),true);
+    evaluate("window.__launcherTest.exportSupportFailure=false"); click("保存 ZIP"); wait("!document.querySelector('.support-dialog')");
+    assert.equal(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='export_diagnostics').args.id"),"bundle-fixture");
   } finally { browser("close"); }
 });
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path, PurePosixPath
 import struct
 import sys
@@ -17,9 +18,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "engine"))
 import cv2
 import numpy as np
 from vision.journal_matcher import MAX_PIXELS, TEMPLATE_SIDE, Template, recognize
-
-MAX_BUNDLE = 100_000_000
-
 
 def read_member(bundle, name, limit):
     info = bundle.getinfo(name)
@@ -77,23 +75,28 @@ def replay_attempt(bundle, name):
     results = recognize(frame, templates(), template_count=len(prepared))
     matches = [{"key": m.key, "region": vars(m.region), "geometry_cost": m.score,
                 "coverage": m.coverage, "unexplained": m.unexplained} for m in results]
+    same = len(matches) == len(before["matches"]) and all(
+        a["key"] == b["key"] and a["region"] == b["region"]
+        and all(math.isclose(a[k], b[k], rel_tol=1e-12, abs_tol=1e-12)
+                for k in ("geometry_cost", "coverage", "unexplained"))
+        for a, b in zip(matches, before["matches"]))
     return {"request_id": report["request_id"], "filters": report["filters"], "feedback": report.get("feedback"),
             "original_keys": before["keys"], "replayed_keys": [m.key for m in results],
-            "exact_match": matches == before["matches"], "original_matches": before["matches"], "replayed_matches": matches,
+            "exact_match": same, "comparison_tolerance": 1e-12, "original_matches": before["matches"], "replayed_matches": matches,
             "replay_ms": round((perf_counter() - started) * 1000), "original_total_ms": before["elapsed_ms"],
             "timing_note": "Replay excludes capture, helper startup and evidence persistence; original total includes them.",
             "scope": "Localization and geometry matching from stored pixels and prepared templates; no native capture or gameplay."}
 
 
 def replay(path: Path, attempt: str | None = None):
-    if path.stat().st_size > MAX_BUNDLE:
-        raise ValueError("Diagnostic ZIP exceeds 100 MB")
     output = []
     with ZipFile(path) as bundle:
         members = bundle.infolist()
         names = [member.filename for member in members]
-        if len(names) != len(set(names)) or sum(member.file_size for member in members) > MAX_BUNDLE:
-            raise ValueError("Duplicate members or expanded data exceeds 100 MB")
+        # Historical-session bundles have no aggregate size limit. Each frame
+        # and report is still bounded and consumed one attempt at a time.
+        if len(names) != len(set(names)):
+            raise ValueError("Duplicate members")
         if any(member.flag_bits & 1 or ".." in PurePosixPath(member.filename).parts or "\\" in member.filename
                or PurePosixPath(member.filename).is_absolute() for member in members):
             raise ValueError("Unsupported or unsafe ZIP members")

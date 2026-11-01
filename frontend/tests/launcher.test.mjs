@@ -268,14 +268,16 @@ test("settings restore previews changes and avoids stale autosave; diagnostics r
     browser("wait", "--text", "设置已应用，原配置备份已保留。");
     browser("eval", "new Promise(resolve => setTimeout(resolve, 700))");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.savedSettings.app.theme")), "dark");
-    browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
+    browser("find", "role", "button", "click", "--name", "导出诊断包", "--exact");
+    browser("find", "role", "button", "click", "--name", "预览", "--exact");
     browser("wait", "--text", "session.redacted.jsonl");
     assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.filter(c=>c.command==='preview_diagnostics').at(-1).args.includeImages")), false);
     browser("press", "Escape");
     browser("wait", "--fn", "!document.querySelector('.support-dialog')");
     browser("find", "role", "checkbox", "check", "--name", "诊断包包含截图", "--exact");
     assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.support-dialog'))")), false);
-    browser("find", "role", "button", "click", "--name", "预览诊断包", "--exact");
+    browser("find", "role", "button", "click", "--name", "导出诊断包", "--exact");
+    browser("find", "role", "button", "click", "--name", "预览", "--exact");
     browser("wait", "--text", "images/failure-fixture.png");
     browser("find", "role", "button", "click", "--name", "保存 ZIP", "--exact");
     browser("wait", "--text", "诊断包已保存，未上传。");

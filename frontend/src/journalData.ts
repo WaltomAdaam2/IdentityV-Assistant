@@ -58,7 +58,6 @@ export const journalApi = {
     requestId, season: filters.season, difficulty: filters.difficulty, display: filters.display, windowHandle,
   }),
   cancel: (requestId: string, reason: string) => invoke<void>("journal_cancel_recognition", { requestId, reason }),
-  feedback: (requestId: string, verdict: string, correctKey: string | null) => invoke<void>("journal_save_feedback", {requestId, verdict, correctKey}),
 };
 
 export async function importJournalPacks(sources: string[], importPack = journalApi.import) {

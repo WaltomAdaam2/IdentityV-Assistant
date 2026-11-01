@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { Settings } from "./types";
@@ -9,6 +9,8 @@ import "./support.css";
 
 interface RestorePreview { id: string; changes: {field: string; before: unknown; after: unknown}[]; warnings: string[] }
 interface BundlePreview { id: string; files: {name: string; size: number}[]; truncated: boolean; omissions?: {group: string; reason: string; files?: string[]}[] }
+interface DiagnosticSession { id: string; started: string | null; last_record: string; legacy: boolean; current: boolean; log_records: number; reports: number; images: number }
+interface SessionCatalog { current: string; sessions: DiagnosticSession[]; warnings?: {group: string; reason: string}[] }
 
 const fieldNames: Record<string, [string, string]> = {
   "tasks.enabled": ["启用任务", "Enabled tasks"],
@@ -64,14 +66,31 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
   const [busy, setBusy] = useState(false);
   const [restore, setRestore] = useState<RestorePreview | null>(null);
   const [bundle, setBundle] = useState<BundlePreview | null>(null);
-  const {dialog, closing, close} = useDialog(Boolean(restore || bundle), () => {setRestore(null); setBundle(null);});
+  const [sessions, setSessions] = useState<SessionCatalog | null>(null);
+  const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
+  const [diagnosticError, setDiagnosticError] = useState("");
+  const modalHeading = useRef<HTMLHeadingElement>(null);
+  const preparedId = useRef<string | null>(null);
+  preparedId.current = bundle?.id ?? null;
+  const discard = (id: string) => invoke("discard_diagnostics", {id});
+  const {dialog, closing, close} = useDialog(Boolean(restore || sessions), () => {
+    if (preparedId.current) void discard(preparedId.current).catch(error => onNotice(zh ? "临时诊断包未能释放。" : "Could not release the temporary bundle.", true, String(error)));
+    setRestore(null); setBundle(null); setSessions(null); setSelectedSessions([]); setDiagnosticError("");
+  });
+  useEffect(() => {
+    if (sessions) modalHeading.current?.focus();
+  }, [Boolean(sessions), Boolean(bundle)]);
+  useEffect(() => () => {
+    if (preparedId.current) void discard(preparedId.current).catch(error => onNotice(zh ? "临时诊断包未能释放。" : "Could not release the temporary bundle.", true, String(error)));
+  }, []);
   const closePreview = () => close();
   const choose = (kind: string) => invoke<string | null>("support_choose_path", {kind});
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     try { await withSettings(action); } catch (error) {
       const notify = () => onNotice(zh ? "操作未完成，请查看详情后重试。" : "The operation did not finish. Review the details and retry.", true, String(error));
-      if (restore || bundle) close(notify); else notify();
+      if (sessions) setDiagnosticError(String(error));
+      else if (restore) close(notify); else notify();
     }
     finally { setBusy(false); }
   };
@@ -92,14 +111,31 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
     return JSON.stringify(value);
   };
   const bytes = (size: number) => size >= 1048576 ? `${(size / 1048576).toFixed(1)} MiB` : size >= 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${size} B`;
-  const modal = (restore || bundle) && createPortal(<dialog ref={dialog} data-closing={closing || undefined} className="update-dialog support-dialog" aria-labelledby="support-title" aria-busy={busy}
+  const sessionTime = (value: string) => new Intl.DateTimeFormat(language, {year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false}).format(new Date(value));
+  const modal = (restore || sessions) && createPortal(<dialog ref={dialog} data-closing={closing || undefined} className="update-dialog support-dialog" aria-labelledby="support-title" aria-busy={busy}
     onCancel={event => {event.preventDefault(); if (!busy) closePreview();}}>
     <button className="update-dialog-close" disabled={busy} aria-label={zh ? "关闭预览" : "Close preview"} onClick={closePreview}>×</button>
     <header className="update-dialog-heading">
       <span className="update-state-icon" aria-hidden="true"><SettingIcon name={restore ? "folder" : "debug"} /></span>
-      <div><h2 id="support-title">{restore ? (zh ? "应用导入的设置" : "Apply imported settings") : (zh ? "诊断包预览" : "Diagnostic bundle preview")}</h2>
+      <div><h2 id="support-title" ref={modalHeading} tabIndex={-1}>{restore ? (zh ? "应用导入的设置" : "Apply imported settings") : bundle ? (zh ? "诊断包预览" : "Diagnostic bundle preview") : (zh ? "选择诊断会话" : "Choose diagnostic sessions")}</h2>
         <p>{restore ? (zh ? "核对变化后再应用。原配置会自动备份。" : "Review the changes before applying. Your current settings will be backed up.") : (zh ? "仅保存到你选择的位置，不会自动上传。" : "Save to a location you choose. Nothing is uploaded automatically.")}</p></div>
     </header>
+    {sessions && !bundle && <>
+      <p className="support-hint">{zh ? "默认包含当前会话，也可勾选要追加的历史会话。" : "The current session is included. Select any historical sessions to add."}</p>
+      <div className="support-sessions" role="group" aria-label={zh ? "诊断会话" : "Diagnostic sessions"}>
+        {sessions.sessions.map(session => <label key={session.id} className="support-session">
+          <input type="checkbox" name="diagnostic-session" value={session.id} checked={session.current || selectedSessions.includes(session.id)} disabled={busy || session.current}
+            onChange={event => {setSelectedSessions(current => event.target.checked ? [...current, session.id] : current.filter(id => id !== session.id)); setDiagnosticError("");}} />
+          <span><strong>{session.current ? (zh ? "当前会话" : "Current session") : session.legacy ? (zh ? "旧版日志" : "Legacy logs") : (zh ? "历史会话" : "Previous session")}</strong>
+            <span>{session.legacy ? session.id.slice("legacy:".length) : sessionTime(session.started ?? session.last_record)}</span>
+            <small>{session.legacy ? (zh ? "无法区分启动会话 · 仅文字记录" : "Cannot separate app launches · Text only") : `${zh ? "日志" : "Logs"} ${session.log_records} · ${zh ? "识图报告" : "Recognition reports"} ${session.reports} · ${includeImages && session.images ? (zh ? `${session.images} 张图片可用` : `${session.images} images available`) : (zh ? "仅文字记录" : "Text only")}`}</small>
+          </span>
+        </label>)}
+      </div>
+      <p className="support-hint">{includeImages ? (zh ? "包含仍在三天保留期内的图片和模板；日志与识图文字报告保留七天。" : "Includes available images and templates from the past 3 days. Logs and recognition reports are retained for 7 days.") : (zh ? "截图开关已关闭，仅导出日志和文字报告。" : "Images are disabled. Only logs and text reports will be exported.")}</p>
+      <p className="support-hint">{selectedSessions.length ? (zh ? `已追加 ${selectedSessions.length} 个历史记录，不限制总大小。` : `${selectedSessions.length} historical records added. No total size limit.`) : (zh ? "未选择历史会话，仅导出当前会话，最多 100 MB。" : "No history selected. Export the current session only, up to 100 MB.")}</p>
+      {!!sessions.warnings?.length && <p className="support-hint">{zh ? `${sessions.warnings.length} 份报告不可读或无法确定所属会话，将在预览中列为缺失。` : `${sessions.warnings.length} reports are unreadable or lack session information. They will be listed as missing in the preview.`}</p>}
+    </>}
     {restore && <>
       {restore.warnings.map((warning, index) => <p className="support-hint" key={index}>{warning}</p>)}
       {restore.changes.length ? <>
@@ -112,10 +148,16 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
       <p className="support-hint">{includeImages ? (zh ? "已选择包含截图，请在分享前检查昵称或聊天内容。" : "Screenshots were selected. Check for names or chat before sharing.") : (zh ? "未包含截图。" : "Screenshots are not included.")}</p>
       <ul className="support-files" tabIndex={0} aria-label={zh ? "诊断文件清单" : "Diagnostic file list"}>{bundle.files.map(file => <li key={file.name}><span>{file.name}</span><span>{bytes(file.size)}</span></li>)}</ul>
       {bundle.truncated && <p className="support-hint">{zh ? "部分记录未纳入，请查看下方清单；本机原文件仍按保留期限保存。" : "Some records were omitted. See the list below; local originals follow the retention period."}</p>}
-      {!!bundle.omissions?.length && <details className="support-hint"><summary>{zh ? `未包含的记录（${bundle.omissions.length} 组）` : `Omitted records (${bundle.omissions.length} groups)`}</summary><ul>{bundle.omissions.map((item, index) => <li key={index}>{item.group} · {item.reason === "size_limit" ? (zh ? "达到 100 MB 上限" : "100 MB limit reached") : (zh ? "文件缺失、不可读或无效" : "Missing, unreadable or invalid file")}</li>)}</ul></details>}
+      {!!bundle.omissions?.length && <details className="support-hint"><summary>{zh ? `未包含的记录（${bundle.omissions.length} 组）` : `Omitted records (${bundle.omissions.length} groups)`}</summary><ul>{bundle.omissions.map((item, index) => <li key={index}>{item.group} · {item.reason === "size_limit" ? (zh ? "达到 100 MB 上限" : "100 MB limit reached") : item.reason === "images_expired" ? (zh ? "图片已超过三天保留期" : "Images exceeded the 3-day retention period") : item.reason === "unreadable_report" ? (zh ? "报告不可读或会话归属不明，未猜测关联图片" : "Unreadable report or unknown session; no images associated by guesswork") : (zh ? "文件缺失、不可读或无效" : "Missing, unreadable or invalid file")}</li>)}</ul></details>}
+      <p className="support-hint">{zh ? "环境与脱敏设置为本次预览时的状态；历史会话保留其当时的日志和识图报告。" : "Environment and redacted settings reflect this preview. Historical sessions retain their original logs and recognition reports."}</p>
     </>}
+    {diagnosticError && <p className="support-error" role="alert">{zh ? "未能完成，请重试或返回调整会话范围。" : "Could not finish. Retry or adjust the selected sessions."}<br />{diagnosticError}</p>}
     <footer className="update-actions">
+      {bundle && <button disabled={busy} onClick={() => void run(async () => {await discard(bundle.id); setBundle(null); setDiagnosticError("");})}>{zh ? "返回选择" : "Back to selection"}</button>}
       <button autoFocus disabled={busy} onClick={closePreview}>{restore && !restore.changes.length ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}</button>
+      {sessions && !bundle && <button className="primary" disabled={busy} onClick={() => void run(async () => {
+        setDiagnosticError(""); setBundle(await invoke<BundlePreview>("preview_diagnostics", {includeImages, historicalSessions: selectedSessions}));
+      })}>{busy ? (zh ? "正在整理…" : "Preparing…") : (zh ? "预览" : "Preview")}</button>}
       {!!restore?.changes.length && <button className="primary" disabled={busy || taskActive} onClick={() => void run(async () => {
         const settings = await invoke<Settings>("restore_settings", {id: restore.id});
         onRestored(settings); close(() => onNotice(zh ? "设置已应用，原配置备份已保留。" : "Settings applied; the original backup was retained."));
@@ -134,11 +176,11 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
     <SettingRow icon="folder" title={zh ? "导入设置并预览" : "Import and preview settings"} description={taskActive ? (zh ? "请先停止任务再应用设置。" : "Stop tasks before applying settings.") : (zh ? "预览变化后确认应用，自动保留原配置备份。" : "Review changes before applying; a backup of the original settings is retained.")} language={language}>
       <button disabled={busy || taskActive} onClick={() => void run(async () => { const path = await choose("import-settings"); if (path) setRestore(await invoke<RestorePreview>("preview_settings_restore", {path})); })}>{zh ? "导入设置并预览" : "Import and preview settings"}</button>
     </SettingRow>
-    <SettingRow icon="screenshots" title={zh ? "诊断包包含截图" : "Include screenshots in diagnostics"} description={zh ? "加入本次启动会话中各次识图的原图、裁剪图、处理图及调试／失败截图。截图在本机保留 3 天；可能含昵称或聊天，分享前请检查。" : "Include this session's recognition captures, crops, processing images and debug/failure screenshots. Local images are retained for 3 days. Review names or chat before sharing."} language={language}>
+    <SettingRow icon="screenshots" title={zh ? "诊断包包含截图" : "Include screenshots in diagnostics"} description={zh ? "加入所选会话的原图、裁剪图、处理图、模板及调试／失败截图。图片在本机保留 3 天；可能含昵称或聊天，分享前请检查。" : "Include selected sessions’ captures, crops, processed images, templates and debug/failure screenshots. Local images are retained for 3 days. Review names or chat before sharing."} language={language}>
       <input type="checkbox" disabled={busy} checked={includeImages} onChange={event => {onIncludeImagesChange(event.target.checked); setBundle(null);}} />
     </SettingRow>
-    <SettingRow icon="debug" title={zh ? "预览诊断包" : "Preview diagnostics"} description={zh ? "包含本次会话的全模块日志、脱敏设置及各次识图流程。总量最多 100 MB，日志与报告优先，其次为最新的完整截图组；排除账号、凭据和私钥。预览后保存到本机。" : "Includes this session’s logs from all modules, redacted settings and every recognition flow. Up to 100 MB: logs and reports first, then the newest complete image groups. Excludes accounts, credentials and private keys. Preview and save locally."} language={language}>
-      <button disabled={busy} onClick={() => void run(async () => { setBundle(await invoke<BundlePreview>("preview_diagnostics", {includeImages})); })}>{zh ? "预览诊断包" : "Preview diagnostics"}</button>
+    <SettingRow icon="debug" title={zh ? "导出诊断包" : "Export diagnostics"} description={zh ? "默认仅包含当前会话，可追加保留期内的历史会话。先选择、再预览，确认后保存到本机；排除账号、凭据和私钥。" : "Includes the current session by default, with optional retained history. Choose sessions, preview, then save locally. Accounts, credentials and private keys are excluded."} language={language}>
+      <button disabled={busy} onClick={() => void run(async () => {setSelectedSessions([]); setDiagnosticError(""); setSessions(await invoke<SessionCatalog>("list_diagnostic_sessions"));})}>{zh ? "导出诊断包" : "Export diagnostics"}</button>
     </SettingRow>
   </div>;
 }

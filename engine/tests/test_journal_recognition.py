@@ -73,7 +73,7 @@ def test_offline_replay_uses_exported_pixels_templates_and_feedback(tmp_path):
     import importlib.util
     import json
     from pathlib import Path
-    from zipfile import ZipFile
+    from zipfile import ZIP_DEFLATED, ZipFile
     spec = importlib.util.spec_from_file_location("recognition_replay", Path(__file__).resolve().parents[2] / "scripts/replay_recognition.py")
     replay = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(replay)
@@ -94,6 +94,13 @@ def test_offline_replay_uses_exported_pixels_templates_and_feedback(tmp_path):
             for kind,data in events:
                 if kind == "journal_recognition_image":
                     output.writestr(f"recognition/{name}/{data['image_kind']}.png",base64.b64decode(data["png"]))
+        if name == "no-region":
+            # Historical-session bundles may exceed 100 MB in aggregate.
+            # Unrelated entries must not be loaded or block this attempt.
+            with ZipFile(bundle, "a", compression=ZIP_DEFLATED) as output:
+                with output.open("logs/large-history.jsonl", "w") as history:
+                    for _ in range(101):
+                        history.write(b" " * 1_000_000)
         replayed = replay.replay(bundle)[0]
         assert replayed["status"] == "replayed", replayed
         assert replayed["exact_match"] is True

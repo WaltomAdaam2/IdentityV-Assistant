@@ -123,7 +123,7 @@ def locate_regions(frame: np.ndarray, cancel: Event | None = None) -> list[Regio
         y0 = max(0, round((y - 3) / ratio))
         x1 = min(width, round((x + w + 3) / ratio))
         y1 = min(height, round((y + h + 3) / ratio))
-        if min(x1 - x0, y1 - y0) < MIN_REGION_SIDE or not 0.3 <= w / max(h, 1) <= 3.3:
+        if min(x1 - x0, y1 - y0) < MIN_REGION_SIDE:
             return
         if np.count_nonzero(edges[max(0, y):y + h, max(0, x):x + w]) < 80:
             return
@@ -229,6 +229,19 @@ def _query(image: np.ndarray, region: Region, audit=None) -> tuple[np.ndarray, n
         if audit is not None:
             audit.update(reason=value, **metrics)
     surface = _map_surface(image)
+    # Corridors are blue-gray; brown scenery and HUD glyphs alone do not
+    # establish a map. Keep the connected room/corridor component with the
+    # most corridor support, instead of combining unrelated scene fragments.
+    hue = cv2.cvtColor(_bgr(image), cv2.COLOR_BGR2HSV)[:, :, 0]
+    corridors = (surface != 0) & (hue >= 110) & (hue <= 130)
+    if np.count_nonzero(corridors) < 100:
+        reason("insufficient_corridor_surface")
+        return None
+    joined = cv2.dilate(surface, np.ones((7, 7), np.uint8))
+    _, labels = cv2.connectedComponents(joined)
+    support = np.bincount(labels[corridors])
+    support[0] = 0
+    surface[labels != int(np.argmax(support))] = 0
     if np.count_nonzero(surface) < max(120, surface.size * 0.04):
         reason("insufficient_map_color", surface_pixels=int(np.count_nonzero(surface)))
         return None
@@ -303,7 +316,9 @@ def _match_query(template: Template, query: tuple[np.ndarray, np.ndarray, Region
             continue
         costs = cv2.matchTemplate(coarse, weights, cv2.TM_CCORR) / mass
         value, _, location, _ = cv2.minMaxLoc(costs)
-        seeds.append((value, float(scale), location[0] * 4, location[1] * 4))
+        # Compare scales in captured-image units, just like _score. Raw
+        # template distances unfairly promote tiny, uninformative searches.
+        seeds.append((value / scale, float(scale), location[0] * 4, location[1] * 4))
     best: Match | None = None
     for _, seed_scale, seed_x, seed_y in sorted(seeds)[:4]:
         for scale in seed_scale * np.exp2(np.linspace(-0.125, 0.125, 9)):
@@ -350,11 +365,6 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
         query = _query(region.crop(frame), region, audit)
         if diagnostic:
             diagnostic({"stage": "region_check", **audit, "elapsed_ms": round((perf_counter() - started) * 1000)})
-        if query is not None and image:
-            index = len(queries)
-            image(f"region_{index}", query[2].crop(frame))
-            image(f"edges_{index}", (query[0] * 255).astype(np.uint8))
-            image(f"mask_{index}", query[1] * 255)
         return query
     for region in regions:
         _check(cancel)
@@ -371,6 +381,24 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
             queries.append(query)
     if not queries:
         return []
+    # A nested fragment must not escape contradictions in the larger visible
+    # map. Keep independent views (e.g. a minimap), but use the complete view
+    # within each overlapping proposal family. Deduplicate identical crops.
+    distinct = []
+    for query in sorted(queries, key=lambda q: float(q[0].sum()), reverse=True):
+        region = query[2]
+        if any(parent[2].x <= region.x and parent[2].y <= region.y
+               and parent[2].x + parent[2].width >= region.x + region.width
+               and parent[2].y + parent[2].height >= region.y + region.height
+               for parent in distinct):
+            continue
+        distinct.append(query)
+    queries = distinct
+    if image:
+        for index, query in enumerate(queries):
+            image(f"region_{index}", query[2].crop(frame))
+            image(f"edges_{index}", (query[0] * 255).astype(np.uint8))
+            image(f"mask_{index}", query[1] * 255)
     if preview:
         preview(queries[0][2])
     samples = [_coarse_weights(query[0], cancel) for query in queries]
@@ -402,7 +430,7 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
             cv2.distanceTransform((weights < 0.2).astype(np.uint8) * 255, cv2.DIST_L2, 3)))
     # Templates may be streamed from disk so a large library does not retain
     # every decoded image and distance field at once.
-    found: dict[str, Match] = {}
+    found: dict[int, dict[str, Match]] = {}
     completed = 0
     shown_region = queries[0][2]
     for index, template in enumerate(templates):
@@ -421,14 +449,11 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
                             "match": None if match is None else {"geometry_cost": match.score,
                                 "coverage": match.coverage, "unexplained": match.unexplained}})
             if match is not None:
-                previous = found.get(match.key)
-                # When both minimap and expanded map match, prefer substantially
-                # more normalized wall evidence; use score for comparable views.
-                if previous is None or match.evidence > previous.evidence * 1.25 or (
-                        match.evidence >= previous.evidence / 1.25 and match.score < previous.score):
-                    found[match.key] = match
+                found.setdefault(region_index, {})[match.key] = match
         if found and preview:
-            leading = min(found.values(), key=lambda match: (match.score, match.key))
+            # Queries are ordered by visible wall evidence. Rank identities
+            # against one coherent view, not unrelated low-error fragments.
+            leading = min(found[min(found)].values(), key=lambda match: (match.score, match.key))
             if leading.region != shown_region:
                 shown_region = leading.region
                 preview(shown_region)
@@ -436,6 +461,5 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
     _check(cancel)
     if progress:
         progress("matching", completed, template_count or completed)
-    # Multiple genuinely plausible maps are intentional; no forced top-one or
-    # arbitrary top-N truncation. Caller must always require the user's click.
-    return sorted(found.values(), key=lambda match: (match.score, match.key))
+    # The UI applies its display limit and the user's auto-open preference.
+    return sorted(found[min(found)].values(), key=lambda match: (match.score, match.key)) if found else []

@@ -99,6 +99,8 @@ pub fn run() {
             support::preview_settings_restore,
             support::restore_settings,
             support_bundle::preview_diagnostics,
+            support_bundle::list_diagnostic_sessions,
+            support_bundle::discard_diagnostics,
             support_bundle::export_diagnostics,
             commands::settings::append_ui_log,
             commands::settings::set_power_prevention,

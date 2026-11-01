@@ -14,7 +14,8 @@ from vision import journal_matcher
 def map_image(variant: int = 0) -> np.ndarray:
     """Original geometric fixture, not a redistributed game map."""
     image = np.zeros((320, 360, 4), np.uint8)
-    color = (95, 100, 105, 255)
+    # Game corridors use blue-gray; warm brown alone also occurs in scenery.
+    color = (96, 79, 74, 255)
     rooms = [(20, 25, 85, 90), (140, 30, 220, 75), (270, 35, 335, 110),
              (35, 165, 110, 240), (170, 150, 240, 225), (265, 235, 330, 290)]
     for index, (left, top, right, bottom) in enumerate(rooms):
@@ -176,3 +177,25 @@ def test_map_on_blue_backdrop_keeps_rooms_but_rejects_legend(zoom):
     surface = _map_surface(frame)
     assert not surface[20:150, 300:500].any()
     assert surface[180:180 + h, 550:550 + w].any()
+
+
+@pytest.mark.parametrize("shape", [(850, 140), (140, 850)])
+def test_long_map_geometry_is_not_excluded_by_panel_aspect(shape):
+    panel = cv2.resize(_bgr(map_image()), shape)
+    frame = np.zeros((1000, 1000, 3), np.uint8)
+    w, h = shape
+    frame[70:70+h, 70:70+w] = panel
+    hits = recognize(frame, [prepare_template("long", panel)])
+    assert [hit.key for hit in hits] == ["long"]
+
+
+def test_brown_scene_geometry_cannot_compete_with_a_real_map():
+    real = _bgr(map_image())
+    scenery = real.copy()
+    scenery[np.any(scenery != 0, axis=2)] = (65, 80, 100)
+    assert _query(scenery, Region(0, 0, 360, 320)) is None
+    frame = np.zeros((600, 1000, 3), np.uint8)
+    frame[80:400, 20:380] = scenery
+    frame[180:500, 580:940] = real
+    hits = recognize(frame, [prepare_template("map", real)])
+    assert hits and all(hit.region.x >= 580 for hit in hits)

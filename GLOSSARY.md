@@ -29,7 +29,7 @@ A window/response/capture check before a newly requested task or queue. It does 
 The most recent successful WGC game-window frame saved when a task fails. Its capture timestamp may precede the failure; screen-region backends are excluded.
 
 **Diagnostic bundle**:
-A user-saved ZIP containing a bounded snapshot of redacted current-session diagnostics. Screenshots require separate selection; login-component account data is excluded.
+A user-saved ZIP containing a frozen snapshot of redacted diagnostics. It includes the current session by default; retained historical sessions can be added explicitly before preview. Current-only exports are limited to 100 MB; selecting history removes the total size limit. Screenshots require separate selection; login-component account data is excluded.
 
 **Journal map identity**:
 A map's season, difficulty, door category and number. Different floor views and base/route illustrations can belong to the same map.
@@ -38,7 +38,7 @@ A map's season, difficulty, door category and number. Different floor views and 
 A journal map whose first-floor geometry plausibly matches the visible game map. The interface shows up to four in match order. Optional automatic entry opens the first candidate; this is not a confirmed identification or an accuracy percentage.
 
 **Recognition evidence**:
-The captured frame, localized and processed regions, exact prepared templates and per-map analysis for one request. Images expire after three days, reports after seven; diagnostic exports select the current app session.
+The captured frame, localized and processed regions, exact prepared templates and per-map analysis for one request. Images expire after three days, reports after seven; diagnostic exports select the current app session and any explicitly added historical sessions.
 
 **Recognition feedback**:
-An editable local assessment of the first candidate, optionally naming the correct map. It accompanies exported evidence without uploading or changing thresholds.
+A local assessment saved by earlier builds, optionally naming the correct map. Existing records remain part of exported evidence and offline replay; the interactive feedback entry has been removed. Records are not uploaded or used to adjust thresholds.
