@@ -79,6 +79,37 @@ def test_scaled_query_reuse_preserves_all_candidate_geometry(monkeypatch):
     assert recognize(frame, templates) == cached
 
 
+@pytest.mark.parametrize("size", [(55, 98), (65, 70)])
+def test_tiny_visible_geometry_cannot_use_padding_to_pass_region_size_gate(size):
+    # A large proposal can shrink to icon-sized geometry after background is
+    # removed. Match quality must apply to those actual pixels, not the padding.
+    icon = cv2.resize(_bgr(map_image()), size)
+    frame = np.zeros((max(100, size[1] + 20), max(100, size[0] + 20), 3), np.uint8)
+    frame[10:10 + size[1], 10:10 + size[0]] = icon
+    assert _query(frame, Region(0, 0, frame.shape[1], frame.shape[0])) is None
+
+
+@pytest.mark.parametrize("width,height,accepted", [(49, 57, False), (63, 90, False), (64, 90, True)])
+def test_complex_badge_obeys_final_geometry_size_boundary(width, height, accepted):
+    # A complex HUD-like silhouette can satisfy corner/contour checks. It must
+    # still meet the size gate; this is original generated artwork, not a map.
+    points = np.array([(25, 20), (40, 20), (40, 26), (47, 26), (47, 20), (62, 20),
+                       (62, 26), (72, 26), (72, 42), (66, 42), (66, 49), (72, 49),
+                       (72, 65), (66, 65), (66, 75), (50, 75), (50, 69), (43, 69),
+                       (43, 75), (28, 75), (28, 69), (25, 69), (25, 53), (31, 53),
+                       (31, 46), (25, 46)], np.float64)
+    points = np.rint((points - [25, 20]) * [(width - 2) / 47, (height - 2) / 55] + 20).astype(np.int32)
+    frame = np.zeros((140, 140, 3), np.uint8)
+    color = tuple(int(v) for v in cv2.cvtColor(np.uint8([[[113, 59, 96]]]), cv2.COLOR_HSV2BGR)[0, 0])
+    cv2.fillPoly(frame, [points], color)
+    query = _query(frame, Region(0, 0, 140, 140))
+    if accepted:
+        assert query is not None
+        assert (query[2].width, query[2].height) == (width, height)
+    else:
+        assert query is None
+
+
 def test_no_map_and_cancellation_are_not_forced_matches():
     template = prepare_template("one", map_image())
     assert recognize(np.zeros((600, 960, 3), np.uint8), [template]) == []

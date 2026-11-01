@@ -78,7 +78,9 @@ Recognition searches only first-floor templates for the selected season and diff
 
 A separate read-only process captures through WGC, without starting the automation service, changing game layout, sending game input or falling back to desktop capture. The screenshot and collapsed **View recognized region** preview stay in memory. Cancellation, changed recognition filters and leaving Journal invalidate the old request; late results cannot replace newer choices. Failed matches clear old candidates and ask you to open the first-floor map and retry. Requests time out after 120 seconds; image decoding is capped at 16,777,216 pixels.
 
-Each recognition reuses normalized query edges and resized images, with a 32 MiB refinement cache released on completion or cancellation. Candidate scope and geometry thresholds are unchanged. Localization and geometry thresholds are heuristics. Limited exploration, occlusion, complex HUDs, game scaling and similar structures can cause missed or ambiguous matches. Generated fixtures and template-crop checks do not establish real gameplay accuracy. Check the candidates and recognized region before using the result.
+Each recognition reuses normalized query edges and resized images, with a 32 MiB refinement cache released on completion or cancellation. This reuse does not change the scale search or match scores. Localization and geometry thresholds are heuristics. Limited exploration, occlusion, complex HUDs, game scaling and similar structures can cause missed or ambiguous matches. Generated fixtures and template-crop checks do not establish real gameplay accuracy. Check the candidates and recognized region before using the result.
+
+The minimum region size applies both to proposals and to visible geometry after background cropping. Regions with a shorter side below 64 pixels are rejected so padding cannot make a small icon pass validation. Expand or zoom the map, or explore further, when the visible minimap is too small. This check does not exclude every larger HUD false match.
 
 ## Local data, logs and diagnostics
 

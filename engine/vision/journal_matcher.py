@@ -17,6 +17,7 @@ import numpy as np
 
 MAX_PIXELS = 16_777_216
 TEMPLATE_SIDE = 800
+MIN_REGION_SIDE = 64
 
 
 class RecognitionCancelled(RuntimeError):
@@ -126,7 +127,7 @@ def locate_regions(frame: np.ndarray, cancel: Event | None = None) -> list[Regio
         y0 = max(0, round((y - 3) / ratio))
         x1 = min(width, round((x + w + 3) / ratio))
         y1 = min(height, round((y + h + 3) / ratio))
-        if min(x1 - x0, y1 - y0) < 64 or not 0.3 <= w / max(h, 1) <= 3.3:
+        if min(x1 - x0, y1 - y0) < MIN_REGION_SIDE or not 0.3 <= w / max(h, 1) <= 3.3:
             return
         if np.count_nonzero(edges[max(0, y):y + h, max(0, x):x + w]) < 80:
             return
@@ -224,7 +225,9 @@ def _query(image: np.ndarray, region: Region) -> tuple[np.ndarray, np.ndarray, R
     if points is None or len(points) < 100:
         return None
     x, y, width, height = cv2.boundingRect(points)
-    if min(width, height) < 32:
+    # Padding/dilation can make an icon-sized fragment pass the proposal gate.
+    # Apply the same minimum to the actual geometry before matching it.
+    if min(width, height) < MIN_REGION_SIDE:
         return None
     edges = edges[y:y + height, x:x + width]
     explored = explored[y:y + height, x:x + width]
