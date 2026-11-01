@@ -254,3 +254,6 @@ p { color: var(--muted); font-size: 13px; line-height: 1.55; }
 }
 
 .nav-icon { width: 20px; height: 20px; }
+.log-details { margin-top: 5px; }
+.log-details summary { color: var(--muted); cursor: pointer; }
+.log-details pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

@@ -5,7 +5,7 @@ use std::{
     collections::HashSet,
     process::Stdio,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::{
@@ -80,7 +80,24 @@ pub async fn journal_recognize(
     display: String,
     window_handle: Option<isize>,
 ) -> Result<Value, String> {
-    let (_request, mut cancelled) = state.begin(&request_id)?;
+    let started = Instant::now();
+    crate::logs::record(
+        &app,
+        "info",
+        "journal.recognition",
+        "开始识别一楼地图 / Starting first-floor recognition",
+        json!({"request_id":request_id,"season":season,"difficulty":difficulty,"display":display,
+            "trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
+    );
+    let (_request, mut cancelled) = state.begin(&request_id).inspect_err(|error| {
+        crate::logs::record(
+            &app,
+            "warning",
+            "journal.recognition",
+            error,
+            json!({"request_id":request_id,"stage":"rejected"}),
+        );
+    })?;
     let work = async {
         let _automation_guard = supervisor.begin_recognition().await?;
         recognize(
@@ -93,12 +110,44 @@ pub async fn journal_recognize(
         )
         .await
     };
-    tokio::select! {
+    let outcome = tokio::select! {
         biased;
         _ = cancelled.changed() => Err("识图已取消 / Recognition cancelled".into()),
         result = tokio::time::timeout(Duration::from_secs(120), work) =>
-            result.map_err(|_| "识图超时，请缩小地图包分类后重试 / Recognition timed out".to_string())?,
+            result.unwrap_or_else(|_| Err("识图超时，请缩小地图包分类后重试 / Recognition timed out".to_string())),
+    };
+    let elapsed = started.elapsed().as_millis();
+    match &outcome {
+        Ok(result) => crate::logs::record(
+            &app,
+            if result["keys"]
+                .as_array()
+                .is_some_and(|keys| !keys.is_empty())
+            {
+                "info"
+            } else {
+                "warning"
+            },
+            "journal.recognition",
+            if result["keys"]
+                .as_array()
+                .is_some_and(|keys| !keys.is_empty())
+            {
+                "识图完成，请核对候选 / Recognition completed; review candidates"
+            } else {
+                "未找到可靠地图候选 / No reliable map candidates"
+            },
+            json!({"request_id":request_id,"stage":"completed","elapsed_ms":elapsed,"keys":result["keys"],"warnings":result["warnings"],"matches":result["matches"]}),
+        ),
+        Err(error) => crate::logs::record(
+            &app,
+            if *cancelled.borrow() { "info" } else { "error" },
+            "journal.recognition",
+            error,
+            json!({"request_id":request_id,"stage":if *cancelled.borrow() {"cancelled"} else {"failed"},"elapsed_ms":elapsed}),
+        ),
     }
+    outcome
 }
 
 async fn recognize(
@@ -114,6 +163,13 @@ async fn recognize(
     })
     .await
     .map_err(|error| error.to_string())??;
+    crate::logs::record(
+        app,
+        "debug",
+        "journal.recognition",
+        "地图模板索引就绪 / Map templates indexed",
+        json!({"request_id":id,"template_count":templates.as_array().map(Vec::len).unwrap_or(0)}),
+    );
     let path = crate::engine::locate_engine(
         &app.path()
             .resource_dir()
@@ -127,10 +183,28 @@ async fn recognize(
         .env("OPENCV_IO_MAX_IMAGE_PIXELS", "16777216")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|error| format!("无法启动识图进程 / Could not start recognition: {error}"))?;
+    crate::logs::record(
+        app,
+        "debug",
+        "journal.recognition",
+        "独立识图进程已启动 / Recognition helper started",
+        json!({"request_id":id,"pid":child.id(),"automation_started":false}),
+    );
+    let stderr = child.stderr.take().ok_or("Missing recognition stderr")?;
+    let stderr_app = app.clone();
+    let stderr_id = id.to_string();
+    let stderr_reader = tauri::async_runtime::spawn(async move {
+        let mut errors = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = errors.next_line().await {
+            let mut record = crate::logs::stderr_record(&line, "journal.stderr");
+            record["request_id"] = json!(stderr_id);
+            crate::logs::emit(&stderr_app, record);
+        }
+    });
     let mut input = child.stdin.take().ok_or("Missing recognition input")?;
     let request = json!({"request_id": id, "templates": templates, "window_handle": window_handle});
     input
@@ -160,8 +234,27 @@ async fn recognize(
         }
         match message["type"].as_str() {
             Some("journal_recognition_progress") => {
+                let stage = message["stage"].as_str().unwrap_or("unknown");
+                let label = match stage {
+                    "capturing" => "正在截图 / Capturing game window",
+                    "locating" => "正在定位地图 / Locating map region",
+                    "matching" => "正在匹配地图 / Matching maps",
+                    _ => "识图进度 / Recognition progress",
+                };
+                crate::logs::record(
+                    app,
+                    if stage == "matching" && message["completed"].as_u64().unwrap_or(0) > 0 {
+                        "debug"
+                    } else {
+                        "info"
+                    },
+                    "journal.recognition",
+                    label,
+                    json!({"request_id":id,"stage":stage,"completed":message["completed"],"total":message["total"]}),
+                );
                 let _ = app.emit("journal-recognition-progress", &message);
             }
+            Some("log") => crate::logs::emit(app, message),
             Some("journal_recognition_result") => result = Some(message),
             Some("error") => {
                 return Err(message["message"]
@@ -173,6 +266,7 @@ async fn recognize(
         }
     }
     let status = child.wait().await.map_err(|error| error.to_string())?;
+    let _ = stderr_reader.await;
     if !status.success() {
         return Err("识图进程异常退出 / Recognition process exited unexpectedly".into());
     }

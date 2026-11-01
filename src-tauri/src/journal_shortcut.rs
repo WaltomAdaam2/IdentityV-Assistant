@@ -205,6 +205,13 @@ mod native {
                 };
                 if let Ok(settings) = crate::config::load() {
                     if unsafe { game_is_foreground(hwnd, &settings) } {
+                        crate::logs::record(
+                            &app,
+                            "debug",
+                            "journal.shortcut",
+                            "收到游戏前台识图快捷键 / Recognition shortcut received",
+                            serde_json::json!({"hwnd":hwnd}),
+                        );
                         let _ = app.emit(
                             "journal-recognition-shortcut",
                             serde_json::json!({"hwnd": hwnd}),

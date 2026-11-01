@@ -68,6 +68,18 @@ impl UpdateManager {
             session.status.error = error;
             session.status.clone()
         };
+        crate::logs::record(
+            app,
+            if status.error.is_some() {
+                "error"
+            } else {
+                "info"
+            },
+            "assistant.update",
+            &format!("助手更新 / Assistant update: {phase}"),
+            serde_json::json!({"phase":phase,"error":status.error,
+                "source":status.source,"downloaded":status.downloaded,"total":status.total,"version":status.info.as_ref().map(|info| &info.version)}),
+        );
         let _ = app.emit("update-status", status);
     }
 }

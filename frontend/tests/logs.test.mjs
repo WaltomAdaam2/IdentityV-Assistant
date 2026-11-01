@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog } from "../src/logs.ts";
+import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, logDetails, progressLog } from "../src/logs.ts";
 
 const entry = (id, patch = {}) => ({ id, at: "12:00:00", level: "info", message: "准备匹配", source: "hide_seek", important: true, ...patch });
+
+test("developer records keep searchable request and geometry fields while normal summaries stay concise", () => {
+  const details = logDetails({type:"log",message:"识图完成",source:"journal.recognition",details:{request_id:"request-42",keys:["rf:5"],region:{x:666,y:363,width:391,height:317}}});
+  assert.equal(details.message, "识图完成");
+  assert.equal(details.details.request_id, "request-42");
+  const records = [entry(1, {details})];
+  assert.equal(filterLogs(records, "all", "request-42", false).length, 0);
+  assert.equal(filterLogs(records, "all", "request-42", true).length, 1);
+  assert.deepEqual(appendLogBatch([], records)[0].details, details);
+});
 
 test("normal launcher logs keep the outcome and actionable issues while detailed logs retain startup chatter", () => {
   const messages = [

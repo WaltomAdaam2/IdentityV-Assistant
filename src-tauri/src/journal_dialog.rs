@@ -1,5 +1,12 @@
 //! Modern Windows common item dialogs; no helper process or custom file listing.
 
+fn diagnostics_filename(at: chrono::DateTime<chrono::Local>) -> String {
+    format!(
+        "IdentityV-diagnostics-{}.zip",
+        at.format("%Y-%m-%d-%H%M%S-%3f")
+    )
+}
+
 #[tauri::command]
 pub async fn support_choose_path(
     window: tauri::WebviewWindow,
@@ -203,13 +210,12 @@ mod native {
                 .SetDefaultExtension(if zip { w!("zip") } else { w!("json") })
                 .map_err(|e| e.to_string())?;
             if !importing {
-                dialog
-                    .SetFileName(if zip {
-                        w!("IdentityV-diagnostics.zip")
-                    } else {
-                        w!("IdentityV-settings.json")
-                    })
-                    .map_err(|e| e.to_string())?;
+                let filename = windows::core::HSTRING::from(if zip {
+                    super::diagnostics_filename(chrono::Local::now())
+                } else {
+                    "IdentityV-settings.json".into()
+                });
+                dialog.SetFileName(&filename).map_err(|e| e.to_string())?;
             }
             if let Err(error) = dialog.Show(Some(HWND(owner as *mut _))) {
                 if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
@@ -327,6 +333,22 @@ mod native {
 
 #[cfg(all(test, windows))]
 mod tests {
+    #[test]
+    fn diagnostic_names_include_local_date_time_and_milliseconds() {
+        use chrono::TimeZone;
+        let at = chrono::Local
+            .with_ymd_and_hms(2026, 11, 1, 10, 20, 30)
+            .unwrap();
+        assert_eq!(
+            super::diagnostics_filename(at),
+            "IdentityV-diagnostics-2026-11-01-102030-000.zip"
+        );
+        assert_ne!(
+            super::diagnostics_filename(at),
+            super::diagnostics_filename(at + chrono::Duration::milliseconds(1))
+        );
+    }
+
     #[test]
     #[ignore = "Opens the native ZIP picker; close it with Cancel to complete"]
     fn native_zip_picker_cancel() {

@@ -116,6 +116,7 @@ pub fn run() {
         ])
         .setup(|app| {
             logs::prune().map_err(std::io::Error::other)?;
+            logs::record(app.handle(), "info", "app.lifecycle", "助手启动 / Assistant starting", json!({"version":env!("CARGO_PKG_VERSION")}));
             let settings = config::load().map_err(std::io::Error::other)?;
             window_size::restore(app.handle()).map_err(std::io::Error::other)?;
             desktop::create_tray(app.handle())?;

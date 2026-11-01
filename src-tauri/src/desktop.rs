@@ -241,6 +241,13 @@ pub fn quit(app: &AppHandle) {
         return;
     }
     crate::window_size::flush(app);
+    crate::logs::record(
+        app,
+        "info",
+        "app.lifecycle",
+        "助手正在退出 / Assistant shutting down",
+        serde_json::json!({}),
+    );
     let app = app.clone();
     let supervisor = app
         .state::<crate::engine::EngineSupervisor>()

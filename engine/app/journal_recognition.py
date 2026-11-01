@@ -72,7 +72,10 @@ def run_recognition(request: dict, config: EngineConfig,
         ok, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if ok:
             preview = "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii")
-    return {"keys": [match.key for match in matches], "preview": preview, "warnings": warnings}
+    return {"keys": [match.key for match in matches], "preview": preview, "warnings": warnings,
+            "matches": [{"key": match.key, "region": vars(match.region), "geometry_cost": match.score,
+                         "coverage": match.coverage, "unexplained": match.unexplained}
+                        for match in matches]}
 
 
 def main(config: EngineConfig) -> int:

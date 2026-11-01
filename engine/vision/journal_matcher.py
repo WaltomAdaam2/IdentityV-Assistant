@@ -59,6 +59,19 @@ def _features(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return edges, explored
 
 
+def _map_surface(image: np.ndarray) -> np.ndarray:
+    """Solid blue-gray corridors and brown rooms, excluding the map backdrop/HUD."""
+    hue, saturation, value = cv2.split(cv2.cvtColor(_bgr(image), cv2.COLOR_BGR2HSV))
+    blue = ((hue >= 110) & (hue <= 130) & (saturation >= 15)
+            & (saturation <= 130) & (value >= 45) & (value <= 220))
+    brown = ((hue >= 3) & (hue <= 30) & (saturation >= 15)
+             & (saturation <= 130) & (value >= 45) & (value <= 220))
+    # Opening removes thin glyphs and icons without treating their numerous
+    # corners as room geometry. The palette is the game's current map palette.
+    return cv2.morphologyEx((blue | brown).astype(np.uint8), cv2.MORPH_OPEN,
+                           np.ones((5, 5), np.uint8))
+
+
 @dataclass(frozen=True)
 class Template:
     key: str
@@ -172,14 +185,16 @@ def _weights(edges: np.ndarray, scale: float) -> np.ndarray:
 
 
 def _score(template: Template, weights: np.ndarray, explored: np.ndarray,
-           x: int, y: int, region: Region) -> Match | None:
+           x: int, y: int, region: Region, scale: float = 1.0) -> Match | None:
     height, width = weights.shape
     patch = template.distance[y:y + height, x:x + width]
     mass = float(weights.sum())
     if mass < 100 or patch.shape != weights.shape:
         return None
-    forward = float((patch * weights).sum() / mass)
-    coverage = float(weights[patch <= 3].sum() / mass)
+    # Express error in captured-image pixels. A small search scale must not
+    # turn an entire corridor network into a tolerably fuzzy single room.
+    forward = float((patch * weights).sum() / mass) / scale
+    coverage = float(weights[patch <= 3 * scale].sum() / mass)
     if forward > 2.5 or coverage < 0.6:
         return None
     trusted = cv2.resize(explored, (width, height), interpolation=cv2.INTER_NEAREST) != 0
@@ -187,7 +202,7 @@ def _score(template: Template, weights: np.ndarray, explored: np.ndarray,
     if np.count_nonzero(expected) < 100:
         return None
     query_distance = cv2.distanceTransform((weights < 0.2).astype(np.uint8) * 255, cv2.DIST_L2, 3)
-    unexplained = float(np.mean(query_distance[expected] > 6))
+    unexplained = float(np.mean(query_distance[expected] > 6 * scale))
     score = forward + 3 * unexplained
     if unexplained > 0.5 or score > 3:
         return None
@@ -195,7 +210,12 @@ def _score(template: Template, weights: np.ndarray, explored: np.ndarray,
 
 
 def _query(image: np.ndarray, region: Region) -> tuple[np.ndarray, np.ndarray, Region] | None:
-    edges, explored = _features(image)
+    surface = _map_surface(image)
+    if np.count_nonzero(surface) < max(120, surface.size * 0.04):
+        return None
+    edges, _ = _features(image)
+    explored = cv2.dilate(surface, np.ones((7, 7), np.uint8))
+    edges[explored == 0] = 0
     # Avoid treating a panel's outer rectangular rim as map geometry.
     edges[:2] = edges[-2:] = 0
     edges[:, :2] = edges[:, -2:] = 0
@@ -262,7 +282,7 @@ def _match_query(template: Template, query: tuple[np.ndarray, np.ndarray, Region
                 continue
             costs = cv2.matchTemplate(area, weights, cv2.TM_CCORR)
             _, _, location, _ = cv2.minMaxLoc(costs)
-            found = _score(template, weights, explored, left + location[0], top + location[1], visible)
+            found = _score(template, weights, explored, left + location[0], top + location[1], visible, float(scale))
             if found is not None and (best is None or found.score < best.score):
                 best = found
     return best

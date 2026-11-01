@@ -14,7 +14,7 @@ import { NumberInput, KeywordsInput } from "./SettingsInput";
 import SettingRow from "./SettingRow";
 import Icon, { type IconName } from "./Icon";
 import { defaultJournalSettings } from "./journalData";
-import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog, type LogEntry, type LogLevel } from "./logs";
+import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, logDetails, progressLog, type LogEntry, type LogLevel } from "./logs";
 import type {
   CaptureFrame,
   EngineEvent,
@@ -867,9 +867,6 @@ export default function App() {
   const [notice, setCurrentNotice] = useState<{ message: string; error: boolean; details?: string } | null>(null);
   const [visibleNotice, setVisibleNotice] = useState<typeof notice>(null);
   const dismissedNotice = useRef<typeof notice>(null);
-  const setNotice = useCallback((message: string | null, error = false, details?: string) => {
-    setCurrentNotice(message ? { message, error, details } : null);
-  }, []);
   const [noticeHovered, setNoticeHovered] = useState(false);
   const [noticeFocused, setNoticeFocused] = useState(false);
   const noticeHeld = noticeHovered || noticeFocused;
@@ -899,9 +896,9 @@ export default function App() {
   const [developerInputEnabled, setDeveloperInputEnabled] = useState(false);
   const [runtimeEvent, setRuntimeEvent] = useState<EngineEvent | null>(null);
   const appendLog = useCallback(
-    (level: LogLevel, message: string, source = "engine", important = false, persist = true, detailedOnly = false) => {
+    (level: LogLevel, message: string, source = "engine", important = false, persist = true, detailedOnly = false, details?: Record<string, unknown>) => {
       if (persist)
-        void bridge.appendUiLog({ type: "ui_log", timestamp: new Date().toISOString(), level, source, message }).catch(console.error);
+        void bridge.appendUiLog({ type: "ui_log", timestamp: new Date().toISOString(), level, source, message, important, detailedOnly, details }).catch(console.error);
       pendingLogsRef.current.push({
         id: nextLogId.current++,
         at: now(languageRef.current),
@@ -910,6 +907,7 @@ export default function App() {
         source,
         important,
         detailedOnly,
+        details,
       });
       if (logFlushTimer.current === null)
         logFlushTimer.current = window.setTimeout(() => {
@@ -923,6 +921,10 @@ export default function App() {
     },
     [],
   );
+  const setNotice = useCallback((message: string | null, error = false, details?: string) => {
+    setCurrentNotice(message ? { message, error, details } : null);
+    if (message) appendLog(error ? "error" : "info", message, "ui.notice", true, true, false, details ? { reason: details } : undefined);
+  }, [appendLog]);
   const clearLogs = useCallback(() => {
     if (logFlushTimer.current !== null) window.clearTimeout(logFlushTimer.current);
     logFlushTimer.current = null;
@@ -1114,7 +1116,7 @@ export default function App() {
           event.type === "task_resumed" ||
           event.type === "failure_capture" ||
           event.type === "task_finished";
-        appendLog(level, eventMessage, event.source ?? event.task_id ?? event.type ?? "engine", important, false, isWindowDiagnostic(event));
+        appendLog(level, eventMessage, event.source ?? event.task_id ?? event.type ?? "engine", important, false, isWindowDiagnostic(event), logDetails(event));
         if (event.type === "heartbeat") {
           setSnapshot((current) =>
             current.status === (event.engine_status ?? current.status) &&
@@ -1508,7 +1510,10 @@ export default function App() {
   };
   const journalRecognition = useJournalRecognition({ ...defaultJournalSettings, ...settings.journal }, page === "journal", settingsLoaded,
     () => {
-      if (supportBusyRef.current || document.querySelector("dialog:modal:not(.journal-full-preview)")) return false;
+      if (supportBusyRef.current || document.querySelector("dialog:modal:not(.journal-full-preview)")) {
+        appendLog("info", language === "zh-CN" ? "识图未启动：请先关闭当前对话框或完成设置操作。" : "Recognition not started: close the dialog or finish the settings operation first.", "journal.recognition", true);
+        return false;
+      }
       // This changes only WebView content. Never show/activate the native window.
       if (pageTransitionTimer.current !== null) { window.clearTimeout(pageTransitionTimer.current); pageTransitionTimer.current = null; }
       pendingPageRef.current = "journal";
@@ -1546,7 +1551,7 @@ export default function App() {
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))}
       recognition={journalRecognition.view} onRecognize={() => void journalRecognition.start()} onCancelRecognition={journalRecognition.cancel} shortcut={settings.app.recognition_hotkey}
-      onNotice={(message, error = false) => { setNotice(message, error); appendLog(error ? "error" : "info", message, "journal", true); }} />,
+      onNotice={setNotice} />,
     runtime: (
       <Runtime
         language={language}
@@ -2428,7 +2433,7 @@ const Logs = memo(function Logs({
                 </b>
               </span>
               <span>{entry.source}</span>
-              <span>{entry.message}</span>
+              <span>{entry.message}{verbose && entry.details && <details className="log-details"><summary>{language === "zh-CN" ? "详细记录" : "Full record"}</summary><pre>{JSON.stringify(entry.details, null, 2)}</pre></details>}</span>
             </div>
           ))
         ) : (

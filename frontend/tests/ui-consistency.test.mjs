@@ -15,6 +15,24 @@ const evaluate = code => JSON.parse(browser("eval", code));
 const click = name => browser("find", "role", "button", "click", "--name", name, "--exact");
 const wait = code => browser("wait", "--fn", code);
 
+test("runtime logs show concise summaries and expandable searchable developer details", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html?desktop`);
+    click("运行日志");
+    evaluate("window.__launcherTest.emitLog({message:'识图完成 fixture',source:'journal.recognition',details:{request_id:'request-42',region:{x:666,y:363,width:391,height:317},trace:'line\\n'.repeat(900)}})");
+    browser("wait", "--text", "识图完成 fixture");
+    assert.equal(evaluate("document.querySelectorAll('.log-details').length"), 0);
+    click("设置");
+    browser("find", "role", "switch", "check", "--name", "开发者模式", "--exact");
+    click("运行日志");
+    wait("!!document.querySelector('.log-details')");
+    evaluate("Array.from(document.querySelectorAll('.log-row')).find(e=>e.textContent.includes('识图完成 fixture')).querySelector('summary').click()");
+    assert.equal(evaluate("document.querySelector('.log-details[open] pre').textContent.includes('request-42')"), true);
+    assert.equal(evaluate("document.querySelector('.log-details[open] pre').textContent.length > 4000"), true);
+    assert.equal(evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true);
+  } finally { browser("close"); }
+});
+
 test("sidebar navigation retains its focus while content navigation focuses the new page", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);

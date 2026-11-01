@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -11,6 +13,24 @@ from pathlib import Path
 os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", "16777216")
 from config.loader import load_config
 from core.resources import resource_root
+from ipc.messages import event
+
+
+class RuntimeLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        level = "error" if record.levelno >= logging.ERROR else record.levelname.lower()
+        return json.dumps(event("log", level=level, source=record.name,
+                                message=super().format(record), data={"important": level != "debug"}), ensure_ascii=False)
+
+
+def configure_logging() -> None:
+    # Only this application's standard logger; don't enable verbose third-party traces.
+    logger = logging.getLogger("window.automation")
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(RuntimeLogFormatter())
+    logger.handlers = [handler]
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
 
 def configure_stdio() -> None:
@@ -55,4 +75,5 @@ async def run() -> int:
 
 if __name__ == "__main__":
     configure_stdio()
+    configure_logging()
     raise SystemExit(asyncio.run(run()))

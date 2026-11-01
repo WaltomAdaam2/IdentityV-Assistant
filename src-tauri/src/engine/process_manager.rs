@@ -449,24 +449,14 @@ impl EngineSupervisor {
         tauri::async_runtime::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                {
+                let record = crate::logs::stderr_record(&line, "engine.stderr");
+                if record["level"] == "error" {
                     let mut state = supervisor.inner.lock().await;
                     if state.process_generation == process_generation {
                         state.last_error = Some(line.clone());
                     }
                 }
-                crate::logs::emit(
-                    &app,
-                    json!({
-                        "version": 1,
-                        "type": "log",
-                        "timestamp": Utc::now().to_rfc3339(),
-                        "level": "error",
-                        "source": "engine.stderr",
-                        "message": line,
-                        "data": {}
-                    }),
-                );
+                crate::logs::emit(&app, record);
             }
         });
     }

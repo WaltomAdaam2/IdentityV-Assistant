@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from vision.journal_matcher import (
-    RecognitionCancelled, Region, _bgr, locate_regions, match_region,
+    RecognitionCancelled, Region, _bgr, _map_surface, _query, locate_regions, match_region,
     prepare_template, recognize,
 )
 
@@ -107,3 +107,27 @@ def test_small_map_is_not_displaced_by_large_invalid_hud_panels():
             cv2.rectangle(frame, (x, y), (x + 280, y + 180), (100, 100, 100), 5)
     frame[880:1040, 1700:1880] = cv2.resize(_bgr(map_image()), (180, 160))
     assert [match.key for match in recognize(frame, [prepare_template("map", map_image())])] == ["map"]
+
+
+@pytest.mark.parametrize("zoom", [0.5, 1.0, 1.5])
+def test_map_on_blue_backdrop_keeps_rooms_but_rejects_legend(zoom):
+    image = map_image()
+    blue = cv2.cvtColor(np.uint8([[[113, 59, 96]]]), cv2.COLOR_HSV2BGR)[0, 0]
+    image[image[:, :, 3] > 0, :3] = blue
+    backdrop = cv2.cvtColor(np.uint8([[[107, 85, 62]]]), cv2.COLOR_HSV2BGR)[0, 0]
+    partial = cv2.resize(image[20:250, 15:245], None, fx=zoom, fy=zoom)
+    frame = np.full((650, 1000, 3), backdrop, np.uint8)
+    h, w = partial.shape[:2]
+    area = frame[180:180 + h, 550:550 + w]
+    area[partial[:, :, 3] > 127] = partial[:, :, :3][partial[:, :, 3] > 127]
+    for index, text in enumerate(["DRINKS", "CHESTS", "BOXES", "EVENTS", "EXIT"]):
+        cv2.putText(frame, text, (35, 220 + index * 60), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8, (155, 155, 155), 2)
+    hits = recognize(frame, [prepare_template("correct", image)])
+    assert [hit.key for hit in hits] == ["correct"]
+    assert hits[0].region.x >= 550
+    legend = frame[185:495, 20:210]
+    assert _query(legend, Region(20, 185, 190, 310)) is None
+    surface = _map_surface(frame)
+    assert not surface[20:150, 300:500].any()
+    assert surface[180:180 + h, 550:550 + w].any()

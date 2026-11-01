@@ -27,15 +27,16 @@ fn log_record(line: &[u8]) -> Option<serde_json::Value> {
     let record: serde_json::Value = serde_json::from_str(line).ok()?;
     let severity = record["level"].as_str()?;
     let level = match severity {
-        "INFO" => "info",
+        "TRACE" | "DEBUG" => "debug",
+        "INFO" | "SUCCESS" => "info",
         "WARNING" => "warning",
         "ERROR" | "CRITICAL" => "error",
         _ => return None,
     };
-    let message: String = record["message"].as_str()?.chars().take(4000).collect();
+    let message = record["message"].as_str()?;
     Some(
         serde_json::json!({ "type": "log", "source": "idv-login", "timestamp": chrono::Utc::now().to_rfc3339(), "level": level,
-        "message": if severity == "CRITICAL" { format!("[CRITICAL] {message}") } else { message }, "data": {"important": true, "severity": severity} }),
+        "message": if severity == "CRITICAL" { format!("[CRITICAL] {message}") } else { message.to_string() }, "data": {"important": level != "debug", "severity": severity} }),
     )
 }
 
@@ -237,7 +238,10 @@ mod tests {
     use super::*;
     #[test]
     fn forwards_supported_log_levels_and_marks_critical() {
-        assert!(log_record(br#"IDV_ASSISTANT_LOG {"level":"DEBUG","message":"skip"}"#).is_none());
+        let debug =
+            log_record(br#"IDV_ASSISTANT_LOG {"level":"DEBUG","message":"details"}"#).unwrap();
+        assert_eq!(debug["level"], "debug");
+        assert_eq!(debug["data"]["important"], false);
         let event =
             log_record(br#"IDV_ASSISTANT_LOG {"level":"CRITICAL","message":"failed"}"#).unwrap();
         assert_eq!(event["level"], "error");

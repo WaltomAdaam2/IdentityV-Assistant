@@ -93,7 +93,7 @@ Localization and geometry thresholds are heuristics. Limited exploration, occlus
   login-data\idv-login\      Independent login-component data
 ```
 
-Dated logs retain the latest thirty days. The interface shows the current session, up to 99,000 entries at 1,000 per page; clearing it does not delete disk logs. Developer mode reveals retained details. Check logs and screenshots for personal information before sharing them.
+Dated logs retain the latest thirty days. The interface shows the current session, up to 99,000 entries at 1,000 per page; clearing it does not delete disk logs. Normal mode simplifies presentation only; developer mode expands and searches detailed fields from the same redacted records. Recognition triggers, helper startup, capture, localization, matching, candidates, elapsed time, cancellation and failures enter the runtime log. Image binary and credentials are excluded from text logs. Check logs and screenshots for personal information before sharing them.
 
 Diagnostics discover windows, capture frames manually and inspect templates. Diagnostic input needs separate enabling and is unavailable while a task runs or is paused.
 
@@ -106,6 +106,8 @@ The Recognition and diagnostics section at the bottom of Settings exports assist
 A configuration read failure blocks editing and offers Reload settings. Failed saves remain marked Settings not saved with a retry action. Result notices hold for two seconds, then fade over half a second; hover or keyboard focus retains them. Confirmation dialogs do not close automatically.
 
 ### Diagnostic bundles
+
+The default filename is `IdentityV-diagnostics-YYYY-MM-DD-HHmmss-SSS.zip`, using the local date, time and milliseconds to distinguish exports.
 
 The centered preview lists files, total size and whether screenshots are included. Choose a ZIP destination; nothing uploads automatically. Defaults include assistant/engine state and versions, necessary environment, up to 4 MiB of the current assistant session's logs, and redacted settings. Account directories, credentials, private keys, maps and component runtimes are excluded. Sensitive fields and text containing paths, URLs or credential markers are filtered, but review logs before sharing. Screenshots require a separate selection and include only recent application-generated debug/failure images, up to 20 images / 100 MiB. Images are not text-redacted. The preview reports when the log limit was reached.
 
