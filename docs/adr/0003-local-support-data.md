@@ -15,6 +15,8 @@ Rust owns versioned settings validation, preview and atomic writes. Restoration 
 
 Diagnostics collect explicit known sources instead of recursively archiving the data directory: bounded current-session logs, redacted known settings and minimal environment. Images are separately selected. Preview freezes the files that will be written to the user-selected ZIP. No automatic upload or account/runtime collection is introduced.
 
+From 0.1.11, Rust also retains the latest journal-recognition attempt's compact stage report and lossless full-window/selected-region images in memory. A new accepted request replaces this evidence; cancellation and failure preserve the evidence already captured for that attempt. Dedicated image messages never enter text logs or frontend events. Reports are redacted and exported by default; images require the existing screenshot opt-in and share its 20-image / 100 MiB export limit. There is no recognition image directory or persistent screenshot history. An already prepared export remains a frozen copy even if another recognition starts.
+
 ## Alternatives and consequences
 
 Reusing unrestricted screen captures or archiving the entire data directory would risk unrelated personal data. A new diagnostic service or backup framework would duplicate existing process, settings and ZIP facilities. The chosen limits keep storage and exports bounded, but failure images may predate failure and text filtering cannot replace the user's review before sharing. Offline tests do not prove real capture, native dialog or game behavior.

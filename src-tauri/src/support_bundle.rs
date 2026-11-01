@@ -213,6 +213,7 @@ fn collect(
     settings: &Value,
     snapshot: &Value,
     include_images: bool,
+    recognition: Option<crate::journal_recognition::RecognitionDiagnostics>,
 ) -> Result<(Vec<(String, Vec<u8>)>, bool), String> {
     let (logs, truncated) = session_logs(&root.join("logs"), started)?;
     let environment = json!({"assistant_version":env!("CARGO_PKG_VERSION"),"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,"session_started":started,"engine":redact(snapshot,""),"logs_truncated":truncated,"privacy":"Review before sharing; screenshots can contain names or chat. No account/runtime data is included."});
@@ -228,6 +229,22 @@ fn collect(
         ),
         ("session.redacted.jsonl".into(), logs),
     ];
+    let mut image_bytes = 0;
+    let mut image_count = 0;
+    if let Some(recognition) = recognition {
+        files.push((
+            "recognition/flow.redacted.json".into(),
+            serde_json::to_vec_pretty(&redact(&recognition.report, ""))
+                .map_err(|e| e.to_string())?,
+        ));
+        if include_images {
+            for (name, bytes) in recognition.images {
+                image_bytes += bytes.len();
+                image_count += 1;
+                files.push((name, bytes));
+            }
+        }
+    }
     if include_images && root.join("debug").exists() && !is_link(&root.join("debug")) {
         let mut images = Vec::new();
         for subdirectory in ["failures", "captures"] {
@@ -246,8 +263,7 @@ fn collect(
             }
         }
         images.sort_by_key(|p| std::cmp::Reverse(fs::metadata(p).and_then(|m| m.modified()).ok()));
-        let mut total = 0;
-        for path in images.into_iter().take(20) {
+        for path in images.into_iter().take(20 - image_count) {
             let mut bytes = Vec::new();
             fs::File::open(&path)
                 .map_err(|e| e.to_string())?
@@ -255,12 +271,12 @@ fn collect(
                 .read_to_end(&mut bytes)
                 .map_err(|e| e.to_string())?;
             if bytes.len() > 20 * 1024 * 1024
-                || total + bytes.len() > 100 * 1024 * 1024
+                || image_bytes + bytes.len() > 100 * 1024 * 1024
                 || !bytes.starts_with(b"\x89PNG\r\n\x1a\n")
             {
                 continue;
             }
-            total += bytes.len();
+            image_bytes += bytes.len();
             files.push((
                 format!("images/{}", path.file_name().unwrap().to_string_lossy()),
                 bytes,
@@ -281,7 +297,8 @@ pub async fn preview_diagnostics(app: AppHandle, include_images: bool) -> Result
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<BundleState>();
         let root = crate::config::user_path()?.parent().ok_or("Missing data root")?.to_path_buf();
-        let (files,truncated) = collect(&root,state.started,&crate::config::load()?,&snapshot,include_images)?;
+        let recognition = app.state::<crate::journal_recognition::RecognitionState>().diagnostics(include_images);
+        let (files,truncated) = collect(&root,state.started,&crate::config::load()?,&snapshot,include_images,recognition)?;
         let id = uuid::Uuid::new_v4().to_string();
         let response = json!({"id":id,"files":files.iter().map(|(name,bytes)|json!({"name":name,"size":bytes.len()})).collect::<Vec<_>>(),"truncated":truncated});
         *state.prepared.lock().map_err(|e|e.to_string())? = Some(Bundle {id,files});
@@ -335,6 +352,59 @@ pub async fn export_diagnostics(app: AppHandle, id: String, path: String) -> Res
 mod tests {
     use super::*;
     #[test]
+    fn recognition_flow_is_always_exported_but_both_original_images_require_opt_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings: Value =
+            serde_json::from_str(include_str!("../../config/default.json")).unwrap();
+        let capture = crate::journal_recognition::RecognitionDiagnostics {
+            report: json!({"request_id":"attempt","status":"completed","token":"hidden-secret",
+                "steps":[{"stage":"capturing"},{"stage":"completed","keys":["rf:5"]}]}),
+            images: vec![
+                (
+                    "recognition/full.png".into(),
+                    b"\x89PNG\r\n\x1a\nfull".to_vec(),
+                ),
+                (
+                    "recognition/region.png".into(),
+                    b"\x89PNG\r\n\x1a\nregion".to_vec(),
+                ),
+            ],
+        };
+        for include in [false, true] {
+            let (files, _) = collect(
+                dir.path(),
+                Utc::now(),
+                &settings,
+                &json!({}),
+                include,
+                Some(capture.clone()),
+            )
+            .unwrap();
+            let flow = &files
+                .iter()
+                .find(|(name, _)| name == "recognition/flow.redacted.json")
+                .unwrap()
+                .1;
+            let flow = String::from_utf8_lossy(flow);
+            assert!(flow.contains("capturing") && flow.contains("rf:5"));
+            assert!(!flow.contains("hidden-secret"));
+            let images = files
+                .iter()
+                .filter(|(name, _)| name.ends_with(".png"))
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(
+                images,
+                if include {
+                    capture.images.clone()
+                } else {
+                    Vec::new()
+                }
+            );
+        }
+    }
+
+    #[test]
     fn diagnostic_bundle_uses_explicit_sources_and_redacts_nested_secrets() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir(dir.path().join("logs")).unwrap();
@@ -356,6 +426,7 @@ mod tests {
             &settings,
             &json!({}),
             false,
+            None,
         )
         .unwrap();
         assert_eq!(files.len(), 3);
@@ -408,6 +479,7 @@ mod tests {
                 &settings,
                 &json!({}),
                 include,
+                None,
             )
             .unwrap();
             assert!(!truncated);

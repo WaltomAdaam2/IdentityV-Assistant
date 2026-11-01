@@ -1,3 +1,4 @@
+import base64
 from types import SimpleNamespace
 
 import cv2
@@ -38,5 +39,22 @@ def test_one_shot_returns_candidates_and_memory_preview_without_capture_files(tm
         lambda kind, **data: events.append((kind, data)), capture=lambda config, hwnd: image[:, :, :3])
     assert result["keys"] == ["lf:1"]
     assert result["preview"].startswith("data:image/jpeg;base64,")
-    assert {data["stage"] for _, data in events} == {"capturing", "locating", "matching"}
+    assert {data["stage"] for kind, data in events if kind == "journal_recognition_progress"} == {"capturing", "locating", "matching"}
+    images = {data["image_kind"]: cv2.imdecode(np.frombuffer(base64.b64decode(data["png"]), np.uint8), cv2.IMREAD_COLOR)
+              for kind, data in events if kind == "journal_recognition_image"}
+    np.testing.assert_array_equal(images["full"], image[:, :, :3])
+    region = result["matches"][0]["region"]
+    x, y, w, h = (region[key] for key in ("x", "y", "width", "height"))
+    np.testing.assert_array_equal(images["region"], image[y:y+h, x:x+w, :3])
     assert list(tmp_path.iterdir()) == [path]
+
+
+def test_no_match_still_returns_full_capture_for_diagnostics(tmp_path):
+    frame = np.zeros((200, 300, 3), np.uint8)
+    events = []
+    result = service.run_recognition(
+        {"templates": [{"key": "lf:1", "path": str(tmp_path / "unused.png")}]}, parse_config({}),
+        lambda kind, **data: events.append((kind, data)), capture=lambda config, hwnd: frame)
+    assert result["keys"] == []
+    assert [data["image_kind"] for kind, data in events if kind == "journal_recognition_image"] == ["full"]
+    assert list(tmp_path.iterdir()) == []

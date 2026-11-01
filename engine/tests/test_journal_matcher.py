@@ -8,6 +8,7 @@ from vision.journal_matcher import (
     RecognitionCancelled, Region, _bgr, _map_surface, _query, locate_regions, match_region,
     prepare_template, recognize,
 )
+from vision import journal_matcher
 
 
 def map_image(variant: int = 0) -> np.ndarray:
@@ -63,6 +64,19 @@ def test_whole_window_localization_and_ambiguous_identities():
     matches = recognize(frame, [template, twin])
     assert {match.key for match in matches} == {"hard:lf:1", "hard:rf:1"}
     assert all(match.region.x > 450 for match in matches)
+
+
+def test_scaled_query_reuse_preserves_all_candidate_geometry(monkeypatch):
+    frame = _bgr(map_image())
+    templates = [prepare_template(str(index), map_image(index % 2)) for index in range(6)]
+    cached = recognize(frame, templates)
+    original = journal_matcher._match_query
+
+    def uncached(template, query, cancel=None, coarse_weights=None, resize=None):
+        return original(template, query, cancel)
+
+    monkeypatch.setattr(journal_matcher, "_match_query", uncached)
+    assert recognize(frame, templates) == cached
 
 
 def test_no_map_and_cancellation_are_not_forced_matches():

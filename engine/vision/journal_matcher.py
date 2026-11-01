@@ -7,6 +7,7 @@ distance/coverage heuristics, not probabilities.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import OrderedDict
 from threading import Event
 from typing import Callable, Iterable
 
@@ -179,7 +180,7 @@ class Match:
 
 
 def _weights(edges: np.ndarray, scale: float) -> np.ndarray:
-    return cv2.resize(edges.astype(np.float32) / 255,
+    return cv2.resize(edges,
                       (max(1, round(edges.shape[1] * scale)), max(1, round(edges.shape[0] * scale))),
                       interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
 
@@ -246,22 +247,34 @@ def _query(image: np.ndarray, region: Region) -> tuple[np.ndarray, np.ndarray, R
     if complexity < 16:
         return None
     visible = Region(region.x + x, region.y + y, width, height)
-    return edges, explored, visible
+    # Normalize once per region, not for every scale of every candidate map.
+    return edges.astype(np.float32) / 255, explored, visible
 
 
-def _match_query(template: Template, query: tuple[np.ndarray, np.ndarray, Region],
-                 cancel: Event | None = None) -> Match | None:
-    edges, explored, visible = query
-    coarse = template.coarse_distance
-    seeds: list[tuple[float, float, int, int]] = []
+def _coarse_weights(edges: np.ndarray, cancel: Event | None = None):
+    # These small query images are identical for every map template. Their
+    # geometrically increasing areas total about 1 MiB per proposed region.
+    samples = []
     for scale in np.exp2(np.arange(-24, 25) / 8):
         _check(cancel)
         h, w = (max(1, round(length * float(scale) / 4)) for length in edges.shape)
-        if min(h, w) < 10 or h > coarse.shape[0] or w > coarse.shape[1]:
+        if min(h, w) < 10 or max(h, w) > TEMPLATE_SIDE // 4:
             continue
         weights = _weights(edges, float(scale) / 4)
         mass = float(weights.sum())
-        if mass < 6:
+        if mass >= 6:
+            samples.append((float(scale), weights, mass))
+    return samples
+
+
+def _match_query(template: Template, query: tuple[np.ndarray, np.ndarray, Region],
+                 cancel: Event | None = None, coarse_weights=None, resize=_weights) -> Match | None:
+    edges, explored, visible = query
+    coarse = template.coarse_distance
+    seeds: list[tuple[float, float, int, int]] = []
+    for scale, weights, mass in (_coarse_weights(edges, cancel) if coarse_weights is None else coarse_weights):
+        _check(cancel)
+        if weights.shape[0] > coarse.shape[0] or weights.shape[1] > coarse.shape[1]:
             continue
         costs = cv2.matchTemplate(coarse, weights, cv2.TM_CCORR) / mass
         value, _, location, _ = cv2.minMaxLoc(costs)
@@ -274,7 +287,7 @@ def _match_query(template: Template, query: tuple[np.ndarray, np.ndarray, Region
             th, tw = template.distance.shape
             if h > th or w > tw:
                 continue
-            weights = _weights(edges, float(scale))
+            weights = resize(edges, float(scale))
             left, top = max(0, seed_x - 12), max(0, seed_y - 12)
             right, bottom = min(tw, seed_x + w + 12), min(th, seed_y + h + 12)
             area = template.distance[top:bottom, left:right]
@@ -321,6 +334,25 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
             queries.append(query)
     if not queries:
         return []
+    samples = [_coarse_weights(query[0], cancel) for query in queries]
+    # Many templates select the same refinement scales. Cache by actual output
+    # dimensions/interpolation, with a byte bound rather than a map-count bound.
+    # The cache belongs to this call and is released on completion/cancellation.
+    resized = OrderedDict()
+    resized_bytes = 0
+
+    def resize(edges, scale):
+        nonlocal resized_bytes
+        width, height = (max(1, round(length * scale)) for length in edges.shape[::-1])
+        key = (id(edges), width, height, scale < 1)
+        weights = resized.pop(key, None)
+        if weights is None:
+            weights = _weights(edges, scale)
+            resized_bytes += weights.nbytes
+        resized[key] = weights
+        while resized_bytes > 32 * 1024 * 1024:
+            resized_bytes -= resized.popitem(last=False)[1].nbytes
+        return weights
     # Templates may be streamed from disk so a large library does not retain
     # every decoded image and distance field at once.
     found: dict[str, Match] = {}
@@ -329,8 +361,8 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
         _check(cancel)
         if progress:
             progress("matching", index, template_count)
-        for query in queries:
-            match = _match_query(template, query, cancel)
+        for query, coarse_weights in zip(queries, samples):
+            match = _match_query(template, query, cancel, coarse_weights, resize)
             if match is not None:
                 previous = found.get(match.key)
                 # When both minimap and expanded map match, prefer substantially

@@ -9,6 +9,7 @@ import base64
 import json
 import sys
 from pathlib import Path
+from time import perf_counter
 from typing import Callable
 
 import cv2
@@ -37,11 +38,28 @@ def capture_window(config: EngineConfig, window_handle: int | None = None) -> np
 
 def run_recognition(request: dict, config: EngineConfig,
                     emit: Callable[..., None], capture=capture_window) -> dict:
+    started = perf_counter()
+
+    def progress(stage, completed, total):
+        emit("journal_recognition_progress", stage=stage, completed=completed, total=total,
+             elapsed_ms=round((perf_counter() - started) * 1000))
+
+    def diagnostic_image(kind, image):
+        # Lossless original pixels stay in the desktop's latest-attempt memory.
+        # They are not logs and are only exported after screenshot opt-in.
+        ok, encoded = cv2.imencode(".png", image, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+        if ok:
+            emit("journal_recognition_image", image_kind=kind,
+                 width=image.shape[1], height=image.shape[0],
+                 elapsed_ms=round((perf_counter() - started) * 1000),
+                 png=base64.b64encode(encoded).decode("ascii"))
+
     items = request.get("templates")
     if not isinstance(items, list) or not items:
         raise ValueError("当前分类没有可识别的一楼地图 / No eligible first-floor maps in this category")
-    emit("journal_recognition_progress", stage="capturing", completed=0, total=0)
+    progress("capturing", 0, 0)
     frame = capture(config, request.get("window_handle"))
+    diagnostic_image("full", frame)
     warnings: list[str] = []
 
     def templates():
@@ -60,12 +78,11 @@ def run_recognition(request: dict, config: EngineConfig,
             except (OSError, ValueError, cv2.error) as error:
                 warnings.append(f"{item['key']}: {error}")
 
-    matches = recognize(frame, templates(), template_count=len(items),
-                        progress=lambda stage, completed, total: emit(
-                            "journal_recognition_progress", stage=stage, completed=completed, total=total))
+    matches = recognize(frame, templates(), template_count=len(items), progress=progress)
     preview = None
     if matches:
         crop = matches[0].region.crop(frame)
+        diagnostic_image("region", crop)
         ratio = min(1, 600 / max(crop.shape[:2]))
         crop = cv2.resize(crop, (max(1, round(crop.shape[1] * ratio)),
                                  max(1, round(crop.shape[0] * ratio))))
@@ -73,6 +90,7 @@ def run_recognition(request: dict, config: EngineConfig,
         if ok:
             preview = "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii")
     return {"keys": [match.key for match in matches], "preview": preview, "warnings": warnings,
+            "elapsed_ms": round((perf_counter() - started) * 1000),
             "matches": [{"key": match.key, "region": vars(match.region), "geometry_cost": match.score,
                          "coverage": match.coverage, "unexplained": match.unexplained}
                         for match in matches]}
