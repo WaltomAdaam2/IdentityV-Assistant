@@ -172,6 +172,13 @@ impl EngineSupervisor {
     }
 
     pub async fn run_diagnostic(&self, app: AppHandle, command: Value) -> Result<(), String> {
+        crate::logs::record(
+            &app,
+            "info",
+            "capture.diagnostics",
+            "开始捕捉诊断 / Starting capture diagnostics",
+            json!({"command":command["type"],"request_id":command["request_id"]}),
+        );
         let result_event = match command["type"].as_str() {
             Some("detect_window") => "window_diagnostics",
             Some("capture_frame") => "debug_frame",
@@ -188,14 +195,21 @@ impl EngineSupervisor {
         let (generation, sent) = {
             let _lifecycle = self.lifecycle.lock().await;
             let was_running = self.has_process().await;
-            self.start_locked(app).await?;
+            self.start_locked(app.clone()).await?;
+            crate::logs::record(
+                &app,
+                "debug",
+                "capture.diagnostics",
+                "诊断服务就绪 / Diagnostic service ready",
+                json!({"request_id":request_id,"started_for_diagnostic":!was_running}),
+            );
             let generation = {
                 let mut state = self.inner.lock().await;
                 if !was_running {
                     state.diagnostic_autostop_generation = Some(state.process_generation);
                 }
                 state.diagnostic = Some(PendingDiagnostic {
-                    request_id,
+                    request_id: request_id.clone(),
                     result_event,
                     sender,
                 });
@@ -212,6 +226,17 @@ impl EngineSupervisor {
             },
         };
         let cleanup = self.finish_diagnostic(generation).await;
+        crate::logs::record(
+            &app,
+            if result.is_ok() && cleanup.is_ok() {
+                "info"
+            } else {
+                "error"
+            },
+            "capture.diagnostics",
+            "捕捉诊断结束 / Capture diagnostics ended",
+            json!({"request_id":request_id,"error":result.as_ref().err(),"cleanup_error":cleanup.as_ref().err()}),
+        );
         result.and(cleanup)
     }
 

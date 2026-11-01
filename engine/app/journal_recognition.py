@@ -45,14 +45,21 @@ def run_recognition(request: dict, config: EngineConfig,
              elapsed_ms=round((perf_counter() - started) * 1000))
 
     def diagnostic_image(kind, image):
-        # Lossless original pixels stay in the desktop's latest-attempt memory.
-        # They are not logs and are only exported after screenshot opt-in.
+        # Dedicated image messages are persisted separately, never as text logs.
         ok, encoded = cv2.imencode(".png", image, [cv2.IMWRITE_PNG_COMPRESSION, 1])
         if ok:
             emit("journal_recognition_image", image_kind=kind,
                  width=image.shape[1], height=image.shape[0],
                  elapsed_ms=round((perf_counter() - started) * 1000),
                  png=base64.b64encode(encoded).decode("ascii"))
+
+    def diagnostic(details):
+        emit("journal_recognition_diagnostic", **details)
+
+    def preview_region(region):
+        value = make_preview(region.crop(frame))
+        if value:
+            emit("journal_recognition_preview", preview=value, region=vars(region))
 
     items = request.get("templates")
     if not isinstance(items, list) or not items:
@@ -63,7 +70,8 @@ def run_recognition(request: dict, config: EngineConfig,
     warnings: list[str] = []
 
     def templates():
-        for item in items:
+        for index, item in enumerate(items):
+            template_started = perf_counter()
             try:
                 path = Path(item["path"])
                 # Rust supplies paths validated against the imported-pack root.
@@ -74,26 +82,35 @@ def run_recognition(request: dict, config: EngineConfig,
                 image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
                 if image is None:
                     raise ValueError("image could not be decoded")
-                yield prepare_template(item["key"], image)
+                template = prepare_template(item["key"], image)
+                diagnostic({"stage": "template_prepared", "key": item["key"], "image": f"template_{index}.png",
+                            "elapsed_ms": round((perf_counter() - template_started) * 1000)})
+                diagnostic_image(f"template_{index}", template.edges)
+                yield template
             except (OSError, ValueError, cv2.error) as error:
                 warnings.append(f"{item['key']}: {error}")
+                diagnostic({"stage": "template_rejected", "key": item["key"], "reason": str(error)})
 
-    matches = recognize(frame, templates(), template_count=len(items), progress=progress)
+    matches = recognize(frame, templates(), template_count=len(items), progress=progress,
+                        diagnostic=diagnostic, image=diagnostic_image, preview=preview_region)
     preview = None
     if matches:
         crop = matches[0].region.crop(frame)
         diagnostic_image("region", crop)
-        ratio = min(1, 600 / max(crop.shape[:2]))
-        crop = cv2.resize(crop, (max(1, round(crop.shape[1] * ratio)),
-                                 max(1, round(crop.shape[0] * ratio))))
-        ok, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        if ok:
-            preview = "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii")
+        preview = make_preview(crop)
     return {"keys": [match.key for match in matches], "preview": preview, "warnings": warnings,
             "elapsed_ms": round((perf_counter() - started) * 1000),
             "matches": [{"key": match.key, "region": vars(match.region), "geometry_cost": match.score,
                          "coverage": match.coverage, "unexplained": match.unexplained}
                         for match in matches]}
+
+
+def make_preview(crop):
+    ratio = min(1, 600 / max(crop.shape[:2]))
+    crop = cv2.resize(crop, (max(1, round(crop.shape[1] * ratio)),
+                             max(1, round(crop.shape[0] * ratio))))
+    ok, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii") if ok else None
 
 
 def main(config: EngineConfig) -> int:

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections import OrderedDict
 from threading import Event
+from time import perf_counter
 from typing import Callable, Iterable
 
 import cv2
@@ -44,7 +45,7 @@ def _bgr(image: np.ndarray) -> np.ndarray:
     return image.copy()
 
 
-def _features(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _features(image: np.ndarray) -> np.ndarray:
     image = _bgr(image)
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     annotations = ((hsv[:, :, 1] >= 120) & (hsv[:, :, 2] >= 110)).astype(np.uint8)
@@ -53,12 +54,7 @@ def _features(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     # behind it. This also avoids expensive inpainting of a colorful game scene.
     edges = cv2.Canny(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), 50, 150)
     edges[annotations != 0] = 0
-    explored = ((hsv[:, :, 2] > 42)
-                | ((hsv[:, :, 1] > 20) & (hsv[:, :, 2] > 32))).astype(np.uint8)
-    explored = cv2.morphologyEx(explored, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
-    explored = cv2.dilate(explored, np.ones((7, 7), np.uint8))
-    explored[annotations != 0] = 0
-    return edges, explored
+    return edges
 
 
 def _map_surface(image: np.ndarray) -> np.ndarray:
@@ -88,7 +84,7 @@ def prepare_template(key: str, image: np.ndarray) -> Template:
     image = cv2.resize(image, (max(1, round(image.shape[1] * ratio)),
                               max(1, round(image.shape[0] * ratio))),
                        interpolation=cv2.INTER_AREA if ratio < 1 else cv2.INTER_LINEAR)
-    edges, _ = _features(image)
+    edges = _features(image)
     if np.count_nonzero(edges) < 100:
         raise ValueError("Map template contains too little visible structure")
     distance = cv2.distanceTransform(255 - edges, cv2.DIST_L2, 3)
@@ -187,35 +183,56 @@ def _weights(edges: np.ndarray, scale: float) -> np.ndarray:
 
 
 def _score(template: Template, weights: np.ndarray, explored: np.ndarray,
-           x: int, y: int, region: Region, scale: float = 1.0) -> Match | None:
+           x: int, y: int, region: Region, scale: float = 1.0, audit=None, fields=None) -> Match | None:
+    metrics = {"scale": float(scale), "x": x, "y": y}
+
+    def outcome(reason):
+        if audit is not None:
+            audit["attempts"] += 1
+            audit["outcomes"][reason] = audit["outcomes"].get(reason, 0) + 1
+            cost = metrics.get("geometry_cost", metrics.get("forward_error"))
+            if cost is not None and (audit["closest"] is None or cost < audit["closest"]["cost"]):
+                audit["closest"] = {**metrics, "cost": cost, "reason": reason}
     height, width = weights.shape
     patch = template.distance[y:y + height, x:x + width]
     mass = float(weights.sum())
     if mass < 100 or patch.shape != weights.shape:
+        outcome("insufficient_edges")
         return None
     # Express error in captured-image pixels. A small search scale must not
     # turn an entire corridor network into a tolerably fuzzy single room.
     forward = float((patch * weights).sum() / mass) / scale
     coverage = float(weights[patch <= 3 * scale].sum() / mass)
+    metrics.update(forward_error=forward, coverage=coverage)
     if forward > 2.5 or coverage < 0.6:
+        outcome("geometry_distance" if forward > 2.5 else "coverage")
         return None
-    trusted = cv2.resize(explored, (width, height), interpolation=cv2.INTER_NEAREST) != 0
+    cached = fields(weights, explored, scale) if fields else None
+    trusted = cached[0] if cached else cv2.resize(explored, (width, height), interpolation=cv2.INTER_NEAREST) != 0
     expected = (template.edges[y:y + height, x:x + width] != 0) & trusted
     if np.count_nonzero(expected) < 100:
+        outcome("insufficient_template_edges")
         return None
-    query_distance = cv2.distanceTransform((weights < 0.2).astype(np.uint8) * 255, cv2.DIST_L2, 3)
+    query_distance = cached[1] if cached else cv2.distanceTransform((weights < 0.2).astype(np.uint8) * 255, cv2.DIST_L2, 3)
     unexplained = float(np.mean(query_distance[expected] > 6 * scale))
     score = forward + 3 * unexplained
+    metrics.update(unexplained=unexplained, geometry_cost=score)
     if unexplained > 0.5 or score > 3:
+        outcome("unexplained_structure" if unexplained > 0.5 else "geometry_cost")
         return None
+    outcome("accepted")
     return Match(template.key, score, coverage, unexplained, region, mass)
 
 
-def _query(image: np.ndarray, region: Region) -> tuple[np.ndarray, np.ndarray, Region] | None:
+def _query(image: np.ndarray, region: Region, audit=None) -> tuple[np.ndarray, np.ndarray, Region] | None:
+    def reason(value, **metrics):
+        if audit is not None:
+            audit.update(reason=value, **metrics)
     surface = _map_surface(image)
     if np.count_nonzero(surface) < max(120, surface.size * 0.04):
+        reason("insufficient_map_color", surface_pixels=int(np.count_nonzero(surface)))
         return None
-    edges, _ = _features(image)
+    edges = _features(image)
     explored = cv2.dilate(surface, np.ones((7, 7), np.uint8))
     edges[explored == 0] = 0
     # Avoid treating a panel's outer rectangular rim as map geometry.
@@ -223,11 +240,13 @@ def _query(image: np.ndarray, region: Region) -> tuple[np.ndarray, np.ndarray, R
     edges[:, :2] = edges[:, -2:] = 0
     points = cv2.findNonZero(edges)
     if points is None or len(points) < 100:
+        reason("insufficient_edges", edge_pixels=0 if points is None else len(points))
         return None
     x, y, width, height = cv2.boundingRect(points)
     # Padding/dilation can make an icon-sized fragment pass the proposal gate.
     # Apply the same minimum to the actual geometry before matching it.
     if min(width, height) < MIN_REGION_SIDE:
+        reason("small_visible_region", width=width, height=height)
         return None
     edges = edges[y:y + height, x:x + width]
     explored = explored[y:y + height, x:x + width]
@@ -236,6 +255,7 @@ def _query(image: np.ndarray, region: Region) -> tuple[np.ndarray, np.ndarray, R
     corners = cv2.goodFeaturesToTrack(edges, maxCorners=80, qualityLevel=0.05,
                                      minDistance=max(5, min(width, height) * 0.025))
     if corners is None or len(corners) < 8:
+        reason("insufficient_corners", corners=0 if corners is None else len(corners))
         return None
     contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     complexity = 0
@@ -248,8 +268,10 @@ def _query(image: np.ndarray, region: Region) -> tuple[np.ndarray, np.ndarray, R
         # Ignore tiny text and the four corners contributed by each rectangle.
         complexity += max(0, len(cv2.approxPolyDP(contour, epsilon, True)) - 4)
     if complexity < 16:
+        reason("insufficient_structure", complexity=complexity)
         return None
     visible = Region(region.x + x, region.y + y, width, height)
+    reason("accepted", region=vars(visible), corners=len(corners), complexity=complexity)
     # Normalize once per region, not for every scale of every candidate map.
     return edges.astype(np.float32) / 255, explored, visible
 
@@ -271,7 +293,7 @@ def _coarse_weights(edges: np.ndarray, cancel: Event | None = None):
 
 
 def _match_query(template: Template, query: tuple[np.ndarray, np.ndarray, Region],
-                 cancel: Event | None = None, coarse_weights=None, resize=_weights) -> Match | None:
+                 cancel: Event | None = None, coarse_weights=None, resize=_weights, audit=None, fields=None) -> Match | None:
     edges, explored, visible = query
     coarse = template.coarse_distance
     seeds: list[tuple[float, float, int, int]] = []
@@ -298,7 +320,7 @@ def _match_query(template: Template, query: tuple[np.ndarray, np.ndarray, Region
                 continue
             costs = cv2.matchTemplate(area, weights, cv2.TM_CCORR)
             _, _, location, _ = cv2.minMaxLoc(costs)
-            found = _score(template, weights, explored, left + location[0], top + location[1], visible, float(scale))
+            found = _score(template, weights, explored, left + location[0], top + location[1], visible, float(scale), audit, fields)
             if found is not None and (best is None or found.score < best.score):
                 best = found
     return best
@@ -313,7 +335,7 @@ def match_region(template: Template, image: np.ndarray, region: Region,
 
 def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | None = None,
               progress: Callable[[str, int, int], None] | None = None,
-              template_count: int = 0) -> list[Match]:
+              template_count: int = 0, diagnostic=None, image=None, preview=None) -> list[Match]:
     _check(cancel)
     if progress:
         progress("locating", 0, 0)
@@ -322,9 +344,21 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
     include_whole = whole in regions
     regions = [region for region in regions if region != whole]
     queries = []
+    def inspect(region):
+        audit = {"proposal": vars(region)}
+        started = perf_counter()
+        query = _query(region.crop(frame), region, audit)
+        if diagnostic:
+            diagnostic({"stage": "region_check", **audit, "elapsed_ms": round((perf_counter() - started) * 1000)})
+        if query is not None and image:
+            index = len(queries)
+            image(f"region_{index}", query[2].crop(frame))
+            image(f"edges_{index}", (query[0] * 255).astype(np.uint8))
+            image(f"mask_{index}", query[1] * 255)
+        return query
     for region in regions:
         _check(cancel)
-        query = _query(region.crop(frame), region)
+        query = inspect(region)
         if query is not None:
             queries.append(query)
         # Discard invalid HUD regions before applying the matching work bound.
@@ -332,11 +366,13 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
             break
     if include_whole:
         _check(cancel)
-        query = _query(frame, whole)
+        query = inspect(whole)
         if query is not None:
             queries.append(query)
     if not queries:
         return []
+    if preview:
+        preview(queries[0][2])
     samples = [_coarse_weights(query[0], cancel) for query in queries]
     # Many templates select the same refinement scales. Cache by actual output
     # dimensions/interpolation, with a byte bound rather than a map-count bound.
@@ -344,28 +380,46 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
     resized = OrderedDict()
     resized_bytes = 0
 
-    def resize(edges, scale):
+    def cached(key, create):
         nonlocal resized_bytes
-        width, height = (max(1, round(length * scale)) for length in edges.shape[::-1])
-        key = (id(edges), width, height, scale < 1)
-        weights = resized.pop(key, None)
-        if weights is None:
-            weights = _weights(edges, scale)
-            resized_bytes += weights.nbytes
-        resized[key] = weights
+        values = resized.pop(key, None)
+        if values is None:
+            values = create()
+            resized_bytes += sum(value.nbytes for value in values)
+        resized[key] = values
         while resized_bytes > 32 * 1024 * 1024:
-            resized_bytes -= resized.popitem(last=False)[1].nbytes
-        return weights
+            resized_bytes -= sum(value.nbytes for value in resized.popitem(last=False)[1])
+        return values
+
+    def resize(edges, scale):
+        width, height = (max(1, round(length * scale)) for length in edges.shape[::-1])
+        return cached(("weights", id(edges), width, height, scale < 1), lambda: (_weights(edges, scale),))[0]
+
+    def fields(weights, explored, scale):
+        height, width = weights.shape
+        return cached(("fields", id(explored), width, height, scale < 1), lambda: (
+            cv2.resize(explored, (width, height), interpolation=cv2.INTER_NEAREST) != 0,
+            cv2.distanceTransform((weights < 0.2).astype(np.uint8) * 255, cv2.DIST_L2, 3)))
     # Templates may be streamed from disk so a large library does not retain
     # every decoded image and distance field at once.
     found: dict[str, Match] = {}
     completed = 0
+    shown_region = queries[0][2]
     for index, template in enumerate(templates):
         _check(cancel)
         if progress:
             progress("matching", index, template_count)
-        for query, coarse_weights in zip(queries, samples):
-            match = _match_query(template, query, cancel, coarse_weights, resize)
+        for region_index, (query, coarse_weights) in enumerate(zip(queries, samples)):
+            audit = {"attempts": 0, "outcomes": {}, "closest": None}
+            started = perf_counter()
+            match = _match_query(template, query, cancel, coarse_weights, resize, audit, fields)
+            if diagnostic:
+                diagnostic({"stage": "template_region", "key": template.key, "region_index": region_index,
+                            "region": vars(query[2]), **audit,
+                            "elapsed_ms": round((perf_counter() - started) * 1000),
+                            "accepted": match is not None,
+                            "match": None if match is None else {"geometry_cost": match.score,
+                                "coverage": match.coverage, "unexplained": match.unexplained}})
             if match is not None:
                 previous = found.get(match.key)
                 # When both minimap and expanded map match, prefer substantially
@@ -373,6 +427,11 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
                 if previous is None or match.evidence > previous.evidence * 1.25 or (
                         match.evidence >= previous.evidence / 1.25 and match.score < previous.score):
                     found[match.key] = match
+        if found and preview:
+            leading = min(found.values(), key=lambda match: (match.score, match.key))
+            if leading.region != shown_region:
+                shown_region = leading.region
+                preview(shown_region)
         completed = index + 1
     _check(cancel)
     if progress:

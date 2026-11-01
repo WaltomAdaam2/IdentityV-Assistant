@@ -525,11 +525,35 @@ fn validate_zip_source(source: &Path) -> Result<(), String> {
     }
 }
 #[tauri::command]
-pub async fn journal_import_pack(source_path: String) -> Result<JournalLibrary, String> {
-    validate_zip_source(Path::new(&source_path))?;
-    tauri::async_runtime::spawn_blocking(move || import(&packs_root()?, Path::new(&source_path)))
+pub async fn journal_import_pack(
+    app: tauri::AppHandle,
+    source_path: String,
+) -> Result<JournalLibrary, String> {
+    let operation = uuid::Uuid::new_v4().to_string();
+    crate::logs::record(
+        &app,
+        "info",
+        "journal.import",
+        "开始导入地图包 / Importing map pack",
+        serde_json::json!({"operation":operation}),
+    );
+    let outcome = async {
+        validate_zip_source(Path::new(&source_path))?;
+        tauri::async_runtime::spawn_blocking(move || {
+            import(&packs_root()?, Path::new(&source_path))
+        })
         .await
         .map_err(|e| e.to_string())?
+    }
+    .await;
+    crate::logs::record(
+        &app,
+        if outcome.is_ok() { "info" } else { "error" },
+        "journal.import",
+        "地图包导入结果 / Map import result",
+        serde_json::json!({"operation":operation,"success":outcome.is_ok(),"error":outcome.as_ref().err()}),
+    );
+    outcome
 }
 #[tauri::command]
 pub async fn journal_read_image(pack_id: String, path: String) -> Result<String, String> {

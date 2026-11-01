@@ -12,7 +12,15 @@ pub async fn save_settings(app: tauri::AppHandle, settings: Value) -> Result<(),
         let _guard = crate::support::SETTINGS_OPERATION
             .lock()
             .map_err(|e| e.to_string())?;
-        crate::desktop::save(&app, &settings)
+        crate::desktop::save(&app, &settings).inspect_err(|error| {
+            crate::logs::record(
+                &app,
+                "error",
+                "settings",
+                "设置保存失败 / Settings save failed",
+                serde_json::json!({"error":error}),
+            );
+        })
     })
     .await
     .map_err(|e| e.to_string())?

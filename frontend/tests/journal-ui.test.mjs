@@ -28,11 +28,22 @@ test("recognition updates existing grid, keeps same-number doors distinct, and o
     wait("!!window.__launcherTest.finishRecognition");
     evaluate("window.__launcherTest.emitRecognitionProgress({request_id:window.__launcherTest.recognitionRequest.requestId,stage:'matching',completed:2,total:8})");
     browser("wait", "--text", "正在匹配地图… 2 / 8");
+    evaluate(`window.__launcherTest.emitRecognitionPreview({request_id:window.__launcherTest.recognitionRequest.requestId,preview:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="600"><rect width="200" height="600" fill="tan"/></svg>')})`);
+    wait("!!document.querySelector('.journal-matching-preview img')?.complete");
+    assert.equal(evaluate("(()=>{const p=document.querySelector('.journal-matching-preview').getBoundingClientRect(),i=document.querySelector('.journal-matching-preview img').getBoundingClientRect();return i.top>=p.top && i.bottom<=p.bottom && i.left>=p.left && i.right<=p.right && Math.abs((i.left+i.right)-(p.left+p.right))<2})()"),true);
     evaluate("window.__launcherTest.finishRecognition({keys:['rf:1','lf:1'],preview:'data:image/png;base64,AA==',warnings:[]})");
     wait("document.querySelectorAll('.journal-map').length===2");
     assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.journal-map-name'),e=>e.textContent)"), ["右前 · 地图 1", "左前 · 地图 1"]);
     assert.equal(evaluate("!!document.querySelector('.journal-detail')"), false);
     assert.equal(evaluate("document.querySelector('.journal-region-preview').open"), false);
+    click("反馈并保存至诊断包");
+    browser("find", "role", "radio", "check", "--name", "不正确", "--exact");
+    browser("select", ".journal-feedback-map select", "lf:1"); click("保存反馈");
+    wait("!document.querySelector('#journal-feedback-title')");
+    assert.deepEqual(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='journal_save_feedback').args"),{requestId:evaluate("window.__launcherTest.recognitionRequest.requestId"),verdict:"incorrect",correctKey:"lf:1"});
+    click("反馈并保存至诊断包");
+    assert.equal(evaluate("document.querySelector('input[value=incorrect]').checked"),true); click("关闭反馈");
+    wait("!document.querySelector('#journal-feedback-title')");
     click("查看右前 · 地图 1"); click("2F");
     wait("window.__launcherTest.calls.some(c=>c.command==='journal_read_image' && c.args.path==='right-upper.png')");
     assert.equal(evaluate("!!document.querySelector('.journal-detail')"), true);
@@ -54,6 +65,7 @@ test("filter changes and page leave cancel recognition and discard late results"
     evaluate("window.__lateRecognition=window.__launcherTest.finishRecognition");
     click("噩梦");
     wait("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition')");
+    assert.equal(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='journal_cancel_recognition').args.reason"),"filters_changed");
     evaluate("window.__lateRecognition({keys:['rf:1'],preview:null,warnings:[]})");
     assert.equal(evaluate("!!document.querySelector('.journal-recognition')"), false);
     click("困难"); click("识别一楼地图");
@@ -86,6 +98,8 @@ test("diagnostic screenshot selection persists through navigation and a fresh se
     wait("window.__launcherTest.savedSettings?.app.diagnostic_images === true");
     click("加页手记"); wait("!!document.querySelector('.journal')"); click("设置"); wait("!!document.querySelector('.support-panel')");
     assert.equal(evaluate("Array.from(document.querySelectorAll('.setting-row')).find(e=>e.textContent.includes('诊断包包含截图')).querySelector('input').checked"), true);
+    click("日志文件"); click("截图文件");
+    assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='open_screenshots_directory')"),true);
     evaluate("sessionStorage.setItem('journal-test-settings',JSON.stringify(window.__launcherTest.savedSettings))");
     browser("reload"); click("设置");
     wait("!!document.querySelector('.support-panel')");
@@ -122,23 +136,29 @@ test("auto-entry opens best match once, keeps background focus, and supports a n
   } finally { browser("close"); }
 });
 
-test("map dragging remembers position, clamps edges, leaves controls clickable and resets to center", () => {
+test("map dragging remembers position, clamps edges, and keeps position presets selected until moved", () => {
   try {
     setup(); click("识别一楼地图"); wait("!!window.__launcherTest.finishRecognition");
     evaluate("window.__launcherTest.finishRecognition({keys:['rf:1','lf:1'],preview:null,warnings:[]})");
     click("查看右前 · 地图 1"); wait("!!document.querySelector('.journal-detail img')"); click("进入地图");
     wait("!!document.querySelector('.journal-preview-map img')?.complete");
+    assert.equal(evaluate("document.querySelector('.journal-preview-positions button[aria-pressed=true]').textContent"),"居中");
+    click("左上"); wait("window.__launcherTest.savedSettings?.journal.preview_position.preset==='top_left'");
+    click("左上");
+    assert.equal(evaluate("document.querySelector('.journal-preview-positions button[aria-pressed=true]').textContent"),"左上");
+    click("居中");
     const rect = evaluate("(()=>{const r=document.querySelector('.journal-preview-map').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()");
     browser("mouse", "move", String(rect.x), String(rect.y)); browser("mouse", "down");
     browser("mouse", "move", "1900", "1200"); browser("mouse", "up");
     wait("window.__launcherTest.savedSettings?.journal.preview_position.x > 0.5");
+    assert.equal(evaluate("document.querySelectorAll('.journal-preview-positions button[aria-pressed=true]').length"),0);
     const position = evaluate("window.__launcherTest.savedSettings.journal.preview_position");
     const bounds = () => evaluate("(()=>{const r=document.querySelector('.journal-preview-map').getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight}})()");
     const moved = bounds();
     assert.ok(moved.x >= 15.5 && moved.y >= 15.5 && moved.right <= moved.width - 15.5 && moved.bottom <= moved.height - 15.5);
     assert.equal(evaluate("(()=>{const e=document.querySelector('.journal-preview-floors button[aria-pressed=true]'),r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()"), true);
     evaluate(`window.__launcherTest.mapImage='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200"><rect width="800" height="200" fill="tan"/></svg>')`);
-    browser("click", ".journal-full-preview .journal-floor-switch button:last-child");
+    browser("click", ".journal-preview-floors button:last-child");
     wait("document.querySelector('.journal-full-preview img')?.naturalWidth===800");
     assert.deepEqual(evaluate("window.__launcherTest.savedSettings.journal.preview_position"), position);
     browser("click", ".journal-preview-map");
@@ -151,13 +171,17 @@ test("map dragging remembers position, clamps edges, leaves controls clickable a
     assert.ok(changed.x >= 15.5 && changed.y >= 15.5 && changed.right <= changed.width - 15.5 && changed.bottom <= changed.height - 15.5);
     evaluate("document.querySelector('.journal-preview-map').focus()"); browser("press", "ArrowUp");
     wait(`window.__launcherTest.savedSettings.journal.preview_position.y < ${position.y}`);
-    click("重置地图位置");
+    click("右下"); wait("window.__launcherTest.savedSettings.journal.preview_position.preset==='bottom_right'");
+    const anchored = bounds();
+    assert.ok(Math.abs(anchored.right-anchored.width+16)<1 && Math.abs(anchored.bottom-anchored.height+16)<1);
+    click("居中");
     wait("window.__launcherTest.savedSettings.journal.preview_position.x===0.5 && window.__launcherTest.savedSettings.journal.preview_position.y===0.5");
     const reset = bounds();
     assert.ok(Math.abs((reset.x + reset.right) / 2 - reset.width / 2) < 1);
     assert.ok(Math.abs((reset.y + reset.bottom) / 2 - reset.height / 2) < 1);
     evaluate("document.querySelector('.journal-preview-map').focus()"); browser("press", "Shift+ArrowDown");
     wait("window.__launcherTest.savedSettings.journal.preview_position.y > 0.5");
+    assert.equal(evaluate("document.querySelectorAll('.journal-preview-positions button[aria-pressed=true]').length"),0);
     const restoredPosition = evaluate("window.__launcherTest.savedSettings.journal.preview_position");
     evaluate("sessionStorage.setItem('journal-test-settings',JSON.stringify(window.__launcherTest.savedSettings))");
     browser("reload");

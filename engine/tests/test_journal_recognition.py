@@ -46,6 +46,15 @@ def test_one_shot_returns_candidates_and_memory_preview_without_capture_files(tm
     region = result["matches"][0]["region"]
     x, y, w, h = (region[key] for key in ("x", "y", "width", "height"))
     np.testing.assert_array_equal(images["region"], image[y:y+h, x:x+w, :3])
+    assert any(name.startswith("edges_") for name in images)
+    assert any(name.startswith("mask_") for name in images)
+    assert "template_0" in images
+    preview_at = next(i for i, (kind, _) in enumerate(events) if kind == "journal_recognition_preview")
+    matching_at = next(i for i, (kind, data) in enumerate(events) if kind == "journal_recognition_progress" and data["stage"] == "matching")
+    assert preview_at < matching_at
+    audits = [data for kind, data in events if kind == "journal_recognition_diagnostic"]
+    assert any(data["stage"] == "region_check" for data in audits)
+    assert any(data["stage"] == "template_region" and data["attempts"] > 0 and data["closest"] for data in audits)
     assert list(tmp_path.iterdir()) == [path]
 
 
@@ -58,3 +67,40 @@ def test_no_match_still_returns_full_capture_for_diagnostics(tmp_path):
     assert result["keys"] == []
     assert [data["image_kind"] for kind, data in events if kind == "journal_recognition_image"] == ["full"]
     assert list(tmp_path.iterdir()) == []
+
+
+def test_offline_replay_uses_exported_pixels_templates_and_feedback(tmp_path):
+    import importlib.util
+    import json
+    from pathlib import Path
+    from zipfile import ZipFile
+    spec = importlib.util.spec_from_file_location("recognition_replay", Path(__file__).resolve().parents[2] / "scripts/replay_recognition.py")
+    replay = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(replay)
+    template = map_image()
+    path = tmp_path / "template.png"
+    path.write_bytes(cv2.imencode(".png", template)[1].tobytes())
+    for name, frame in [("matched", template[:, :, :3]), ("no-region", np.zeros((240,320,3),np.uint8))]:
+        events = []
+        result = service.run_recognition({"templates":[{"key":"lf:1","path":str(path)}]}, parse_config({}),
+            lambda kind, **data: events.append((kind,data)), capture=lambda *_: frame)
+        steps = [{"stage":"indexed","template_count":1}]
+        steps += [data for kind,data in events if kind == "journal_recognition_diagnostic"]
+        steps += [{"stage":"completed",**result}]
+        report = {"status":"completed","request_id":name,"filters":{},"steps":steps,"feedback":{"verdict":"correct"}}
+        bundle = tmp_path / f"{name}.zip"
+        with ZipFile(bundle,"w") as output:
+            output.writestr(f"recognition/{name}/flow.redacted.json",json.dumps(report))
+            for kind,data in events:
+                if kind == "journal_recognition_image":
+                    output.writestr(f"recognition/{name}/{data['image_kind']}.png",base64.b64decode(data["png"]))
+        replayed = replay.replay(bundle)[0]
+        assert replayed["status"] == "replayed", replayed
+        assert replayed["exact_match"] is True
+        assert replayed["feedback"] == {"verdict":"correct"}
+        if name == "matched":
+            assert replayed["replayed_keys"] == ["lf:1"]
+            with ZipFile(bundle,"a") as output:
+                output.writestr("../invalid","invalid")
+            with pytest.raises(ValueError,match="unsafe"):
+                replay.replay(bundle)

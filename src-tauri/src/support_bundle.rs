@@ -20,7 +20,7 @@ pub struct BundleState {
 impl Default for BundleState {
     fn default() -> Self {
         Self {
-            started: Utc::now(),
+            started: crate::logs::session_started(),
             prepared: Mutex::new(None),
         }
     }
@@ -57,9 +57,7 @@ fn redact(value: &Value, key: &str) -> Value {
                 .map(|(k, v)| (k.clone(), redact(v, k)))
                 .collect(),
         ),
-        Value::Array(items) => {
-            Value::Array(items.iter().take(256).map(|v| redact(v, key)).collect())
-        }
+        Value::Array(items) => Value::Array(items.iter().map(|v| redact(v, key)).collect()),
         Value::String(text) => {
             let lower = text.to_ascii_lowercase();
             if text.contains(":\\")
@@ -86,28 +84,21 @@ fn redact(value: &Value, key: &str) -> Value {
             {
                 json!("<redacted text containing paths, URLs or credentials>")
             } else {
-                json!(text.chars().take(2000).collect::<String>())
+                json!(text)
             }
         }
         _ => value.clone(),
     }
 }
 
-fn is_link(path: &Path) -> bool {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return true;
-    };
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        if metadata.file_attributes() & 0x400 != 0 {
-            return true;
-        }
-    }
-    metadata.file_type().is_symlink()
-}
+use crate::diagnostic_files::is_link;
+const MAX_BUNDLE_BYTES: usize = 100_000_000;
 
-fn session_logs(directory: &Path, started: DateTime<Utc>) -> Result<(Vec<u8>, bool), String> {
+fn session_logs(
+    directory: &Path,
+    started: DateTime<Utc>,
+    limit: usize,
+) -> Result<(Vec<u8>, bool), String> {
     if !directory.exists() {
         return Ok((Vec::new(), false));
     }
@@ -131,7 +122,7 @@ fn session_logs(directory: &Path, started: DateTime<Utc>) -> Result<(Vec<u8>, bo
         .collect();
     paths.sort();
     paths.reverse();
-    let mut remaining = 4 * 1024 * 1024u64;
+    let mut remaining = limit as u64;
     let mut truncated = false;
     let mut lines = Vec::new();
     for path in paths {
@@ -159,10 +150,11 @@ fn session_logs(directory: &Path, started: DateTime<Utc>) -> Result<(Vec<u8>, bo
             let Ok(value) = serde_json::from_str::<Value>(line) else {
                 continue;
             };
-            if value["timestamp"]
-                .as_str()
-                .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-                .is_some_and(|t| t.with_timezone(&Utc) >= started)
+            if (value.get("app_session").is_none() || value["app_session"] == json!(started))
+                && value["timestamp"]
+                    .as_str()
+                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                    .is_some_and(|t| t.with_timezone(&Utc) >= started)
             {
                 lines.push(redact(&value, ""));
             }
@@ -172,7 +164,7 @@ fn session_logs(directory: &Path, started: DateTime<Utc>) -> Result<(Vec<u8>, bo
     let mut output = Vec::new();
     for line in lines {
         let encoded = serde_json::to_vec(&line).map_err(|e| e.to_string())?;
-        if output.len() + encoded.len() + 1 > 4 * 1024 * 1024 {
+        if output.len() + encoded.len() + 1 > limit {
             truncated = true;
             break;
         }
@@ -182,73 +174,95 @@ fn session_logs(directory: &Path, started: DateTime<Utc>) -> Result<(Vec<u8>, bo
     Ok((output, truncated))
 }
 
-fn generated_capture(path: &Path) -> bool {
-    if path.extension().and_then(|s| s.to_str()) != Some("png") {
-        return false;
-    }
-    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-        return false;
-    };
-    let stem = stem.strip_prefix("failure-").unwrap_or(stem);
-    let Some((stamp, id)) = stem.split_once('-') else {
-        return false;
-    };
-    stamp.len() == 22
-        && stamp.bytes().enumerate().all(|(i, b)| {
-            if i == 8 {
-                b == b'T'
-            } else if i == 21 {
-                b == b'Z'
-            } else {
-                b.is_ascii_digit()
-            }
-        })
-        && id.len() == 8
-        && id.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
 fn collect(
     root: &Path,
     started: DateTime<Utc>,
     settings: &Value,
     snapshot: &Value,
     include_images: bool,
-    recognition: Option<crate::journal_recognition::RecognitionDiagnostics>,
-) -> Result<(Vec<(String, Vec<u8>)>, bool), String> {
-    let (logs, truncated) = session_logs(&root.join("logs"), started)?;
-    let environment = json!({"assistant_version":env!("CARGO_PKG_VERSION"),"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,"session_started":started,"engine":redact(snapshot,""),"logs_truncated":truncated,"privacy":"Review before sharing; screenshots can contain names or chat. No account/runtime data is included."});
+    limit: usize,
+) -> Result<(Vec<(String, Vec<u8>)>, Vec<Value>), String> {
+    // Leave space for ZIP headers and the explicit omission manifest.
+    let budget = limit.saturating_sub(128 * 1024);
     let mut files = vec![
-        (
-            "environment.json".into(),
-            serde_json::to_vec_pretty(&environment).map_err(|e| e.to_string())?,
-        ),
-        (
-            "settings.redacted.json".into(),
-            serde_json::to_vec_pretty(&redact(&crate::support::backup(settings)?["settings"], ""))
-                .map_err(|e| e.to_string())?,
-        ),
-        ("session.redacted.jsonl".into(), logs),
+        ("environment.json".into(), serde_json::to_vec_pretty(&json!({
+            "assistant_version":env!("CARGO_PKG_VERSION"), "os":std::env::consts::OS,
+            "architecture":std::env::consts::ARCH, "session_started":started, "engine":redact(snapshot,"")
+        })).map_err(|e| e.to_string())?),
+        ("settings.redacted.json".into(), serde_json::to_vec_pretty(&redact(&crate::support::backup(settings)?["settings"], "")).map_err(|e| e.to_string())?),
     ];
-    let mut image_bytes = 0;
-    let mut image_count = 0;
-    if let Some(recognition) = recognition {
-        files.push((
-            "recognition/flow.redacted.json".into(),
-            serde_json::to_vec_pretty(&redact(&recognition.report, ""))
-                .map_err(|e| e.to_string())?,
-        ));
-        if include_images {
-            for (name, bytes) in recognition.images {
-                image_bytes += bytes.len();
-                image_count += 1;
-                files.push((name, bytes));
+    let mut omissions = Vec::new();
+    let mut used = files.iter().map(|(_, b)| b.len()).sum::<usize>();
+    let (logs, truncated) = session_logs(&root.join("logs"), started, budget.saturating_sub(used))?;
+    let session_images: std::collections::HashSet<String> = String::from_utf8_lossy(&logs)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|record| {
+            Some(format!(
+                "{}/{}",
+                record["diagnostic_image"]["category"].as_str()?,
+                record["diagnostic_image"]["file"].as_str()?
+            ))
+        })
+        .collect();
+    if truncated {
+        omissions.push(json!({"group":"session.redacted.jsonl","reason":"size_limit","description":"Only the newest complete log records fit."}));
+    }
+    used += logs.len();
+    files.push(("session.redacted.jsonl".into(), logs));
+    let debug = root.join("debug");
+    let mut groups = Vec::new();
+    let mut reports = Vec::new();
+    for directory in crate::diagnostic_files::attempts(&debug)? {
+        let report = match crate::diagnostic_files::read_report(&directory) {
+            Ok(report) => report,
+            Err(_) => {
+                omissions.push(json!({"group":directory.file_name().unwrap().to_string_lossy(),"reason":"unreadable_report"}));
+                continue;
+            }
+        };
+        if report["app_session"] != json!(started) {
+            continue;
+        }
+        let id = directory.file_name().unwrap().to_string_lossy().to_string();
+        let stamp = report["started"]
+            .as_str()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|s| s.with_timezone(&Utc))
+            .unwrap_or(started);
+        let mut images = Vec::new();
+        if let Some(metadata) = report["images"].as_array() {
+            for entry in metadata {
+                let Some(name) = entry["file"].as_str() else {
+                    continue;
+                };
+                if name
+                    .strip_suffix(".png")
+                    .is_some_and(crate::diagnostic_files::image_kind)
+                {
+                    images.push((format!("recognition/{id}/{name}"), directory.join(name)));
+                }
             }
         }
+        groups.push((stamp, id.clone(), images));
+        reports.push((
+            stamp,
+            format!("recognition/{id}/flow.redacted.json"),
+            serde_json::to_vec_pretty(&redact(&report, "")).map_err(|e| e.to_string())?,
+        ));
     }
-    if include_images && root.join("debug").exists() && !is_link(&root.join("debug")) {
-        let mut images = Vec::new();
-        for subdirectory in ["failures", "captures"] {
-            let directory = root.join("debug").join(subdirectory);
+    reports.sort_by_key(|(stamp, _, _)| std::cmp::Reverse(*stamp));
+    for (_, name, bytes) in reports {
+        if used + bytes.len() > budget {
+            omissions.push(json!({"group":name,"reason":"size_limit"}));
+        } else {
+            used += bytes.len();
+            files.push((name, bytes));
+        }
+    }
+    if include_images && debug.is_dir() && !is_link(&debug) {
+        for category in ["failures", "captures"] {
+            let directory = debug.join(category);
             if !directory.is_dir() || is_link(&directory) {
                 continue;
             }
@@ -257,37 +271,96 @@ fn collect(
                 .filter_map(Result::ok)
             {
                 let path = entry.path();
-                if generated_capture(&path) && !is_link(&path) && path.is_file() {
-                    images.push(path);
+                if !path.is_file() || is_link(&path) {
+                    continue;
+                }
+                if let Some(stamp) =
+                    crate::diagnostic_files::capture_time(&path).filter(|t| *t >= started)
+                {
+                    let name = path.file_name().unwrap().to_string_lossy();
+                    if !session_images.contains(&format!("{category}/{name}")) {
+                        continue;
+                    }
+                    groups.push((
+                        stamp,
+                        format!("{category}/{name}"),
+                        vec![(format!("images/{category}/{name}"), path)],
+                    ));
                 }
             }
         }
-        images.sort_by_key(|p| std::cmp::Reverse(fs::metadata(p).and_then(|m| m.modified()).ok()));
-        for path in images.into_iter().take(20 - image_count) {
-            let mut bytes = Vec::new();
-            fs::File::open(&path)
-                .map_err(|e| e.to_string())?
-                .take(20 * 1024 * 1024 + 1)
-                .read_to_end(&mut bytes)
-                .map_err(|e| e.to_string())?;
-            if bytes.len() > 20 * 1024 * 1024
-                || image_bytes + bytes.len() > 100 * 1024 * 1024
-                || !bytes.starts_with(b"\x89PNG\r\n\x1a\n")
-            {
+        groups.sort_by_key(|(stamp, _, _)| std::cmp::Reverse(*stamp));
+        for (_, id, paths) in groups {
+            if paths.is_empty() {
                 continue;
             }
-            image_bytes += bytes.len();
-            files.push((
-                format!("images/{}", path.file_name().unwrap().to_string_lossy()),
-                bytes,
-            ));
+            let mut group = Vec::new();
+            let mut group_bytes = 0;
+            let mut reason = None;
+            for (name, path) in &paths {
+                if path.ancestors().any(is_link) {
+                    reason = Some("unsafe_file");
+                    break;
+                }
+                let bytes = (|| {
+                    let file = fs::File::open(path)?;
+                    let size = file.metadata()?.len();
+                    if size > budget.saturating_sub(used + group_bytes) as u64 {
+                        return Ok(None);
+                    }
+                    let mut bytes = Vec::new();
+                    file.take(size + 1).read_to_end(&mut bytes)?;
+                    Ok::<_, std::io::Error>(Some(bytes))
+                })();
+                match bytes {
+                    Ok(Some(bytes))
+                        if bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+                            && used + group_bytes + bytes.len() <= budget =>
+                    {
+                        group_bytes += bytes.len();
+                        group.push((name.clone(), bytes));
+                    }
+                    Ok(None) => {
+                        reason = Some("size_limit");
+                        break;
+                    }
+                    _ => {
+                        reason = Some("missing_or_invalid_image");
+                        break;
+                    }
+                }
+            }
+            if let Some(reason) = reason {
+                omissions.push(json!({"group":id,"reason":reason,"files":paths.iter().map(|(n,_)|n).collect::<Vec<_>>()}));
+            } else {
+                used += group_bytes;
+                files.extend(group);
+            }
         }
     }
-    Ok((files, truncated))
+    let manifest = serde_json::to_vec_pretty(&json!({"session_started":started,"limit_bytes":limit,
+        "include_images":include_images,"screenshot_retention_days":3,"log_retention_days":7,
+        "omissions":omissions,"files":files.iter().map(|(n,b)|json!({"name":n,"bytes":b.len()})).collect::<Vec<_>>()
+    })).map_err(|e| e.to_string())?;
+    if used + manifest.len() + files.len() * 256 > limit {
+        return Err(
+            "诊断清单超出容量，请缩小会话范围 / Diagnostic manifest exceeds the bundle limit"
+                .into(),
+        );
+    }
+    files.push(("manifest.json".into(), manifest));
+    Ok((files, omissions))
 }
 
 #[tauri::command]
 pub async fn preview_diagnostics(app: AppHandle, include_images: bool) -> Result<Value, String> {
+    crate::logs::record(
+        &app,
+        "info",
+        "support.diagnostics",
+        "开始预览诊断包 / Preparing diagnostics",
+        json!({"include_images":include_images}),
+    );
     let snapshot = serde_json::to_value(
         app.state::<crate::engine::EngineSupervisor>()
             .snapshot()
@@ -297,10 +370,14 @@ pub async fn preview_diagnostics(app: AppHandle, include_images: bool) -> Result
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<BundleState>();
         let root = crate::config::user_path()?.parent().ok_or("Missing data root")?.to_path_buf();
-        let recognition = app.state::<crate::journal_recognition::RecognitionState>().diagnostics(include_images);
-        let (files,truncated) = collect(&root,state.started,&crate::config::load()?,&snapshot,include_images,recognition)?;
+        app.state::<crate::journal_recognition::RecognitionState>().save_diagnostics()?;
+        if let Err(error) = crate::diagnostic_files::prune(&root.join("debug"), Utc::now()) {
+            crate::logs::record(&app,"warning","support.diagnostics","旧截图暂时无法清理 / Some expired images could not be removed",json!({"error":error}));
+        }
+        let (files,omissions) = collect(&root,state.started,&crate::config::load()?,&snapshot,include_images,MAX_BUNDLE_BYTES)?;
         let id = uuid::Uuid::new_v4().to_string();
-        let response = json!({"id":id,"files":files.iter().map(|(name,bytes)|json!({"name":name,"size":bytes.len()})).collect::<Vec<_>>(),"truncated":truncated});
+        let response = json!({"id":id,"files":files.iter().map(|(name,bytes)|json!({"name":name,"size":bytes.len()})).collect::<Vec<_>>(),"truncated":!omissions.is_empty(),"omissions":omissions});
+        crate::logs::record(&app,"info","support.diagnostics","诊断包预览就绪 / Diagnostics ready",json!({"files":files.len(),"bytes":files.iter().map(|(_,b)|b.len()).sum::<usize>(),"omissions":response["omissions"]}));
         *state.prepared.lock().map_err(|e|e.to_string())? = Some(Bundle {id,files});
         Ok(response)
     }).await.map_err(|e|e.to_string())?
@@ -339,8 +416,24 @@ pub async fn export_diagnostics(app: AppHandle, id: String, path: String) -> Res
             }
             zip.finish().map_err(|e| e.to_string())?;
         }
+        if temporary
+            .as_file()
+            .metadata()
+            .map_err(|e| e.to_string())?
+            .len()
+            > MAX_BUNDLE_BYTES as u64
+        {
+            return Err("Diagnostic ZIP exceeds 100 MB".into());
+        }
         temporary.as_file().sync_all().map_err(|e| e.to_string())?;
         temporary.persist(destination).map_err(|e| e.to_string())?;
+        crate::logs::record(
+            &app,
+            "info",
+            "support.diagnostics",
+            "诊断包已导出 / Diagnostics exported",
+            json!({"bundle_id":id,"files":bundle.files.len()}),
+        );
         *prepared = None;
         Ok(())
     })
@@ -351,143 +444,138 @@ pub async fn export_diagnostics(app: AppHandle, id: String, path: String) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn settings() -> Value {
+        serde_json::from_str(include_str!("../../config/default.json")).unwrap()
+    }
+    fn attempt(
+        root: &Path,
+        session: DateTime<Utc>,
+        stamp: DateTime<Utc>,
+        sizes: &[usize],
+    ) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        let dir = root.join("debug/recognition").join(&id);
+        fs::create_dir_all(&dir).unwrap();
+        let images: Vec<_> = sizes
+            .iter()
+            .enumerate()
+            .map(|(index, size)| {
+                let name = format!("region_{index}.png");
+                let mut data = b"\x89PNG\r\n\x1a\n".to_vec();
+                data.resize(*size, 0);
+                fs::write(dir.join(&name), data).unwrap();
+                json!({"file":name})
+            })
+            .collect();
+        fs::write(dir.join("flow.json"), json!({"app_session":session,"started":stamp,"request_id":id,"status":"cancelled","images":images,"password":"private-value"}).to_string()).unwrap();
+        id
+    }
     #[test]
-    fn recognition_flow_is_always_exported_but_both_original_images_require_opt_in() {
+    fn export_keeps_current_session_attempts_and_latest_complete_image_groups() {
         let dir = tempfile::tempdir().unwrap();
-        let settings: Value =
-            serde_json::from_str(include_str!("../../config/default.json")).unwrap();
-        let capture = crate::journal_recognition::RecognitionDiagnostics {
-            report: json!({"request_id":"attempt","status":"completed","token":"hidden-secret",
-                "steps":[{"stage":"capturing"},{"stage":"completed","keys":["rf:5"]}]}),
-            images: vec![
-                (
-                    "recognition/full.png".into(),
-                    b"\x89PNG\r\n\x1a\nfull".to_vec(),
-                ),
-                (
-                    "recognition/region.png".into(),
-                    b"\x89PNG\r\n\x1a\nregion".to_vec(),
-                ),
-            ],
-        };
-        for include in [false, true] {
-            let (files, _) = collect(
-                dir.path(),
-                Utc::now(),
-                &settings,
-                &json!({}),
-                include,
-                Some(capture.clone()),
-            )
-            .unwrap();
-            let flow = &files
+        let session = Utc::now();
+        let old = attempt(
+            dir.path(),
+            session - chrono::Duration::hours(1),
+            session,
+            &[20],
+        );
+        let first = attempt(dir.path(), session, session, &[90000, 90000]);
+        let second = attempt(
+            dir.path(),
+            session,
+            session + chrono::Duration::seconds(1),
+            &[90000, 90000],
+        );
+        for images in [false, true] {
+            let (files, omissions) =
+                collect(dir.path(), session, &settings(), &json!({}), images, 400000).unwrap();
+            assert!(!files.iter().any(|(name, _)| name.contains(&old)));
+            assert!(files
                 .iter()
-                .find(|(name, _)| name == "recognition/flow.redacted.json")
-                .unwrap()
-                .1;
-            let flow = String::from_utf8_lossy(flow);
-            assert!(flow.contains("capturing") && flow.contains("rf:5"));
-            assert!(!flow.contains("hidden-secret"));
-            let images = files
+                .any(|(name, _)| name == &format!("recognition/{first}/flow.redacted.json")));
+            assert!(files
+                .iter()
+                .any(|(name, _)| name == &format!("recognition/{second}/flow.redacted.json")));
+            let pictures: Vec<_> = files
                 .iter()
                 .filter(|(name, _)| name.ends_with(".png"))
-                .cloned()
-                .collect::<Vec<_>>();
-            assert_eq!(
-                images,
-                if include {
-                    capture.images.clone()
-                } else {
-                    Vec::new()
-                }
-            );
+                .collect();
+            assert_eq!(pictures.len(), if images { 2 } else { 0 });
+            assert!(pictures.iter().all(|(name, _)| name.contains(&second)));
+            assert_eq!(omissions.len(), usize::from(images));
+            assert!(files.iter().map(|(_, b)| b.len()).sum::<usize>() < 400000);
+            assert!(files
+                .iter()
+                .filter(|(n, _)| n.ends_with(".json"))
+                .all(|(_, b)| !String::from_utf8_lossy(b).contains("private-value")));
         }
     }
-
     #[test]
-    fn diagnostic_bundle_uses_explicit_sources_and_redacts_nested_secrets() {
+    fn session_logs_keep_full_details_and_filter_previous_sessions() {
         let dir = tempfile::tempdir().unwrap();
-        fs::create_dir(dir.path().join("logs")).unwrap();
-        fs::create_dir(dir.path().join("login-data")).unwrap();
-        fs::write(dir.path().join("login-data/secret.txt"), "private-account").unwrap();
-        let now = Utc::now();
-        let record = json!({"timestamp":now,"type":"error","data":{"token":"private-token"},"message":"C:\\Users\\Name\\secret"});
+        let session = Utc::now();
+        let trace = "detail".repeat(1000);
+        let rows = [
+            json!({"timestamp":session,"app_session":session,"details":trace,"token":"secret-value"}),
+            json!({"timestamp":session,"app_session":session - chrono::Duration::hours(1),"message":"previous-session"}),
+        ];
         fs::write(
             dir.path()
-                .join(format!("logs/{}.jsonl", Local::now().date_naive())),
-            format!("{record}\n"),
+                .join(format!("{}.jsonl", Local::now().date_naive())),
+            rows.iter().map(|r| format!("{r}\n")).collect::<String>(),
         )
         .unwrap();
-        let settings: Value =
-            serde_json::from_str(include_str!("../../config/default.json")).unwrap();
-        let (files, _) = collect(
+        let (bytes, truncated) = session_logs(dir.path(), session, MAX_BUNDLE_BYTES).unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(!truncated && text.contains(&trace));
+        assert!(!text.contains("previous-session") && !text.contains("secret-value"));
+        let many = json!((0..300).collect::<Vec<_>>());
+        assert_eq!(redact(&many, ""), many);
+    }
+    #[test]
+    fn screenshots_require_session_ownership_and_missing_groups_are_omitted_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Utc::now();
+        let captures = dir.path().join("debug/captures");
+        let logs = dir.path().join("logs");
+        fs::create_dir_all(&captures).unwrap();
+        fs::create_dir(&logs).unwrap();
+        let stamp = session + chrono::Duration::seconds(1);
+        let own = format!("{}-aaaaaaaa.png", stamp.format("%Y%m%dT%H%M%S%6fZ"));
+        let other = format!("{}-bbbbbbbb.png", stamp.format("%Y%m%dT%H%M%S%6fZ"));
+        for name in [&own, &other] {
+            fs::write(captures.join(name), b"\x89PNG\r\n\x1a\nfixture").unwrap();
+        }
+        let records = [
+            json!({"app_session":session,"timestamp":stamp,"diagnostic_image":{"category":"captures","file":own}}),
+            json!({"app_session":stamp,"timestamp":stamp,"diagnostic_image":{"category":"captures","file":other}}),
+        ];
+        fs::write(
+            logs.join(format!("{}.jsonl", Local::now().date_naive())),
+            records.iter().map(|r| format!("{r}\n")).collect::<String>(),
+        )
+        .unwrap();
+        let id = attempt(dir.path(), session, stamp, &[50, 50]);
+        fs::remove_file(
+            dir.path()
+                .join("debug/recognition")
+                .join(&id)
+                .join("region_1.png"),
+        )
+        .unwrap();
+        let (files, omissions) = collect(
             dir.path(),
-            now - chrono::Duration::seconds(1),
-            &settings,
+            session,
+            &settings(),
             &json!({}),
-            false,
-            None,
+            true,
+            MAX_BUNDLE_BYTES,
         )
         .unwrap();
-        assert_eq!(files.len(), 3);
-        let text = files
-            .iter()
-            .map(|(_, bytes)| String::from_utf8_lossy(bytes))
-            .collect::<Vec<_>>()
-            .join("\n");
-        for secret in ["private-account", "private-token", "C:\\\\Users"] {
-            assert!(!text.contains(secret));
-        }
-        assert!(text.contains("redacted"));
-        assert!(generated_capture(Path::new(
-            "failure-20261031T010203123456Z-aabb0011.png"
-        )));
-        assert!(!generated_capture(Path::new("account.png")));
-    }
-
-    #[test]
-    fn bundle_filters_old_sessions_and_only_includes_images_when_selected() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("debug/failures")).unwrap();
-        fs::create_dir(dir.path().join("logs")).unwrap();
-        let now = Utc::now();
-        let old = json!({"timestamp":now-chrono::Duration::hours(1),"message":"old-session"});
-        let current = json!({"timestamp":now,"message":"current-session","api_key":"private-api"});
-        fs::write(
-            dir.path()
-                .join(format!("logs/{}.jsonl", Local::now().date_naive())),
-            format!("{old}\n{current}\n"),
-        )
-        .unwrap();
-        fs::write(
-            dir.path()
-                .join("debug/failures/failure-20261031T010203123456Z-aabb0011.png"),
-            b"\x89PNG\r\n\x1a\nfixture",
-        )
-        .unwrap();
-        fs::write(
-            dir.path().join("debug/failures/account.png"),
-            b"\x89PNG\r\n\x1a\nprivate",
-        )
-        .unwrap();
-        let settings: Value =
-            serde_json::from_str(include_str!("../../config/default.json")).unwrap();
-        for include in [false, true] {
-            let (files, truncated) = collect(
-                dir.path(),
-                now - chrono::Duration::seconds(1),
-                &settings,
-                &json!({}),
-                include,
-                None,
-            )
-            .unwrap();
-            assert!(!truncated);
-            assert_eq!(files.len(), if include { 4 } else { 3 });
-            let logs = String::from_utf8_lossy(&files[2].1);
-            assert!(logs.contains("current-session"));
-            assert!(!logs.contains("old-session") && !logs.contains("private-api"));
-            assert!(files.iter().all(|(name, _)| !name.contains("account")));
-        }
+        let images: Vec<_> = files.iter().filter(|(n, _)| n.ends_with(".png")).collect();
+        assert_eq!(images.len(), 1);
+        assert!(images[0].0.ends_with(&own));
+        assert!(omissions.iter().any(|o| o["group"] == id));
     }
 }

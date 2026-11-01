@@ -72,7 +72,7 @@ def test_scaled_query_reuse_preserves_all_candidate_geometry(monkeypatch):
     cached = recognize(frame, templates)
     original = journal_matcher._match_query
 
-    def uncached(template, query, cancel=None, coarse_weights=None, resize=None):
+    def uncached(template, query, cancel=None, coarse_weights=None, resize=None, audit=None, fields=None):
         return original(template, query, cancel)
 
     monkeypatch.setattr(journal_matcher, "_match_query", uncached)

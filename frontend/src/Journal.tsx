@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { Settings } from "./types";
 import type { RecognitionView } from "./useJournalRecognition";
 import JournalPreviewMap from "./JournalPreviewMap";
+import JournalFeedback from "./JournalFeedback";
 import { importJournalPacks, journalApi, matchingMaps, type JournalLibrary, type JournalSettings, type MapImage } from "./journalData";
 import "./journal.css";
 
@@ -13,6 +14,7 @@ const groups = [
   { key: "display", zh: "显示", en: "Display", options: [["pure", "纯净", "Base map"], ["route", "速刷", "Route map"]] },
 ] as const;
 const quickFloors = [["b1f", "地下室", "Basement"], ["1", "1F", "1F"], ["2", "2F", "2F"]] as const;
+const positions = [["top_left", "左上", "Top left", 0, 0], ["top_right", "右上", "Top right", 1, 0], ["center", "居中", "Center", 0.5, 0.5], ["bottom_left", "左下", "Bottom left", 0, 1], ["bottom_right", "右下", "Bottom right", 1, 1]] as const;
 
 function Thumbnail({ image, name, zh }: { image: MapImage; name: string; zh: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -48,7 +50,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   onLog: (message: string) => void;
   recognition: RecognitionView;
   onRecognize: () => void;
-  onCancelRecognition: () => void;
+  onCancelRecognition: (reason?: string) => void;
   shortcut: string;
 }) {
   const zh = language === "zh-CN";
@@ -150,7 +152,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   }, [preview]);
   const summary = [seasons.find(([id]) => id === settings.season)?.[1], ...groups.filter(group => !recognizedKeys || group.key !== "door").map((group) => group.options.find(([value]) => value === settings[group.key])?.[zh ? 1 : 2])].join(" · ");
   const change = (patch: Partial<JournalSettings>) => {
-    if (recognizing || Object.keys(patch).some(key => key !== "floor")) onCancelRecognition();
+    if (recognizing || Object.keys(patch).some(key => key !== "floor")) onCancelRecognition("filters_changed");
     if (patch.season || patch.difficulty || patch.door) setSelectedKey(null);
     const next = { ...settings, ...patch };
     if (next.difficulty === "hard" && ["b1f", "3"].includes(next.floor)) next.floor = "1";
@@ -195,7 +197,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           </fieldset>)}
           <div className="journal-options journal-tools">
             <button type="button" className="primary" disabled={busy || recognizing} onClick={onRecognize}>{zh ? "识别一楼地图" : "Recognize 1F map"}</button>
-            {recognizing && <button type="button" onClick={onCancelRecognition}>{zh ? "取消识别" : "Cancel recognition"}</button>}
+            {recognizing && <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>}
           </div>
           <label className="journal-auto-enter setting-toggle">
             <span>{zh ? "自动进入最匹配地图" : "Automatically open the best match"}</span>
@@ -213,8 +215,10 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
       <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy || recognizing}>
         {recognition.status !== "idle" && <div className="journal-recognition">
           <div className="journal-recognition-heading"><h2>{zh ? "一楼识图结果" : "First-floor matches"}</h2>
+            {recognition.status === "done" && recognition.result && <JournalFeedback key={recognition.result.request_id} requestId={recognition.result.request_id} zh={zh} onNotice={onNotice}
+              maps={[...new Set(library.packs.flatMap(pack => pack.maps.map(map => map.category)))].flatMap(door => matchingMaps(library.packs, {...settings, door, floor: "1"})).map(map => ({key: map.key, name: `${groups[1].options.find(option => option[0] === map.category)?.[zh ? 1 : 2] ?? map.category} · ${zh ? "地图" : "Map"} ${map.index}`}))} />}
             <div className="journal-options">{recognizing
-              ? <button type="button" onClick={onCancelRecognition}>{zh ? "取消识别" : "Cancel recognition"}</button>
+              ? <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>
               : <><button type="button" onClick={onRecognize}>{zh ? "重新识别" : "Recognize again"}</button><button type="button" onClick={() => { setSelectedKey(null); onCancelRecognition(); }}>{zh ? "返回全部地图" : "Show all maps"}</button></>}
             </div>
           </div>
@@ -228,6 +232,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           {recognition.result?.preview && <details className="journal-region-preview"><summary>{zh ? "查看识别区域" : "View recognized region"}</summary><img src={recognition.result.preview} alt={zh ? "本次识别使用的游戏地图区域" : "Game map region used for this recognition"} /></details>}
         </div>}
         {busy ? <div className="empty journal-empty">{zh ? "正在读取地图包…" : "Loading map packs…"}</div>
+          : recognizing && recognition.preview ? <figure className="journal-matching-preview"><img src={recognition.preview} alt={zh ? "正在核对的游戏地图区域" : "Game map region being checked"} /><figcaption>{zh ? "正在核对地图区域" : "Checking the map region"}</figcaption></figure>
           : selectedKey !== null ? <div className="journal-detail" key={`detail:${selectedKey}`}>
             <button ref={backButton} type="button" className="journal-back" onClick={() => setSelectedKey(null)}>{zh ? "‹ 返回列表" : "‹ Back to list"}</button>
             {!selectedMap ? <p>{zh ? "当前楼层或显示模式暂无此地图。" : "This map is unavailable for the selected floor or display mode."}</p>
@@ -241,20 +246,21 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           })}</div>
           : recognizedKeys ? <div className="empty journal-empty"><p>{recognizing ? (zh ? "正在读取游戏地图，请稍候。" : "Reading the game map. Please wait.") : (zh ? "没有可显示的候选，可重新识别或返回全部地图。" : "No candidates to display. Recognize again or show all maps.")}</p></div>
           : <div className="empty journal-empty"><span className="journal-empty-icon" aria-hidden="true">▤</span><h3>{zh ? "当前组合暂无地图" : "No maps in this group"}</h3><p>{zh ? "请导入地图包，或选择其他赛季、难度、门型及楼层。" : "Import a map pack or choose another season, difficulty, door type or floor."}</p></div>}
-        <footer className={`journal-footer${selectedKey !== null ? " journal-detail-footer" : ""}`} aria-live="polite"><div><span>{selectedKey !== null ? selectedName : zh ? `当前组合共 ${maps.length} 张地图` : `${maps.length} maps in this group`}</span><small>{summary}</small></div>
+        <footer className={`journal-footer${selectedKey !== null ? " journal-detail-footer" : ""}`} aria-live="polite"><div><span>{recognizing ? (zh ? "识别中，候选尚未确定" : "Recognition in progress; candidates are not final") : selectedKey !== null ? selectedName : zh ? `当前组合共 ${maps.length} 张地图` : `${maps.length} maps in this group`}</span><small>{summary}</small></div>
           {selectedKey !== null && <div className="journal-detail-actions">{floorSwitch()}<button ref={enterButton} type="button" className="primary" disabled={!detailUrl || !!detailError || !selectedMap} onClick={() => setPreview("open")}>{zh ? "进入地图" : "Enter map"}</button></div>}
         </footer>
       </section>
     </div>
     {preview !== "closed" && createPortal(<dialog ref={previewDialog} className={`journal-full-preview${preview === "closing" ? " is-closing" : ""}`} aria-label={zh ? `${selectedName}全窗口预览` : `${selectedName} full-window preview`} onCancel={event => {event.preventDefault(); setPreview("closing");}}>
       {detailUrl ? <JournalPreviewMap key={detailKey} src={detailUrl} name={selectedName} zh={zh} position={settings.preview_position}
-        onPositionChange={preview_position => onSettingsChange({ ...savedSettings, preview_position })}
+        onPositionChange={preview_position => onSettingsChange({ ...savedSettings, preview_position: {...preview_position, preset: "custom"} })}
         onError={() => setDetailImage({ key: detailKey, url: "", error: zh ? "图片格式无效或已损坏" : "Invalid or damaged image" })} />
         : <p className="journal-preview-status" role={detailError ? "alert" : "status"}>{detailError || (zh ? "正在读取地图…" : "Loading map…")}</p>}
       <div className="journal-preview-floors">{floorSwitch()}</div>
-      <button type="button" className="journal-preview-reset" disabled={!detailUrl} aria-label={zh ? "重置地图位置" : "Reset map position"} title={zh ? "重置地图位置" : "Reset map position"} onClick={() => onSettingsChange({ ...savedSettings, preview_position: { x: 0.5, y: 0.5 } })}>
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6" /><path d="M12 2v5m0 10v5M2 12h5m10 0h5" /></svg>
-      </button>
+      <div className="journal-preview-positions journal-floor-switch" role="group" aria-label={zh ? "地图位置" : "Map position"}>{positions.map(([preset, label, english, x, y]) => <button key={preset} type="button" disabled={!detailUrl}
+        className={(settings.preview_position.preset ?? (settings.preview_position.x === 0.5 && settings.preview_position.y === 0.5 ? "center" : "custom")) === preset ? "primary" : undefined}
+        aria-pressed={(settings.preview_position.preset ?? (settings.preview_position.x === 0.5 && settings.preview_position.y === 0.5 ? "center" : "custom")) === preset}
+        onClick={() => onSettingsChange({...savedSettings, preview_position: {x, y, preset}})}>{zh ? label : english}</button>)}</div>
       <button ref={closeButton} type="button" className="journal-preview-close" aria-label={zh ? "退出全窗口预览" : "Exit full-window preview"} title={zh ? "退出预览（Esc）" : "Exit preview (Esc)"} onClick={() => setPreview("closing")}>×</button>
     </dialog>, document.body)}
   </div>;

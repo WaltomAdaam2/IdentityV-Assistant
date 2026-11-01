@@ -15,7 +15,11 @@ Rust owns versioned settings validation, preview and atomic writes. Restoration 
 
 Diagnostics collect explicit known sources instead of recursively archiving the data directory: bounded current-session logs, redacted known settings and minimal environment. Images are separately selected. Preview freezes the files that will be written to the user-selected ZIP. No automatic upload or account/runtime collection is introduced.
 
-From 0.1.11, Rust also retains the latest journal-recognition attempt's compact stage report and lossless full-window/selected-region images in memory. A new accepted request replaces this evidence; cancellation and failure preserve the evidence already captured for that attempt. Dedicated image messages never enter text logs or frontend events. Reports are redacted and exported by default; images require the existing screenshot opt-in and share its 20-image / 100 MiB export limit. There is no recognition image directory or persistent screenshot history. An already prepared export remains a frozen copy even if another recognition starts.
+From 0.1.11, Rust stores every journal-recognition attempt under `debug/recognition/<request-id>`, with atomic redacted reports and lossless capture, crop, processing and prepared-template images. App-session identity binds logs, screenshot ownership and reports to one running assistant. Later requests do not overwrite earlier attempts; incomplete attempts retain received evidence. Image binary stays out of text logs; a bounded JPEG crop event provides the in-progress UI preview.
+
+Exports include only the current session, with a 100 MB whole-ZIP limit. Logs and reports precede newest complete image groups. The preview and manifest identify omissions; there is no silent image rescaling. Reports/logs expire after seven days, generated images after three days; known file names and link checks limit cleanup to owned files. A frozen preview remains unchanged by later recognition or feedback.
+
+Manual feedback is editable local evidence, not telemetry or online learning. Offline replay consumes stored frames and exact prepared templates without accessing current map packs, windows or gameplay. It reports incomplete evidence explicitly. These choices reuse the existing log, settings, helper-process and ZIP boundaries.
 
 ## Alternatives and consequences
 

@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod desktop;
+mod diagnostic_files;
 mod engine;
 mod journal;
 mod journal_dialog;
@@ -76,6 +77,7 @@ pub fn run() {
             launcher_news::get_game_announcements,
             launcher_news::open_game_announcement,
             desktop::open_logs_directory,
+            desktop::open_screenshots_directory,
             desktop::minimize_to_taskbar,
             window_size::reset_window_size,
             journal_dialog::choose_game_executable,
@@ -106,6 +108,7 @@ pub fn run() {
             journal::journal_open_directory,
             journal_recognition::journal_recognize,
             journal_recognition::journal_cancel_recognition,
+            journal_recognition::journal_save_feedback,
             journal_dialog::journal_choose_pack_source,
             commands::diagnostics::detect_window,
             commands::diagnostics::task_preflight,

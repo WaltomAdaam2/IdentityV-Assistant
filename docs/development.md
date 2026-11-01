@@ -46,3 +46,11 @@ Architectural decisions are documented in `docs/adr/`, with shared application t
 ## Packaging and publishing
 
 Use `pnpm tauri build` for a signed installer. Packaging alone never publishes a release. The signing key, clean-source checks, asset names, and release procedure are documented separately in [Updates and releases](updates_EN.md).
+
+## Offline diagnostic replay
+
+Run from the repository with the engine environment installed. The ZIP must include screenshot/template evidence. `--attempt` selects a request ID; `--output` writes JSON. Missing evidence is reported explicitly; no fallback to installed map packs occurs. The report compares candidate order, regions, scores and timings, and carries local feedback. Replay tests localization and geometry only, not native capture or gameplay. Its time excludes process startup, capture and saving evidence, so it is not directly comparable to the original total.
+
+```powershell
+.\engine\.venv\Scripts\python.exe scripts/replay_recognition.py "IdentityV-diagnostics-YYYY-MM-DD-HHmmss-SSS.zip" --output replay.json
+```

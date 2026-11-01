@@ -49,6 +49,7 @@ export const bridge = {
   chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
   chooseLoginComponent: () => invoke<string | null>("choose_login_component"),
   openLogsDirectory: () => invoke<void>("open_logs_directory"),
+  openScreenshotsDirectory: () => invoke<void>("open_screenshots_directory"),
   launchGame: (executablePath: string) => invoke<void>("launch_game", { executablePath }),
   locateGame: (executablePath = "") => invoke<string>("locate_game", { executablePath }),
   getLauncherStatus: () => invoke<LauncherStatus>("get_launcher_status"),

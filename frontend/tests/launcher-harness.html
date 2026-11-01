@@ -10,6 +10,7 @@ window.__launcherTest.loadFailure = new URLSearchParams(location.search).has("lo
 window.__launcherTest.emitLog = (payload) => emit("engine-event", { type: "log", level: "info", data: { important: true }, ...payload });
 window.__launcherTest.emitComponentProgress = (payload) => emit("component-update-progress", payload);
 window.__launcherTest.emitRecognitionProgress = (payload) => emit("journal-recognition-progress", payload);
+window.__launcherTest.emitRecognitionPreview = (payload) => emit("journal-recognition-preview", payload);
 window.__launcherTest.recognitionShortcut = () => emit("journal-recognition-shortcut", { hwnd: 123 });
 window.__launcherTest.updateStatus = { phase: "idle", info: null, downloaded: 0, total: null, error: null, source: "direct" };
 window.__launcherTest.emitUpdate = async (patch) => {

@@ -46,3 +46,11 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ## 打包与发布
 
 `pnpm tauri build` 生成签名安装包，但不会自动发布。签名密钥、干净源码校验、附件命名和发布步骤见 [更新与发布](updates.md)。
+
+## 诊断包离线重放
+
+在仓库中使用已安装依赖的引擎环境运行。ZIP 需要包含截图和模板证据；`--attempt` 可指定识图编号，`--output` 保存 JSON 报告。缺少证据会明确报告，不回退到当前安装的地图包。报告比较候选顺序、区域、评分及耗时，并携带本地反馈。重放只验证定位和几何匹配，不验证原生截图或游戏行为；不含进程启动、截图和保存证据的时间，不能直接与原来的总耗时比较。
+
+```powershell
+.\engine\.venv\Scripts\python.exe scripts/replay_recognition.py "IdentityV-diagnostics-YYYY-MM-DD-HHmmss-SSS.zip" --output replay.json
+```

@@ -49,6 +49,7 @@ pub struct Launcher {
     closing: AtomicBool,
     cancelled: AtomicBool,
     update: Mutex<Option<CheckedUpdate>>,
+    log_app: std::sync::OnceLock<tauri::AppHandle>,
 }
 
 impl Default for Launcher {
@@ -65,6 +66,7 @@ impl Default for Launcher {
             closing: AtomicBool::new(false),
             cancelled: AtomicBool::new(false),
             update: Mutex::new(None),
+            log_app: std::sync::OnceLock::new(),
         }
     }
 }
@@ -191,15 +193,43 @@ impl Launcher {
     }
     fn report(&self, phase: &'static str, message: Option<String>) {
         let mut status = self.status.lock().unwrap();
+        if status.phase == phase && status.proxy_phase == phase && status.message == message {
+            return;
+        }
         status.phase = phase;
         status.proxy_phase = phase;
         status.message = message;
+        if let Some(app) = self.log_app.get() {
+            crate::logs::record(
+                app,
+                if status.message.is_some() {
+                    "warning"
+                } else {
+                    "info"
+                },
+                "launcher.status",
+                "登录组件状态变化 / Login component status changed",
+                serde_json::json!({"phase":phase,"message":status.message}),
+            );
+        }
     }
 
     fn report_proxy(&self, phase: &'static str) {
         let mut status = self.status.lock().unwrap();
+        if status.proxy_phase == phase && status.message.is_none() {
+            return;
+        }
         status.proxy_phase = phase;
         status.message = None;
+        if let Some(app) = self.log_app.get() {
+            crate::logs::record(
+                app,
+                "info",
+                "launcher.proxy",
+                "登录代理状态变化 / Login proxy status changed",
+                serde_json::json!({"phase":phase}),
+            );
+        }
     }
 
     async fn refresh_proxy(&self) {
@@ -457,10 +487,26 @@ impl Launcher {
 
 #[tauri::command]
 pub async fn check_login_updates(
+    app: tauri::AppHandle,
     manager: tauri::State<'_, Launcher>,
     source: String,
 ) -> Result<ComponentUpdateInfo, String> {
-    manager.check_updates(&source).await
+    crate::logs::record(
+        &app,
+        "info",
+        "launcher.update",
+        "检查组件更新 / Checking component updates",
+        serde_json::json!({"source":source}),
+    );
+    let result = manager.check_updates(&source).await;
+    crate::logs::record(
+        &app,
+        if result.is_ok() { "info" } else { "error" },
+        "launcher.update",
+        "组件检查结束 / Component check ended",
+        serde_json::json!({"success":result.is_ok(),"error":result.as_ref().err()}),
+    );
+    result
 }
 
 #[tauri::command]
@@ -489,6 +535,7 @@ pub async fn open_login_update(
 
 pub fn start_monitor(app: tauri::AppHandle) {
     use tauri::Manager;
+    let _ = app.state::<Launcher>().log_app.set(app.clone());
     tauri::async_runtime::spawn(async move {
         loop {
             app.state::<Launcher>().refresh_proxy().await;
@@ -505,26 +552,58 @@ pub async fn get_launcher_status(
 }
 
 #[tauri::command]
-pub fn cancel_game_launch(manager: tauri::State<'_, Launcher>) {
+pub fn cancel_game_launch(app: tauri::AppHandle, manager: tauri::State<'_, Launcher>) {
+    crate::logs::record(
+        &app,
+        "info",
+        "launcher",
+        "取消启动或组件操作 / Launch or component operation cancelled",
+        serde_json::json!({}),
+    );
     manager.cancel();
 }
 
 #[tauri::command]
 pub async fn configure_login_component(
+    app: tauri::AppHandle,
     manager: tauri::State<'_, Launcher>,
     download: bool,
 ) -> Result<(), String> {
-    manager.configure(download).await
+    crate::logs::record(
+        &app,
+        "info",
+        "launcher.configure",
+        "开始配置登录组件 / Configuring login component",
+        serde_json::json!({"download":download}),
+    );
+    let result = manager.configure(download).await;
+    crate::logs::record(
+        &app,
+        if result.is_ok() { "info" } else { "error" },
+        "launcher.configure",
+        "组件配置结束 / Component configuration ended",
+        serde_json::json!({"success":result.is_ok(),"error":result.as_ref().err()}),
+    );
+    result
 }
 
 #[tauri::command]
 pub async fn set_login_component(
+    app: tauri::AppHandle,
     manager: tauri::State<'_, Launcher>,
     executable_path: String,
 ) -> Result<(), String> {
-    manager
+    let result = manager
         .select_component(PathBuf::from(executable_path))
-        .await
+        .await;
+    crate::logs::record(
+        &app,
+        if result.is_ok() { "info" } else { "error" },
+        "launcher.configure",
+        "选择登录组件 / Login component selection",
+        serde_json::json!({"success":result.is_ok(),"error":result.as_ref().err()}),
+    );
+    result
 }
 
 #[tauri::command]

@@ -36,3 +36,9 @@ A map's season, difficulty, door category and number. Different floor views and 
 
 **Recognition candidate**:
 A journal map whose first-floor geometry plausibly matches the visible game map. The interface shows up to four in match order. Optional automatic entry opens the first candidate; this is not a confirmed identification or an accuracy percentage.
+
+**Recognition evidence**:
+The captured frame, localized and processed regions, exact prepared templates and per-map analysis for one request. Images expire after three days, reports after seven; diagnostic exports select the current app session.
+
+**Recognition feedback**:
+An editable local assessment of the first candidate, optionally naming the correct map. It accompanies exported evidence without uploading or changing thresholds.

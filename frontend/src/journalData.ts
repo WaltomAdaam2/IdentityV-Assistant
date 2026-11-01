@@ -8,11 +8,11 @@ export interface JournalSettings {
   display: string;
   collapsed: boolean;
   auto_enter: boolean;
-  preview_position: { x: number; y: number };
+  preview_position: { x: number; y: number; preset?: "center" | "top_left" | "top_right" | "bottom_left" | "bottom_right" | "custom" };
 }
 export const defaultJournalSettings: JournalSettings = {
   season: "s0", difficulty: "hard", door: "lf", floor: "1", display: "pure", collapsed: false,
-  auto_enter: false, preview_position: { x: 0.5, y: 0.5 },
+  auto_enter: false, preview_position: { x: 0.5, y: 0.5, preset: "center" },
 };
 export interface JournalMap { index: number; category: string; name: string; floors: Record<string, string>; display: Record<string, string> }
 export interface JournalPack { id: string; name: string; version: string; season_id: string; season_name: string; difficulty: string; maps: JournalMap[] }
@@ -46,7 +46,7 @@ export function previewPlacement(view: { width: number; height: number }, aspect
     Math.max(16, Math.min(size - image - 16, (Number.isFinite(value) ? value : 0.5) * size - image / 2));
   return { width, height, x: coordinate(position.x, view.width, width), y: coordinate(position.y, view.height, height) };
 }
-export interface RecognitionResult { keys: string[]; preview: string | null; warnings: string[] }
+export interface RecognitionResult { request_id: string; keys: string[]; preview: string | null; warnings: string[] }
 export interface RecognitionProgress { request_id: string; stage: "capturing" | "locating" | "matching"; completed: number; total: number }
 export const journalApi = {
   list: () => invoke<JournalLibrary>("journal_list_packs"),
@@ -57,7 +57,8 @@ export const journalApi = {
   recognize: (requestId: string, filters: JournalSettings, windowHandle?: number) => invoke<RecognitionResult>("journal_recognize", {
     requestId, season: filters.season, difficulty: filters.difficulty, display: filters.display, windowHandle,
   }),
-  cancel: (requestId: string) => invoke<void>("journal_cancel_recognition", { requestId }),
+  cancel: (requestId: string, reason: string) => invoke<void>("journal_cancel_recognition", { requestId, reason }),
+  feedback: (requestId: string, verdict: string, correctKey: string | null) => invoke<void>("journal_save_feedback", {requestId, verdict, correctKey}),
 };
 
 export async function importJournalPacks(sources: string[], importPack = journalApi.import) {

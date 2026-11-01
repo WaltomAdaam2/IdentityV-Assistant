@@ -11,6 +11,12 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 static WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static SESSION_STARTED: OnceLock<chrono::DateTime<chrono::Utc>> = OnceLock::new();
+static IMAGE_PRUNE: OnceLock<Mutex<Option<std::time::Instant>>> = OnceLock::new();
+
+pub(crate) fn session_started() -> chrono::DateTime<chrono::Utc> {
+    *SESSION_STARTED.get_or_init(chrono::Utc::now)
+}
 
 pub(crate) fn redacted(value: &Value) -> Value {
     match value {
@@ -139,11 +145,17 @@ fn root() -> Result<PathBuf, String> {
 }
 
 fn prune_at(directory: &std::path::Path, today: NaiveDate) -> Result<(), String> {
-    let cutoff = today - Duration::days(30);
+    if directory.ancestors().any(crate::diagnostic_files::is_link) {
+        return Err("Log directory cannot be a link".into());
+    }
+    let cutoff = today - Duration::days(7);
     for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let path = entry.path();
-        if !path.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+        if !path.is_file()
+            || crate::diagnostic_files::is_link(&path)
+            || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
+        {
             continue;
         }
         let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
@@ -171,6 +183,20 @@ pub fn append(value: &Value) -> Result<(), String> {
         .lock()
         .map_err(|error| error.to_string())?;
     let directory = root()?;
+    // Opportunistic retention while the app stays open; no background schedule.
+    let mut last = IMAGE_PRUNE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .map_err(|e| e.to_string())?;
+    if last.is_none_or(|at| at.elapsed().as_secs() >= 3600) {
+        if let Err(error) = crate::diagnostic_files::root()
+            .and_then(|root| crate::diagnostic_files::prune(&root, chrono::Utc::now()))
+        {
+            eprintln!("Unable to prune diagnostic images: {error}");
+        }
+        *last = Some(std::time::Instant::now());
+    }
+    drop(last);
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let today = Local::now().date_naive();
     prune_at(&directory, today)?;
@@ -180,7 +206,24 @@ pub fn append(value: &Value) -> Result<(), String> {
         .append(true)
         .open(path)
         .map_err(|error| error.to_string())?;
-    let line = serde_json::to_string(&redacted(value)).map_err(|error| error.to_string())?;
+    let mut value = redacted(value);
+    if let Some(object) = value.as_object_mut() {
+        object.insert("app_session".into(), json!(session_started()));
+    }
+    // Explicit per-session ownership, including two concurrently running assistants.
+    let category = match value["type"].as_str() {
+        Some("debug_frame") => Some("captures"),
+        Some("failure_capture") if value["saved"] == true => Some("failures"),
+        _ => None,
+    };
+    if let (Some(category), Some(path)) = (category, value["path"].as_str()) {
+        let path = std::path::Path::new(path);
+        if crate::diagnostic_files::capture_time(path).is_some() {
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            value["diagnostic_image"] = json!({"category":category,"file":name});
+        }
+    }
+    let line = serde_json::to_string(&value).map_err(|error| error.to_string())?;
     writeln!(file, "{line}").map_err(|error| error.to_string())
 }
 
@@ -233,13 +276,13 @@ mod tests {
             std::env::temp_dir().join(format!("identityv-log-test-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         fs::write(directory.join("2026-08-30.jsonl"), "old").unwrap();
-        fs::write(directory.join("2026-09-01.jsonl"), "new").unwrap();
+        fs::write(directory.join("2026-09-23.jsonl"), "new").unwrap();
         fs::write(directory.join("notes.txt"), "keep").unwrap();
         prune_at(&directory, NaiveDate::from_ymd_opt(2026, 9, 30).unwrap()).unwrap();
         assert!(!directory.join("2026-08-30.jsonl").exists());
-        assert!(directory.join("2026-09-01.jsonl").exists());
+        assert!(directory.join("2026-09-23.jsonl").exists());
         assert!(directory.join("notes.txt").exists());
-        fs::remove_file(directory.join("2026-09-01.jsonl")).unwrap();
+        fs::remove_file(directory.join("2026-09-23.jsonl")).unwrap();
         fs::remove_file(directory.join("notes.txt")).unwrap();
         fs::remove_dir(directory).unwrap();
     }

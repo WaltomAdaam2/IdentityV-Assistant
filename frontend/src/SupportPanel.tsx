@@ -8,7 +8,7 @@ import "./updates.css";
 import "./support.css";
 
 interface RestorePreview { id: string; changes: {field: string; before: unknown; after: unknown}[]; warnings: string[] }
-interface BundlePreview { id: string; files: {name: string; size: number}[]; truncated: boolean }
+interface BundlePreview { id: string; files: {name: string; size: number}[]; truncated: boolean; omissions?: {group: string; reason: string; files?: string[]}[] }
 
 const fieldNames: Record<string, [string, string]> = {
   "tasks.enabled": ["启用任务", "Enabled tasks"],
@@ -49,6 +49,7 @@ const fieldNames: Record<string, [string, string]> = {
   "journal.auto_enter": ["自动进入最匹配地图", "Automatically open the best match"],
   "journal.preview_position.x": ["地图预览水平位置", "Map preview horizontal position"],
   "journal.preview_position.y": ["地图预览垂直位置", "Map preview vertical position"],
+  "journal.preview_position.preset": ["地图预设位置", "Map position preset"],
 };
 
 export default function SupportPanel({language, taskActive, withSettings, onRestored, onNotice, includeImages, onIncludeImagesChange}: {
@@ -110,7 +111,8 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
       <div className="support-summary"><strong>{zh ? `${bundle.files.length} 个文件` : `${bundle.files.length} files`}</strong><span>{bytes(bundle.files.reduce((total, file) => total + file.size, 0))}</span></div>
       <p className="support-hint">{includeImages ? (zh ? "已选择包含截图，请在分享前检查昵称或聊天内容。" : "Screenshots were selected. Check for names or chat before sharing.") : (zh ? "未包含截图。" : "Screenshots are not included.")}</p>
       <ul className="support-files" tabIndex={0} aria-label={zh ? "诊断文件清单" : "Diagnostic file list"}>{bundle.files.map(file => <li key={file.name}><span>{file.name}</span><span>{bytes(file.size)}</span></li>)}</ul>
-      {bundle.truncated && <p className="support-hint">{zh ? "日志达到大小限制，仅包含限定范围内的会话记录。" : "The log size limit was reached; only bounded session records are included."}</p>}
+      {bundle.truncated && <p className="support-hint">{zh ? "部分记录未纳入，请查看下方清单；本机原文件仍按保留期限保存。" : "Some records were omitted. See the list below; local originals follow the retention period."}</p>}
+      {!!bundle.omissions?.length && <details className="support-hint"><summary>{zh ? `未包含的记录（${bundle.omissions.length} 组）` : `Omitted records (${bundle.omissions.length} groups)`}</summary><ul>{bundle.omissions.map((item, index) => <li key={index}>{item.group} · {item.reason === "size_limit" ? (zh ? "达到 100 MB 上限" : "100 MB limit reached") : (zh ? "文件缺失、不可读或无效" : "Missing, unreadable or invalid file")}</li>)}</ul></details>}
     </>}
     <footer className="update-actions">
       <button autoFocus disabled={busy} onClick={closePreview}>{restore && !restore.changes.length ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}</button>
@@ -132,10 +134,10 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
     <SettingRow icon="folder" title={zh ? "导入设置并预览" : "Import and preview settings"} description={taskActive ? (zh ? "请先停止任务再应用设置。" : "Stop tasks before applying settings.") : (zh ? "预览变化后确认应用，自动保留原配置备份。" : "Review changes before applying; a backup of the original settings is retained.")} language={language}>
       <button disabled={busy || taskActive} onClick={() => void run(async () => { const path = await choose("import-settings"); if (path) setRestore(await invoke<RestorePreview>("preview_settings_restore", {path})); })}>{zh ? "导入设置并预览" : "Import and preview settings"}</button>
     </SettingRow>
-    <SettingRow icon="screenshots" title={zh ? "诊断包包含截图" : "Include screenshots in diagnostics"} description={zh ? "加入最近一次识图的完整截图、识别区域及调试／失败截图，共最多 20 张、100 MiB。识图截图仅暂存内存；截图可能含昵称或聊天，分享前请检查。" : "Include the latest recognition's full capture and region, plus debug/failure images, up to 20 images / 100 MiB in total. Recognition images stay in memory until export. Review names or chat before sharing."} language={language}>
+    <SettingRow icon="screenshots" title={zh ? "诊断包包含截图" : "Include screenshots in diagnostics"} description={zh ? "加入本次启动会话中各次识图的原图、裁剪图、处理图及调试／失败截图。截图在本机保留 3 天；可能含昵称或聊天，分享前请检查。" : "Include this session's recognition captures, crops, processing images and debug/failure screenshots. Local images are retained for 3 days. Review names or chat before sharing."} language={language}>
       <input type="checkbox" disabled={busy} checked={includeImages} onChange={event => {onIncludeImagesChange(event.target.checked); setBundle(null);}} />
     </SettingRow>
-    <SettingRow icon="debug" title={zh ? "预览诊断包" : "Preview diagnostics"} description={zh ? "包含版本、必要运行环境、最多 4 MiB 会话日志、脱敏设置及最近一次识图流程；排除账号、凭据和私钥。预览后保存到本机，不自动上传；分享前请检查内容。" : "Includes versions, necessary environment, up to 4 MiB of session logs, redacted settings and the latest recognition flow; excludes accounts, credentials and private keys. Preview and save locally without uploading. Review before sharing."} language={language}>
+    <SettingRow icon="debug" title={zh ? "预览诊断包" : "Preview diagnostics"} description={zh ? "包含本次会话的全模块日志、脱敏设置及各次识图流程。总量最多 100 MB，日志与报告优先，其次为最新的完整截图组；排除账号、凭据和私钥。预览后保存到本机。" : "Includes this session’s logs from all modules, redacted settings and every recognition flow. Up to 100 MB: logs and reports first, then the newest complete image groups. Excludes accounts, credentials and private keys. Preview and save locally."} language={language}>
       <button disabled={busy} onClick={() => void run(async () => { setBundle(await invoke<BundlePreview>("preview_diagnostics", {includeImages})); })}>{zh ? "预览诊断包" : "Preview diagnostics"}</button>
     </SettingRow>
   </div>;
