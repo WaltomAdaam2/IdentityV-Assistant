@@ -676,6 +676,7 @@ const defaults: Settings = {
     ui_scale_percent: 100,
     engine_hotkey: "F3",
     recognition_hotkey: "P",
+    diagnostic_images: false,
     update_prereleases: false,
     developer_mode: false,
     prevent_system_sleep: false,
@@ -1550,6 +1551,7 @@ export default function App() {
       onLog={(message) => appendLog("info", message, "launcher", true)}
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))}
+      onLog={message => appendLog("info", message, "journal.recognition", true)}
       recognition={journalRecognition.view} onRecognize={() => void journalRecognition.start()} onCancelRecognition={journalRecognition.cancel} shortcut={settings.app.recognition_hotkey}
       onNotice={setNotice} />,
     runtime: (
@@ -1583,6 +1585,8 @@ export default function App() {
       settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
       setSettings={value => { if (!supportBusyRef.current) setSettings(value); }}
       support={<SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")} onNotice={setNotice}
+        includeImages={settings.app.diagnostic_images}
+        onIncludeImagesChange={diagnostic_images => setSettings(current => ({...current, app: {...current.app, diagnostic_images}}))}
         withSettings={async action => {
           supportBusyRef.current = true;
           setSupportBusy(true);

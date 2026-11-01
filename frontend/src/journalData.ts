@@ -7,9 +7,12 @@ export interface JournalSettings {
   floor: string;
   display: string;
   collapsed: boolean;
+  auto_enter: boolean;
+  preview_position: { x: number; y: number };
 }
 export const defaultJournalSettings: JournalSettings = {
   season: "s0", difficulty: "hard", door: "lf", floor: "1", display: "pure", collapsed: false,
+  auto_enter: false, preview_position: { x: 0.5, y: 0.5 },
 };
 export interface JournalMap { index: number; category: string; name: string; floors: Record<string, string>; display: Record<string, string> }
 export interface JournalPack { id: string; name: string; version: string; season_id: string; season_name: string; difficulty: string; maps: JournalMap[] }
@@ -20,7 +23,7 @@ export interface BrowserMap { key: string; index: number; category: string; name
 // One card per map number; pure/route packages can describe the same map.
 export function matchingMaps(packs: JournalPack[], filters: JournalSettings, recognizedKeys?: string[]): BrowserMap[] {
   const maps = new Map<string, BrowserMap>();
-  const order = recognizedKeys ? new Map(recognizedKeys.map((key, index) => [key, index])) : null;
+  const order = recognizedKeys ? new Map(recognizedKeys.slice(0, 4).map((key, index) => [key, index])) : null;
   for (const pack of packs) {
     if (pack.season_id !== filters.season || pack.difficulty !== filters.difficulty) continue;
     for (const map of pack.maps) {
@@ -34,6 +37,14 @@ export function matchingMaps(packs: JournalPack[], filters: JournalSettings, rec
     }
   }
   return [...maps.values()].sort((a, b) => order ? order.get(a.key)! - order.get(b.key)! : a.index - b.index);
+}
+// Store the desired center relative to the viewport; clamp each image independently.
+export function previewPlacement(view: { width: number; height: number }, aspect: number, position: JournalSettings["preview_position"]) {
+  const width = Math.max(0, Math.min(view.width - 48, Math.max(0, view.height - 128) * aspect));
+  const height = aspect > 0 ? width / aspect : 0;
+  const coordinate = (value: number, size: number, image: number) =>
+    Math.max(16, Math.min(size - image - 16, (Number.isFinite(value) ? value : 0.5) * size - image / 2));
+  return { width, height, x: coordinate(position.x, view.width, width), y: coordinate(position.y, view.height, height) };
 }
 export interface RecognitionResult { keys: string[]; preview: string | null; warnings: string[] }
 export interface RecognitionProgress { request_id: string; stage: "capturing" | "locating" | "matching"; completed: number; total: number }

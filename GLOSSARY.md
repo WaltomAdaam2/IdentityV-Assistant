@@ -35,4 +35,4 @@ A user-saved ZIP containing a bounded snapshot of redacted current-session diagn
 A map's season, difficulty, door category and number. Different floor views and base/route illustrations can belong to the same map.
 
 **Recognition candidate**:
-A journal map whose first-floor geometry plausibly matches the visible game map. A candidate requires the user's selection; it is not a confirmed identification or an accuracy percentage.
+A journal map whose first-floor geometry plausibly matches the visible game map. The interface shows up to four in match order. Optional automatic entry opens the first candidate; this is not a confirmed identification or an accuracy percentage.

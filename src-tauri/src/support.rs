@@ -23,7 +23,7 @@ pub struct SupportState {
 
 fn defaults() -> Value {
     let mut value: Value = serde_json::from_str(include_str!("../../config/default.json")).unwrap();
-    value["journal"] = json!({"season":"s0","difficulty":"hard","door":"lf","floor":"1","display":"pure","collapsed":false});
+    value["journal"] = json!({"season":"s0","difficulty":"hard","door":"lf","floor":"1","display":"pure","collapsed":false,"auto_enter":false,"preview_position":{"x":0.5,"y":0.5}});
     value
 }
 
@@ -58,6 +58,9 @@ fn validate_tree(value: &Value, template: &Value, path: &str) -> Result<(), Stri
                 "settings.engine.heartbeat_interval_seconds" => (0.1, 60., false),
                 "settings.capture.idle_fps" | "settings.capture.active_fps" => (1., 120., true),
                 "settings.vision.template_threshold" => (0., 1., false),
+                "settings.journal.preview_position.x" | "settings.journal.preview_position.y" => {
+                    (0., 1., false)
+                }
                 "settings.vision.state_confirmation_count" => (1., 100., true),
                 "settings.automation.login_timeout_seconds" => (30., 900., true),
                 "settings.automation.camera_turn_scale_percent" => (20., 300., true),
@@ -306,6 +309,36 @@ pub async fn restore_settings(id: String, app: AppHandle) -> Result<Value, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn journal_position_and_diagnostic_choice_survive_backup_and_old_backups_use_defaults() {
+        let mut source = defaults();
+        source["app"]["diagnostic_images"] = json!(true);
+        source["journal"]["auto_enter"] = json!(true);
+        source["journal"]["preview_position"] = json!({"x":0.73,"y":0.26});
+        let mut value = backup(&source).unwrap();
+        assert_eq!(import_backup(&value).unwrap(), source);
+        value["settings"]["journal"]["preview_position"]["x"] = json!(1.1);
+        assert!(import_backup(&value).is_err());
+        value["settings"]["journal"]
+            .as_object_mut()
+            .unwrap()
+            .remove("preview_position");
+        value["settings"]["journal"]
+            .as_object_mut()
+            .unwrap()
+            .remove("auto_enter");
+        value["settings"]["app"]
+            .as_object_mut()
+            .unwrap()
+            .remove("diagnostic_images");
+        let restored = import_backup(&value).unwrap();
+        assert_eq!(
+            restored["journal"]["preview_position"],
+            json!({"x":0.5,"y":0.5})
+        );
+        assert_eq!(restored["journal"]["auto_enter"], json!(false));
+        assert_eq!(restored["app"]["diagnostic_images"], json!(false));
+    }
     #[test]
     fn backup_round_trip_uses_known_settings_and_rejects_external_schema_errors() {
         let mut source = defaults();

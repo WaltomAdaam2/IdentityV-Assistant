@@ -137,6 +137,7 @@ export interface Settings {
     ui_scale_percent: number;
     engine_hotkey: string;
     recognition_hotkey: string;
+    diagnostic_images: boolean;
     developer_mode: boolean;
     prevent_system_sleep: boolean;
     prevent_display_sleep: boolean;

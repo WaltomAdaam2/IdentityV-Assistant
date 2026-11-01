@@ -78,3 +78,94 @@ test("background shortcut requests the original game window and never calls nati
     assert.equal(evaluate("document.querySelectorAll('.journal-map').length"), 0);
   } finally { browser("close"); }
 });
+
+test("diagnostic screenshot selection persists through navigation and a fresh settings load", () => {
+  try {
+    setup(); click("设置"); wait("!!document.querySelector('.support-panel')");
+    browser("find", "role", "checkbox", "check", "--name", "诊断包包含截图", "--exact");
+    wait("window.__launcherTest.savedSettings?.app.diagnostic_images === true");
+    click("加页手记"); wait("!!document.querySelector('.journal')"); click("设置"); wait("!!document.querySelector('.support-panel')");
+    assert.equal(evaluate("Array.from(document.querySelectorAll('.setting-row')).find(e=>e.textContent.includes('诊断包包含截图')).querySelector('input').checked"), true);
+    evaluate("sessionStorage.setItem('journal-test-settings',JSON.stringify(window.__launcherTest.savedSettings))");
+    browser("reload"); click("设置");
+    wait("!!document.querySelector('.support-panel')");
+    assert.equal(evaluate("Array.from(document.querySelectorAll('.setting-row')).find(e=>e.textContent.includes('诊断包包含截图')).querySelector('input').checked"), true);
+    click("预览诊断包"); browser("wait", "--text", "已选择包含截图");
+    assert.equal(evaluate("window.__launcherTest.calls.findLast(c=>c.command==='preview_diagnostics').args.includeImages"), true);
+  } finally { browser("close"); }
+});
+
+test("auto-entry opens best match once, keeps background focus, and supports a new request or no match", () => {
+  try {
+    setup();
+    assert.equal(evaluate("document.querySelector('.journal-auto-enter input').checked"), false);
+    browser("find", "role", "switch", "check", "--name", "自动进入最匹配地图", "--exact");
+    wait("window.__launcherTest.savedSettings?.journal.auto_enter === true");
+    evaluate("document.hasFocus=()=>false; window.__launcherTest.recognitionShortcut()");
+    wait("!!window.__launcherTest.finishRecognition");
+    evaluate("window.__launcherTest.finishRecognition({keys:['rf:1','lf:1'],preview:null,warnings:[]})");
+    wait("!!document.querySelector('.journal-full-preview:modal .journal-preview-map img')");
+    assert.equal(evaluate("document.querySelector('.journal-full-preview img').alt"), "右前 · 地图 1");
+    assert.deepEqual(evaluate("window.__launcherTest.calls.filter(c=>/show|unminimize|set_focus/.test(c.command))"), []);
+    click("退出全窗口预览"); wait("!document.querySelector('.journal-full-preview')");
+    click("2F");
+    assert.equal(evaluate("!!document.querySelector('.journal-full-preview')"), false);
+    evaluate("window.__launcherTest.recognitionShortcut()");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length===2");
+    evaluate("window.__launcherTest.finishRecognition({keys:['lf:1'],preview:null,warnings:[]})");
+    wait("document.querySelector('.journal-full-preview img')?.alt==='左前 · 地图 1'");
+    evaluate("window.__launcherTest.recognitionShortcut()");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length===3");
+    evaluate("window.__launcherTest.finishRecognition({keys:[],preview:null,warnings:[]})");
+    browser("wait", "--text", "未找到匹配地图");
+    assert.equal(evaluate("!!document.querySelector('.journal-full-preview')"), false);
+  } finally { browser("close"); }
+});
+
+test("map dragging remembers position, clamps edges, leaves controls clickable and resets to center", () => {
+  try {
+    setup(); click("识别一楼地图"); wait("!!window.__launcherTest.finishRecognition");
+    evaluate("window.__launcherTest.finishRecognition({keys:['rf:1','lf:1'],preview:null,warnings:[]})");
+    click("查看右前 · 地图 1"); wait("!!document.querySelector('.journal-detail img')"); click("进入地图");
+    wait("!!document.querySelector('.journal-preview-map img')?.complete");
+    const rect = evaluate("(()=>{const r=document.querySelector('.journal-preview-map').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()");
+    browser("mouse", "move", String(rect.x), String(rect.y)); browser("mouse", "down");
+    browser("mouse", "move", "1900", "1200"); browser("mouse", "up");
+    wait("window.__launcherTest.savedSettings?.journal.preview_position.x > 0.5");
+    const position = evaluate("window.__launcherTest.savedSettings.journal.preview_position");
+    const bounds = () => evaluate("(()=>{const r=document.querySelector('.journal-preview-map').getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight}})()");
+    const moved = bounds();
+    assert.ok(moved.x >= 15.5 && moved.y >= 15.5 && moved.right <= moved.width - 15.5 && moved.bottom <= moved.height - 15.5);
+    assert.equal(evaluate("(()=>{const e=document.querySelector('.journal-preview-floors button[aria-pressed=true]'),r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()"), true);
+    evaluate(`window.__launcherTest.mapImage='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200"><rect width="800" height="200" fill="tan"/></svg>')`);
+    browser("click", ".journal-full-preview .journal-floor-switch button:last-child");
+    wait("document.querySelector('.journal-full-preview img')?.naturalWidth===800");
+    assert.deepEqual(evaluate("window.__launcherTest.savedSettings.journal.preview_position"), position);
+    browser("click", ".journal-preview-map");
+    evaluate("new Promise(resolve=>setTimeout(resolve,350))");
+    assert.deepEqual(evaluate("window.__launcherTest.savedSettings.journal.preview_position"), position, "clicking a clamped map does not overwrite the shared preferred position");
+    click("退出全窗口预览"); wait("!document.querySelector('.journal-full-preview')");
+    click("进入地图"); wait("!!document.querySelector('.journal-preview-map')");
+    browser("set", "viewport", "1000", "680");
+    const changed = bounds();
+    assert.ok(changed.x >= 15.5 && changed.y >= 15.5 && changed.right <= changed.width - 15.5 && changed.bottom <= changed.height - 15.5);
+    evaluate("document.querySelector('.journal-preview-map').focus()"); browser("press", "ArrowUp");
+    wait(`window.__launcherTest.savedSettings.journal.preview_position.y < ${position.y}`);
+    click("重置地图位置");
+    wait("window.__launcherTest.savedSettings.journal.preview_position.x===0.5 && window.__launcherTest.savedSettings.journal.preview_position.y===0.5");
+    const reset = bounds();
+    assert.ok(Math.abs((reset.x + reset.right) / 2 - reset.width / 2) < 1);
+    assert.ok(Math.abs((reset.y + reset.bottom) / 2 - reset.height / 2) < 1);
+    evaluate("document.querySelector('.journal-preview-map').focus()"); browser("press", "Shift+ArrowDown");
+    wait("window.__launcherTest.savedSettings.journal.preview_position.y > 0.5");
+    const restoredPosition = evaluate("window.__launcherTest.savedSettings.journal.preview_position");
+    evaluate("sessionStorage.setItem('journal-test-settings',JSON.stringify(window.__launcherTest.savedSettings))");
+    browser("reload");
+    evaluate("window.__launcherTest.packs=[{id:'base',season_id:'s0',difficulty:'hard',maps:[{index:1,category:'lf',name:'',floors:{1:'left.png'},display:{}}]}]");
+    click("加页手记"); wait("!!document.querySelector('.journal-map')"); click("查看地图 1"); wait("!!document.querySelector('.journal-detail img')"); click("进入地图");
+    wait("!!document.querySelector('.journal-preview-map')");
+    const reopened = bounds();
+    assert.ok(Math.abs((reopened.x + reopened.right) / 2 - reopened.width / 2) < 1);
+    assert.ok(Math.abs((reopened.y + reopened.bottom) / 2 / reopened.height - restoredPosition.y) < 0.002);
+  } finally { browser("close"); }
+});

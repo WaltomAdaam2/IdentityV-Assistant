@@ -17,6 +17,7 @@ const fieldNames: Record<string, [string, string]> = {
   "app.launch_on_login": ["开机启动助手", "Launch at sign-in"], "app.minimize_to_tray": ["关闭到托盘", "Close to tray"],
   "app.ui_scale_percent": ["界面缩放（%）", "Interface scale (%)"], "app.engine_hotkey": ["引擎快捷键", "Engine shortcut"],
   "app.recognition_hotkey": ["识别一楼地图快捷键", "Recognize first-floor map shortcut"],
+  "app.diagnostic_images": ["诊断包包含截图", "Include screenshots in diagnostics"],
   "app.developer_mode": ["开发者模式", "Developer mode"], "app.prevent_system_sleep": ["禁止电脑自动休眠", "Prevent system sleep"],
   "app.prevent_display_sleep": ["禁止自动熄屏和闲置锁屏", "Prevent display sleep and idle lock"],
   "app.check_updates_on_start": ["自动检测更新", "Check for updates on startup"],
@@ -45,19 +46,23 @@ const fieldNames: Record<string, [string, string]> = {
   "journal.season": ["地图赛季", "Map season"], "journal.difficulty": ["地图难度", "Map difficulty"],
   "journal.door": ["地图门型", "Map door layout"], "journal.floor": ["地图楼层", "Map floor"],
   "journal.display": ["地图显示模式", "Map display"], "journal.collapsed": ["收起地图筛选", "Collapse map filters"],
+  "journal.auto_enter": ["自动进入最匹配地图", "Automatically open the best match"],
+  "journal.preview_position.x": ["地图预览水平位置", "Map preview horizontal position"],
+  "journal.preview_position.y": ["地图预览垂直位置", "Map preview vertical position"],
 };
 
-export default function SupportPanel({language, taskActive, withSettings, onRestored, onNotice}: {
+export default function SupportPanel({language, taskActive, withSettings, onRestored, onNotice, includeImages, onIncludeImagesChange}: {
   language: Settings["app"]["language"]; taskActive: boolean;
   withSettings: (action: () => Promise<void>) => Promise<void>;
   onRestored: (settings: Settings) => void;
   onNotice: (message: string, error?: boolean, details?: string) => void;
+  includeImages: boolean;
+  onIncludeImagesChange: (value: boolean) => void;
 }) {
   const zh = language === "zh-CN";
   const [busy, setBusy] = useState(false);
   const [restore, setRestore] = useState<RestorePreview | null>(null);
   const [bundle, setBundle] = useState<BundlePreview | null>(null);
-  const [includeImages, setIncludeImages] = useState(false);
   const {dialog, closing, close} = useDialog(Boolean(restore || bundle), () => {setRestore(null); setBundle(null);});
   const closePreview = () => close();
   const choose = (kind: string) => invoke<string | null>("support_choose_path", {kind});
@@ -128,7 +133,7 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
       <button disabled={busy || taskActive} onClick={() => void run(async () => { const path = await choose("import-settings"); if (path) setRestore(await invoke<RestorePreview>("preview_settings_restore", {path})); })}>{zh ? "导入设置并预览" : "Import and preview settings"}</button>
     </SettingRow>
     <SettingRow icon="screenshots" title={zh ? "诊断包包含截图" : "Include screenshots in diagnostics"} description={zh ? "加入最近一次识图的完整截图、识别区域及调试／失败截图，共最多 20 张、100 MiB。识图截图仅暂存内存；截图可能含昵称或聊天，分享前请检查。" : "Include the latest recognition's full capture and region, plus debug/failure images, up to 20 images / 100 MiB in total. Recognition images stay in memory until export. Review names or chat before sharing."} language={language}>
-      <input type="checkbox" disabled={busy} checked={includeImages} onChange={event => {setIncludeImages(event.target.checked); setBundle(null);}} />
+      <input type="checkbox" disabled={busy} checked={includeImages} onChange={event => {onIncludeImagesChange(event.target.checked); setBundle(null);}} />
     </SettingRow>
     <SettingRow icon="debug" title={zh ? "预览诊断包" : "Preview diagnostics"} description={zh ? "包含版本、必要运行环境、最多 4 MiB 会话日志、脱敏设置及最近一次识图流程；排除账号、凭据和私钥。预览后保存到本机，不自动上传；分享前请检查内容。" : "Includes versions, necessary environment, up to 4 MiB of session logs, redacted settings and the latest recognition flow; excludes accounts, credentials and private keys. Preview and save locally without uploading. Review before sharing."} language={language}>
       <button disabled={busy} onClick={() => void run(async () => { setBundle(await invoke<BundlePreview>("preview_diagnostics", {includeImages})); })}>{zh ? "预览诊断包" : "Preview diagnostics"}</button>

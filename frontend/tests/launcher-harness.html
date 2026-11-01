@@ -20,7 +20,7 @@ window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
   if (command === "load_settings" && window.__launcherTest.loadFailure) return Promise.reject("Fixture: configuration unreadable");
-  if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
+  if (command === "load_settings") return JSON.parse(sessionStorage.getItem("journal-test-settings") || "null") ?? { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
   if (command === "save_settings" && window.__launcherTest.saveFailure) return Promise.reject("快捷键已被占用或无法注册：Hotkey already registered: HotKey { mods: Modifiers(0x0), key: F3, id: 162 }");
   if (command === "save_settings") { window.__launcherTest.savedSettings = structuredClone(args.settings); return null; }
   if (command === "support_choose_path") return window.__launcherTest.cancelSupportPicker ? null : "C:\\fixture\\support.json";
