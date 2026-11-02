@@ -39,7 +39,7 @@
 
 - **Game launcher:** locate the official `dwrg.exe` client and coordinate direct launch with the independent [idv-login](https://github.com/KKeygen/idv-login) component, including setup, downloads, update confirmation and proxy status.
 - **Visual tasks:** lobby login, Blackjack, hunter match, hunter rank and Hide and Seek, with ordered execution, pause, resume, stop and optional match loops.
-- **Journal maps:** import multiple ZIP packs, filter by season, difficulty, doors, floor and base/route view, and open map details or an in-window preview.
+- **Journal maps:** import multiple ZIP packs and filter by season, difficulty, doors, floor and base/route view. Use the recognition button or **P** while the game is foreground to match first-floor maps in the existing grid, then open details or an in-window preview.
 - **Window and input control:** capture the game window and send foreground-checked Windows input. Explicit engine startup applies window settings; shutdown attempts to restore the original window.
 - **Desktop controls:** global engine shortcut, close to tray, capture diagnostics, searchable logs and optional sleep/display controls.
 - **Task feedback and recovery:** preflight checks, stage timing and pause guidance, bounded local failure screenshots (on by default), settings backup/restore previews and diagnostic ZIP exports with screenshots separately selected.

@@ -9,6 +9,11 @@ export interface LogEntry {
   source: string;
   important?: boolean;
   detailedOnly?: boolean;
+  details?: Record<string, unknown>;
+}
+
+export function logDetails(event: EngineEvent): Record<string, unknown> {
+  return { ...event };
 }
 
 export function appendLogBatch(current: LogEntry[], pending: LogEntry[]): LogEntry[] {
@@ -27,6 +32,7 @@ export function appendNormalLogBatch(current: LogEntry[], pending: LogEntry[]): 
 
 export function filterLogs(entries: LogEntry[], level: "all" | LogLevel, query: string, verbose: boolean): LogEntry[] {
   const search = query.toLocaleLowerCase();
+  if (verbose && level === "all" && !search) return entries;
   return entries.filter((entry) => {
     // The launcher outcome summarizes these upstream startup instructions.
     // Keep unknown messages (including sign-in prompts) and real failures visible.
@@ -36,7 +42,8 @@ export function filterLogs(entries: LogEntry[], level: "all" | LogLevel, query: 
     );
     return (verbose || (!componentDetail && !entry.detailedOnly && (entry.important || entry.level === "warning" || entry.level === "error"))) &&
     (level === "all" || entry.level === level) &&
-    (!search || entry.message.toLocaleLowerCase().includes(search));
+    (!search || entry.message.toLocaleLowerCase().includes(search) ||
+      (verbose && JSON.stringify(entry.details ?? {}).toLocaleLowerCase().includes(search)));
   });
 }
 

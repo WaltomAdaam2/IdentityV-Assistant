@@ -72,6 +72,7 @@ struct EngineState {
     status: String,
     engine_version: Option<String>,
     task_status: String,
+    task_transition_pending: bool,
     last_heartbeat: Option<chrono::DateTime<Utc>>,
     heartbeat_timeout_seconds: f64,
     last_error: Option<String>,
@@ -87,12 +88,21 @@ pub struct EngineSupervisor {
     lifecycle: Arc<Mutex<()>>,
     diagnostics: Arc<Mutex<()>>,
     updating: Arc<AtomicBool>,
+    recognizing: Arc<AtomicBool>,
+}
+
+pub(crate) struct RecognitionGuard(Arc<AtomicBool>);
+impl Drop for RecognitionGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 impl Default for EngineSupervisor {
     fn default() -> Self {
         Self {
             updating: Arc::new(AtomicBool::new(false)),
+            recognizing: Arc::new(AtomicBool::new(false)),
             lifecycle: Arc::new(Mutex::new(())),
             diagnostics: Arc::new(Mutex::new(())),
             inner: Arc::new(Mutex::new(EngineState {
@@ -101,6 +111,7 @@ impl Default for EngineSupervisor {
                 status: "stopped".into(),
                 engine_version: None,
                 task_status: "idle".into(),
+                task_transition_pending: false,
                 last_heartbeat: None,
                 heartbeat_timeout_seconds: 10.0,
                 last_error: None,
@@ -114,8 +125,28 @@ impl Default for EngineSupervisor {
 }
 
 impl EngineSupervisor {
+    pub(crate) async fn begin_recognition(&self) -> Result<RecognitionGuard, String> {
+        let _lifecycle = self.lifecycle.lock().await;
+        let state = self.inner.lock().await;
+        if state.task_transition_pending
+            || matches!(state.task_status.as_str(), "starting" | "running")
+            || (!state.pending_tasks.is_empty() && state.task_status != "paused")
+        {
+            return Err(
+                "请先暂停或停止自动任务 / Pause or stop automation before recognizing maps".into(),
+            );
+        }
+        if self.updating.load(Ordering::SeqCst) || self.recognizing.swap(true, Ordering::SeqCst) {
+            return Err("识图或更新正在进行 / Recognition or update is already in progress".into());
+        }
+        Ok(RecognitionGuard(self.recognizing.clone()))
+    }
+
     pub async fn lock_idle_for_restore(&self) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
         let guard = self.lifecycle.clone().lock_owned().await;
+        if self.recognizing.load(Ordering::SeqCst) {
+            return Err("请先取消地图识别 / Cancel recognition first".into());
+        }
         {
             let state = self.inner.lock().await;
             if matches!(state.task_status.as_str(), "running" | "paused")
@@ -131,6 +162,9 @@ impl EngineSupervisor {
 
     pub async fn start(&self, app: AppHandle) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock().await;
+        if self.recognizing.load(Ordering::SeqCst) {
+            return Err("请先取消地图识别 / Cancel recognition first".into());
+        }
         // An explicit start adopts an engine temporarily started by diagnostics.
         self.inner.lock().await.diagnostic_autostop_generation = None;
         self.start_locked(app).await?;
@@ -138,6 +172,13 @@ impl EngineSupervisor {
     }
 
     pub async fn run_diagnostic(&self, app: AppHandle, command: Value) -> Result<(), String> {
+        crate::logs::record(
+            &app,
+            "info",
+            "capture.diagnostics",
+            "开始捕捉诊断 / Starting capture diagnostics",
+            json!({"command":command["type"],"request_id":command["request_id"]}),
+        );
         let result_event = match command["type"].as_str() {
             Some("detect_window") => "window_diagnostics",
             Some("capture_frame") => "debug_frame",
@@ -154,14 +195,21 @@ impl EngineSupervisor {
         let (generation, sent) = {
             let _lifecycle = self.lifecycle.lock().await;
             let was_running = self.has_process().await;
-            self.start_locked(app).await?;
+            self.start_locked(app.clone()).await?;
+            crate::logs::record(
+                &app,
+                "debug",
+                "capture.diagnostics",
+                "诊断服务就绪 / Diagnostic service ready",
+                json!({"request_id":request_id,"started_for_diagnostic":!was_running}),
+            );
             let generation = {
                 let mut state = self.inner.lock().await;
                 if !was_running {
                     state.diagnostic_autostop_generation = Some(state.process_generation);
                 }
                 state.diagnostic = Some(PendingDiagnostic {
-                    request_id,
+                    request_id: request_id.clone(),
                     result_event,
                     sender,
                 });
@@ -178,6 +226,17 @@ impl EngineSupervisor {
             },
         };
         let cleanup = self.finish_diagnostic(generation).await;
+        crate::logs::record(
+            &app,
+            if result.is_ok() && cleanup.is_ok() {
+                "info"
+            } else {
+                "error"
+            },
+            "capture.diagnostics",
+            "捕捉诊断结束 / Capture diagnostics ended",
+            json!({"request_id":request_id,"error":result.as_ref().err(),"cleanup_error":cleanup.as_ref().err()}),
+        );
         result.and(cleanup)
     }
 
@@ -199,6 +258,9 @@ impl EngineSupervisor {
     }
 
     async fn start_locked(&self, app: AppHandle) -> Result<(), String> {
+        if self.recognizing.load(Ordering::SeqCst) {
+            return Err("请先取消地图识别 / Cancel recognition first".into());
+        }
         if self.updating.load(Ordering::SeqCst) {
             return Err("Update installation is in progress".into());
         }
@@ -412,24 +474,14 @@ impl EngineSupervisor {
         tauri::async_runtime::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                {
+                let record = crate::logs::stderr_record(&line, "engine.stderr");
+                if record["level"] == "error" {
                     let mut state = supervisor.inner.lock().await;
                     if state.process_generation == process_generation {
                         state.last_error = Some(line.clone());
                     }
                 }
-                crate::logs::emit(
-                    &app,
-                    json!({
-                        "version": 1,
-                        "type": "log",
-                        "timestamp": Utc::now().to_rfc3339(),
-                        "level": "error",
-                        "source": "engine.stderr",
-                        "message": line,
-                        "data": {}
-                    }),
-                );
+                crate::logs::emit(&app, record);
             }
         });
     }
@@ -450,6 +502,7 @@ impl EngineSupervisor {
                     match result {
                         Ok(Some(status)) => {
                             state.process = None;
+                            state.task_transition_pending = false;
                             state.diagnostic = None;
                             if state.status == "stopping" {
                                 state.status = "stopped".into();
@@ -520,11 +573,13 @@ impl EngineSupervisor {
                 }
             }
             Some("task_preflight") if message["for_start"] == true && message["ok"] == false => {
+                state.task_transition_pending = false;
                 state.pending_tasks.clear();
                 state.active_task_id = None;
                 state.task_status = "idle".into();
             }
             Some("task_started") => {
+                state.task_transition_pending = false;
                 state.status = "running".into();
                 if let Some(task_id) = message.get("task_id").and_then(Value::as_str) {
                     state.active_task_id = Some(task_id.to_string());
@@ -538,6 +593,7 @@ impl EngineSupervisor {
                 state.task_status = "running".into();
             }
             Some("task_paused") => {
+                state.task_transition_pending = false;
                 state.status = "paused".into();
                 state.task_status = "paused".into();
                 if let Some(message) = message.get("message").and_then(Value::as_str) {
@@ -545,6 +601,7 @@ impl EngineSupervisor {
                 }
             }
             Some("task_resumed") => {
+                state.task_transition_pending = false;
                 state.status = "running".into();
                 state.task_status = "running".into();
                 state.last_error = None;
@@ -566,7 +623,13 @@ impl EngineSupervisor {
                     state.pending_tasks.clear();
                     state.active_task_id = None;
                 }
-                state.task_status = "idle".into();
+                state.task_transition_pending = !state.pending_tasks.is_empty();
+                state.task_status = if state.task_transition_pending {
+                    "starting"
+                } else {
+                    "idle"
+                }
+                .into();
             }
             Some("error") if message.get("recoverable") == Some(&Value::Bool(false)) => {
                 state.status = "error".into();
@@ -586,6 +649,8 @@ impl EngineSupervisor {
     }
 
     pub async fn send(&self, command: Value) -> Result<(), String> {
+        let resuming = command["type"] == "resume_task";
+        let stopping_tasks = command["type"] == "stop_task";
         let adopts_engine = matches!(
             command["type"].as_str(),
             Some("start_task" | "start_tasks" | "resume_task")
@@ -610,11 +675,22 @@ impl EngineSupervisor {
         }
         let line = normalize_command(command)?;
         let mut state = self.inner.lock().await;
+        if adopts_engine && self.recognizing.load(Ordering::SeqCst) {
+            return Err("请先取消地图识别 / Cancel recognition first".into());
+        }
+        if resuming
+            && (state.task_status != "paused"
+                || state.pending_tasks.is_empty()
+                || state.task_transition_pending)
+        {
+            return Err("没有可恢复的暂停任务 / No paused task is ready to resume".into());
+        }
         if pending_tasks.is_some()
-            && matches!(
-                state.task_status.as_str(),
-                "starting" | "running" | "paused"
-            )
+            && (state.task_transition_pending
+                || matches!(
+                    state.task_status.as_str(),
+                    "starting" | "running" | "paused"
+                ))
         {
             return Err("A task is already running or paused".into());
         }
@@ -631,6 +707,13 @@ impl EngineSupervisor {
             .map_err(|error| error.to_string())?;
         if adopts_engine {
             state.diagnostic_autostop_generation = None;
+            state.task_transition_pending = true;
+            // Close the paused -> resumed acknowledgement gap for recognition.
+            state.task_status = "starting".into();
+        }
+        if stopping_tasks && !state.pending_tasks.is_empty() {
+            state.task_transition_pending = true;
+            state.task_status = "stopping".into();
         }
         if let Some(tasks) = pending_tasks {
             state.pending_tasks = tasks;
@@ -729,6 +812,9 @@ impl EngineSupervisor {
 
     pub async fn prepare_update(&self) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock().await;
+        if self.recognizing.load(Ordering::SeqCst) {
+            return Err("请先取消地图识别 / Cancel recognition first".into());
+        }
         self.updating.store(true, Ordering::SeqCst);
         self.stop_locked().await
     }
@@ -745,6 +831,7 @@ impl EngineSupervisor {
             state.diagnostic = None;
             state.diagnostic_autostop_generation = None;
             let running = state.process.is_some();
+            state.task_transition_pending = false;
             if running {
                 state.status = "stopping".into();
             }
@@ -905,7 +992,7 @@ fn task_queue_from_command(command: &Value) -> Option<Vec<String>> {
     }
 }
 
-fn locate_engine(resource_directory: &Path) -> Result<PathBuf, String> {
+pub(crate) fn locate_engine(resource_directory: &Path) -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("IDENTITYV_ENGINE_PATH") {
         let path = PathBuf::from(path);
         if path.is_file() {
@@ -959,7 +1046,7 @@ fn installed_engine_path(resource_directory: &Path) -> Result<PathBuf, String> {
     }
 }
 
-fn engine_command(engine_path: &Path) -> Command {
+pub(crate) fn engine_command(engine_path: &Path) -> Command {
     let mut command = if engine_path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
@@ -1028,6 +1115,52 @@ mod tests {
         let command = engine_command(&found);
         assert_eq!(command.as_std().get_program(), executable.as_os_str());
         assert_eq!(command.as_std().get_args().count(), 0);
+    }
+
+    #[test]
+    fn recognition_waits_for_task_acknowledgement_and_queue_advance() {
+        tauri::async_runtime::block_on(async {
+            let supervisor = EngineSupervisor::default();
+            assert!(supervisor
+                .send(json!({"type":"resume_task"}))
+                .await
+                .unwrap_err()
+                .contains("No paused task"));
+            drop(supervisor.begin_recognition().await.unwrap());
+            {
+                let mut state = supervisor.inner.lock().await;
+                state.pending_tasks = vec!["blackjack".into(), "hide_seek".into()];
+                state.active_task_id = Some("blackjack".into());
+            }
+            supervisor
+                .apply_event(&json!({"type":"task_finished","reason":"completed"}), 0)
+                .await;
+            supervisor
+                .apply_event(&json!({"type":"heartbeat","task_status":"idle"}), 0)
+                .await;
+            assert!(supervisor.begin_recognition().await.is_err());
+            supervisor
+                .apply_event(&json!({"type":"task_started","task_id":"hide_seek"}), 0)
+                .await;
+            supervisor
+                .apply_event(&json!({"type":"task_paused"}), 0)
+                .await;
+            let guard = supervisor.begin_recognition().await.unwrap();
+            assert_eq!(
+                supervisor.inner.lock().await.pending_tasks,
+                vec!["hide_seek"]
+            );
+            drop(guard);
+            supervisor.inner.lock().await.task_transition_pending = true; // resume sent, acknowledgement pending
+            supervisor
+                .apply_event(&json!({"type":"heartbeat","task_status":"paused"}), 0)
+                .await;
+            assert!(supervisor.begin_recognition().await.is_err());
+            supervisor
+                .apply_event(&json!({"type":"task_resumed"}), 0)
+                .await;
+            assert!(supervisor.begin_recognition().await.is_err());
+        });
     }
 
     #[test]

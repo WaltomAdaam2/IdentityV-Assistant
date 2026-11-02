@@ -41,8 +41,16 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 `start_task` / `start_tasks` 会自动启动尚未运行的引擎；F3 切换引擎，并与其他生命周期操作串行。显式启动自动化时应用游戏窗口布局，单次诊断不应用。暂停释放输入并冻结任务计时，恢复重新截图，停止清空队列。前台或捕捉丢失有有限恢复时间，详见 [功能逻辑](README_LOGIC.md) 与 [IPC](ipc.md)。
 
-本地规格和问题放在 `.scratch/`，遵循 [问题工作流](agents/issue-tracker.md)。真正的架构决策记入 `docs/adr/`，共享术语记入 `GLOSSARY.md`，不要为局部问题扩展成全项目重写。
+架构决策见 `docs/adr/`，共享应用术语见 `GLOSSARY.md`。
 
 ## 打包与发布
 
 `pnpm tauri build` 生成签名安装包，但不会自动发布。签名密钥、干净源码校验、附件命名和发布步骤见 [更新与发布](updates.md)。
+
+## 诊断包离线重放
+
+在仓库中使用已安装依赖的引擎环境运行。ZIP 需要包含截图和模板证据；`--attempt` 可指定识图编号，`--output` 保存 JSON 报告。缺少证据会明确报告，不回退到当前安装的地图包。报告比较候选顺序、区域、评分及耗时，并携带本地反馈。重放只验证定位和几何匹配，不验证原生截图或游戏行为；不含进程启动、截图和保存证据的时间，不能直接与原来的总耗时比较。
+
+```powershell
+.\engine\.venv\Scripts\python.exe scripts/replay_recognition.py "IdentityV-diagnostics-YYYY-MM-DD-HHmmss-SSS.zip" --output replay.json
+```

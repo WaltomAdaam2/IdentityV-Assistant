@@ -9,11 +9,12 @@ import GameLauncher from "./GameLauncher";
 import UpdatePanel from "./UpdatePanel";
 import SupportPanel from "./SupportPanel";
 import { useDialog } from "./useDialog";
+import { useJournalRecognition } from "./useJournalRecognition";
 import { NumberInput, KeywordsInput } from "./SettingsInput";
 import SettingRow from "./SettingRow";
 import Icon, { type IconName } from "./Icon";
 import { defaultJournalSettings } from "./journalData";
-import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, progressLog, type LogEntry, type LogLevel } from "./logs";
+import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, logDetails, progressLog, type LogEntry, type LogLevel } from "./logs";
 import type {
   CaptureFrame,
   EngineEvent,
@@ -674,6 +675,8 @@ const defaults: Settings = {
     minimize_to_tray: false,
     ui_scale_percent: 100,
     engine_hotkey: "F3",
+    recognition_hotkey: "P",
+    diagnostic_images: false,
     update_prereleases: false,
     developer_mode: false,
     prevent_system_sleep: false,
@@ -865,9 +868,6 @@ export default function App() {
   const [notice, setCurrentNotice] = useState<{ message: string; error: boolean; details?: string } | null>(null);
   const [visibleNotice, setVisibleNotice] = useState<typeof notice>(null);
   const dismissedNotice = useRef<typeof notice>(null);
-  const setNotice = useCallback((message: string | null, error = false, details?: string) => {
-    setCurrentNotice(message ? { message, error, details } : null);
-  }, []);
   const [noticeHovered, setNoticeHovered] = useState(false);
   const [noticeFocused, setNoticeFocused] = useState(false);
   const noticeHeld = noticeHovered || noticeFocused;
@@ -897,9 +897,9 @@ export default function App() {
   const [developerInputEnabled, setDeveloperInputEnabled] = useState(false);
   const [runtimeEvent, setRuntimeEvent] = useState<EngineEvent | null>(null);
   const appendLog = useCallback(
-    (level: LogLevel, message: string, source = "engine", important = false, persist = true, detailedOnly = false) => {
+    (level: LogLevel, message: string, source = "engine", important = false, persist = true, detailedOnly = false, details?: Record<string, unknown>) => {
       if (persist)
-        void bridge.appendUiLog({ type: "ui_log", timestamp: new Date().toISOString(), level, source, message }).catch(console.error);
+        void bridge.appendUiLog({ type: "ui_log", timestamp: new Date().toISOString(), level, source, message, important, detailedOnly, details }).catch(console.error);
       pendingLogsRef.current.push({
         id: nextLogId.current++,
         at: now(languageRef.current),
@@ -908,6 +908,7 @@ export default function App() {
         source,
         important,
         detailedOnly,
+        details,
       });
       if (logFlushTimer.current === null)
         logFlushTimer.current = window.setTimeout(() => {
@@ -921,6 +922,10 @@ export default function App() {
     },
     [],
   );
+  const setNotice = useCallback((message: string | null, error = false, details?: string) => {
+    setCurrentNotice(message ? { message, error, details } : null);
+    if (message) appendLog(error ? "error" : "info", message, "ui.notice", true, true, false, details ? { reason: details } : undefined);
+  }, [appendLog]);
   const clearLogs = useCallback(() => {
     if (logFlushTimer.current !== null) window.clearTimeout(logFlushTimer.current);
     logFlushTimer.current = null;
@@ -1112,7 +1117,7 @@ export default function App() {
           event.type === "task_resumed" ||
           event.type === "failure_capture" ||
           event.type === "task_finished";
-        appendLog(level, eventMessage, event.source ?? event.task_id ?? event.type ?? "engine", important, false, isWindowDiagnostic(event));
+        appendLog(level, eventMessage, event.source ?? event.task_id ?? event.type ?? "engine", important, false, isWindowDiagnostic(event), logDetails(event));
         if (event.type === "heartbeat") {
           setSnapshot((current) =>
             current.status === (event.engine_status ?? current.status) &&
@@ -1445,6 +1450,7 @@ export default function App() {
     document.title = t.about.name;
   }, [t.about.name]);
   useLayoutEffect(() => {
+    if (!document.hasFocus()) return;
     if (document.activeElement?.closest(".sidebar nav")) return;
     const heading = workspaceRef.current?.querySelector<HTMLElement>(page === "launcher" ? ".launcher-choose" : ".topbar h1");
     if (heading) { if (heading.tagName !== "BUTTON") heading.tabIndex = -1; heading.focus({preventScroll: true}); }
@@ -1503,6 +1509,18 @@ export default function App() {
     stop: () => { void lifecycle("stop"); },
     restart: () => { if (tasks.some(task => task.status !== "idle")) setRestartPrompt(true); else void lifecycle("restart"); },
   };
+  const journalRecognition = useJournalRecognition({ ...defaultJournalSettings, ...settings.journal }, page === "journal", settingsLoaded,
+    () => {
+      if (supportBusyRef.current || document.querySelector("dialog:modal:not(.journal-full-preview)")) {
+        appendLog("info", language === "zh-CN" ? "识图未启动：请先关闭当前对话框或完成设置操作。" : "Recognition not started: close the dialog or finish the settings operation first.", "journal.recognition", true);
+        return false;
+      }
+      // This changes only WebView content. Never show/activate the native window.
+      if (pageTransitionTimer.current !== null) { window.clearTimeout(pageTransitionTimer.current); pageTransitionTimer.current = null; }
+      pendingPageRef.current = "journal";
+      setPage("journal"); setPagePhase("idle");
+      return true;
+    }, message => setNotice(message, true));
   const content = {
     dashboard: (
       <Dashboard
@@ -1533,7 +1551,9 @@ export default function App() {
       onLog={(message) => appendLog("info", message, "launcher", true)}
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))}
-      onNotice={(message, error = false) => { setNotice(message, error); appendLog(error ? "error" : "info", message, "journal", true); }} />,
+      onLog={message => appendLog("info", message, "journal.recognition", true)}
+      recognition={journalRecognition.view} onRecognize={() => void journalRecognition.start()} onCancelRecognition={journalRecognition.cancel} shortcut={settings.app.recognition_hotkey}
+      onNotice={setNotice} />,
     runtime: (
       <Runtime
         language={language}
@@ -1565,6 +1585,8 @@ export default function App() {
       settings={{ ...settings, tasks: { enabled: enabledTaskIds ? enabledTaskIds.split(",") : [] } }}
       setSettings={value => { if (!supportBusyRef.current) setSettings(value); }}
       support={<SupportPanel language={language} taskActive={tasks.some(task => task.status === "running" || task.status === "paused")} onNotice={setNotice}
+        includeImages={settings.app.diagnostic_images}
+        onIncludeImagesChange={diagnostic_images => setSettings(current => ({...current, app: {...current.app, diagnostic_images}}))}
         withSettings={async action => {
           supportBusyRef.current = true;
           setSupportBusy(true);
@@ -2415,7 +2437,7 @@ const Logs = memo(function Logs({
                 </b>
               </span>
               <span>{entry.source}</span>
-              <span>{entry.message}</span>
+              <span>{entry.message}{verbose && entry.details && <details className="log-details"><summary>{language === "zh-CN" ? "详细记录" : "Full record"}</summary><pre>{JSON.stringify(entry.details, null, 2)}</pre></details>}</span>
             </div>
           ))
         ) : (
@@ -2520,6 +2542,9 @@ function SettingsPage({
         </SettingRow>
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
           <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select>
+        </SettingRow>
+        <SettingRow icon="keyboard" title={language === "zh-CN" ? "识别一楼地图快捷键" : "Recognize first-floor map shortcut"} description={language === "zh-CN" ? "仅在游戏前台响应，保留原按键，不切走游戏焦点。先在手记中选择赛季、难度与显示方式。" : "Works only while the game is foreground; preserves game input and focus. Select the season, difficulty and display in Journal first."} language={language}>
+          <select value={settings.app.recognition_hotkey} onChange={event => updateApp({ recognition_hotkey: event.target.value })}>{[..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map(key => <option key={key} disabled={key === settings.app.engine_hotkey}>{key}</option>)}</select>
         </SettingRow>
         <SettingRow icon="play" title={t.launch} description={language === "zh-CN" ? "打开助手时自动启动自动化引擎" : "Start the automation engine when the assistant opens."} language={language}>
           <input
@@ -2626,7 +2651,8 @@ function SettingsPage({
         <SettingRow icon="screenshots" title={language === "zh-CN" ? "任务失败时保存游戏画面" : "Save game frames on task failure"} description={language === "zh-CN" ? "默认开启，仅保存 WGC 游戏窗口画面，最多 20 张、共 100 MiB。可能包含昵称或聊天，也可能早于失败；其他捕捉后端不自动留图。导出需另行选择。" : "On by default for WGC game-window frames, up to 20 images / 100 MiB. May include names or chat and predate the failure. Other backends do not save automatic images; export requires separate selection."} language={language}>
           <input type="checkbox" checked={settings.debug.save_failure_screenshots} onChange={event => setSettings({...settings, debug: {...settings.debug, save_failure_screenshots: event.target.checked}})} />
         </SettingRow>
-        <SettingRow icon="logFolder" title={language === "zh-CN" ? "日志文件" : "Log files"} description={language === "zh-CN" ? "打开本机保存的每日运行日志" : "Open the daily log archives on this computer."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></SettingRow>
+        <SettingRow icon="logFolder" title={language === "zh-CN" ? "日志文件" : "Log files"} description={language === "zh-CN" ? "完整运行日志保留 7 天，可打开目录查看" : "Full runtime logs are retained for 7 days. Open the folder to inspect them."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openLogsDirectory())}>{language === "zh-CN" ? "打开日志目录" : "Open logs folder"}</button></SettingRow>
+        <SettingRow icon="screenshots" title={language === "zh-CN" ? "截图文件" : "Screenshot files"} description={language === "zh-CN" ? "识图、调试和失败截图保留 3 天；导出诊断包时可选择追加历史会话。" : "Recognition, debug and failure images are retained for 3 days. Historical sessions can be selected when exporting diagnostics."} language={language}><button disabled={settingsActionBusy} onClick={() => void desktopAction(() => bridge.openScreenshotsDirectory())}>{language === "zh-CN" ? "打开截图目录" : "Open screenshots folder"}</button></SettingRow>
         <SettingRow icon="threshold" title={t.threshold} description={language === "zh-CN" ? "仅用于开发者模板诊断，不影响任务内的识别规则" : "Used for template diagnostics only; task recognition rules are unchanged."} language={language}>
           <NumberInput language={language}
             min="0"

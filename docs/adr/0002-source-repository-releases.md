@@ -21,6 +21,6 @@ The existing updater and release scripts retain ownership; no new release framew
 
 ## 0.1.8 superseding workflow
 
-The user's next version request removes automatic source probing entirely; legacy auto settings resolve to direct GitHub without network selection. Manual proxy choices remain.
+Version 0.1.8 removes automatic source probing entirely; legacy auto settings resolve to direct GitHub without network selection. Manual proxy choices remain.
 
-Every version now uses a permanent `SNAPSHOT-v<version>` branch and a PR to main. Build signed assets from the clean pushed branch before merge. After merge, the branch is frozen forever. Automation may only prepare a Draft Release targeting the verified build commit; the user reviews and personally publishes it. This supersedes the earlier automatic draft-to-public step, without changing signing or integrity validation. See [the maintained workflow](../updates_EN.md).
+Signed assets are built from a clean, pushed `SNAPSHOT-v<version>` commit before its PR merges. A Draft Release identifies that verified build commit and is published manually after review. This supersedes the earlier automatic draft-to-public step, without changing signing or integrity validation. See [the maintained workflow](../updates_EN.md).

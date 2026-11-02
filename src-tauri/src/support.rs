@@ -23,7 +23,7 @@ pub struct SupportState {
 
 fn defaults() -> Value {
     let mut value: Value = serde_json::from_str(include_str!("../../config/default.json")).unwrap();
-    value["journal"] = json!({"season":"s0","difficulty":"hard","door":"lf","floor":"1","display":"pure","collapsed":false});
+    value["journal"] = json!({"season":"s0","difficulty":"hard","door":"lf","floor":"1","display":"pure","collapsed":false,"auto_enter":false,"preview_position":{"x":0.5,"y":0.5,"preset":"center"}});
     value
 }
 
@@ -58,6 +58,9 @@ fn validate_tree(value: &Value, template: &Value, path: &str) -> Result<(), Stri
                 "settings.engine.heartbeat_interval_seconds" => (0.1, 60., false),
                 "settings.capture.idle_fps" | "settings.capture.active_fps" => (1., 120., true),
                 "settings.vision.template_threshold" => (0., 1., false),
+                "settings.journal.preview_position.x" | "settings.journal.preview_position.y" => {
+                    (0., 1., false)
+                }
                 "settings.vision.state_confirmation_count" => (1., 100., true),
                 "settings.automation.login_timeout_seconds" => (30., 900., true),
                 "settings.automation.camera_turn_scale_percent" => (20., 300., true),
@@ -98,6 +101,14 @@ fn validate_tree(value: &Value, template: &Value, path: &str) -> Result<(), Stri
         _ => {}
     }
     let allowed: &[&str] = match path {
+        "settings.journal.preview_position.preset" => &[
+            "center",
+            "top_left",
+            "top_right",
+            "bottom_left",
+            "bottom_right",
+            "custom",
+        ],
         "settings.app.language" => &["zh-CN", "en-US"],
         "settings.app.theme" => &["system", "light", "dark"],
         "settings.app.update_source" => &["direct", "proxy", "ghfast", "ghproxy_net"],
@@ -137,6 +148,7 @@ fn merge_known(target: &mut Value, source: &Value) {
 pub fn backup(settings: &Value) -> Result<Value, String> {
     let mut known = defaults();
     merge_known(&mut known, settings);
+    migrate_position(&mut known, settings);
     validate_tree(&known, &defaults(), "settings")?;
     Ok(
         json!({"format":"identityv-assistant-settings","schema_version":1,
@@ -160,7 +172,9 @@ fn import_backup(value: &Value) -> Result<Value, String> {
     validate_tree(&value["settings"], &defaults(), "settings")?;
     let mut result = defaults();
     merge_known(&mut result, &value["settings"]);
+    migrate_position(&mut result, &value["settings"]);
     // Parse the hotkey before any desktop effect or file replacement.
+    crate::journal_shortcut::validate(&result)?;
     result["app"]["engine_hotkey"]
         .as_str()
         .unwrap_or("")
@@ -169,7 +183,19 @@ fn import_backup(value: &Value) -> Result<Value, String> {
     Ok(result)
 }
 
-fn differences(old: &Value, new: &Value, path: &str, output: &mut Vec<Value>) {
+fn migrate_position(result: &mut Value, source: &Value) {
+    let position = &source["journal"]["preview_position"];
+    if position.is_object() && position["preset"].is_null() {
+        result["journal"]["preview_position"]["preset"] =
+            json!(if position["x"] == 0.5 && position["y"] == 0.5 {
+                "center"
+            } else {
+                "custom"
+            });
+    }
+}
+
+pub(crate) fn differences(old: &Value, new: &Value, path: &str, output: &mut Vec<Value>) {
     if let Some(object) = new.as_object() {
         for (key, value) in object {
             differences(&old[key], value, &format!("{path}.{key}"), output);
@@ -202,109 +228,194 @@ pub fn check_export_destination(path: &Path, data_root: &Path) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn export_settings(path: String) -> Result<(), String> {
-    let _guard = SETTINGS_OPERATION.lock().map_err(|e| e.to_string())?;
-    let bytes =
-        serde_json::to_vec_pretty(&backup(&crate::config::load()?)?).map_err(|e| e.to_string())?;
-    check_export_destination(
-        Path::new(&path),
-        crate::config::user_path()?
-            .parent()
-            .ok_or("Missing data root")?,
-    )?;
-    write_export(Path::new(&path), &bytes)
+pub fn export_settings(app: AppHandle, path: String) -> Result<(), String> {
+    crate::logs::record(
+        &app,
+        "info",
+        "support.settings",
+        "开始导出设置 / Exporting settings",
+        json!({"stage":"started"}),
+    );
+    let result = (|| {
+        let _guard = SETTINGS_OPERATION.lock().map_err(|e| e.to_string())?;
+        let bytes = serde_json::to_vec_pretty(&backup(&crate::config::load()?)?)
+            .map_err(|e| e.to_string())?;
+        check_export_destination(
+            Path::new(&path),
+            crate::config::user_path()?
+                .parent()
+                .ok_or("Missing data root")?,
+        )?;
+        write_export(Path::new(&path), &bytes)
+    })();
+    crate::logs::record(
+        &app,
+        if result.is_ok() { "info" } else { "error" },
+        "support.settings",
+        "设置导出结果 / Settings export result",
+        json!({"ok":result.is_ok(),"error":result.as_ref().err()}),
+    );
+    result
 }
 
 #[tauri::command]
 pub fn preview_settings_restore(
+    app: AppHandle,
     path: String,
     state: State<'_, SupportState>,
 ) -> Result<Value, String> {
-    let _guard = SETTINGS_OPERATION.lock().map_err(|e| e.to_string())?;
-    let mut bytes = Vec::new();
-    fs::File::open(path)
-        .map_err(|e| e.to_string())?
-        .take(1024 * 1024 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|e| e.to_string())?;
-    if bytes.len() > 1024 * 1024 {
-        return Err("备份超过 1 MiB / Backup exceeds 1 MiB".into());
-    }
-    let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    let mut settings = import_backup(&value)?;
-    let previous = crate::config::load()?;
-    let mut warnings = Vec::new();
-    let executable = settings["game_window"]["executable_path"]
-        .as_str()
-        .unwrap_or("");
-    if !executable.is_empty()
-        && (!Path::new(executable).is_file()
-            || !Path::new(executable)
-                .file_name()
-                .and_then(|v| v.to_str())
-                .is_some_and(|s| {
-                    s.eq_ignore_ascii_case("dwrg.exe") || s.eq_ignore_ascii_case("IdentityV.exe")
-                }))
-    {
-        settings["game_window"]["executable_path"] = json!(previous["game_window"]
-            ["executable_path"]
+    crate::logs::record(
+        &app,
+        "info",
+        "support.settings",
+        "开始校验设置备份 / Validating settings backup",
+        json!({"stage":"started"}),
+    );
+    let result = (|| {
+        let _guard = SETTINGS_OPERATION.lock().map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        fs::File::open(path)
+            .map_err(|e| e.to_string())?
+            .take(1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() > 1024 * 1024 {
+            return Err("备份超过 1 MiB / Backup exceeds 1 MiB".into());
+        }
+        let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        let mut settings = import_backup(&value)?;
+        let previous = crate::config::load()?;
+        let mut warnings = Vec::new();
+        let executable = settings["game_window"]["executable_path"]
             .as_str()
-            .unwrap_or(""));
-        warnings.push("备份中的游戏路径在本机不可用，保留当前路径。 / Imported game path is unavailable; keeping the current path.");
-    }
-    let mut changes = Vec::new();
-    differences(&previous, &settings, "settings", &mut changes);
-    let id = uuid::Uuid::new_v4().to_string();
-    let preview = json!({"id":id,"changes":changes,"warnings":warnings});
-    *state.restore.lock().map_err(|e| e.to_string())? = Some(RestorePreview {
-        id,
-        previous,
-        settings,
-    });
-    Ok(preview)
+            .unwrap_or("");
+        if !executable.is_empty()
+            && (!Path::new(executable).is_file()
+                || !Path::new(executable)
+                    .file_name()
+                    .and_then(|v| v.to_str())
+                    .is_some_and(|s| {
+                        s.eq_ignore_ascii_case("dwrg.exe")
+                            || s.eq_ignore_ascii_case("IdentityV.exe")
+                    }))
+        {
+            settings["game_window"]["executable_path"] = json!(previous["game_window"]
+                ["executable_path"]
+                .as_str()
+                .unwrap_or(""));
+            warnings.push("备份中的游戏路径在本机不可用，保留当前路径。 / Imported game path is unavailable; keeping the current path.");
+        }
+        let mut changes = Vec::new();
+        differences(&previous, &settings, "settings", &mut changes);
+        let id = uuid::Uuid::new_v4().to_string();
+        let preview = json!({"id":id,"changes":changes,"warnings":warnings});
+        *state.restore.lock().map_err(|e| e.to_string())? = Some(RestorePreview {
+            id,
+            previous,
+            settings,
+        });
+        Ok::<Value, String>(preview)
+    })();
+    crate::logs::record(
+        &app,
+        if result.is_ok() { "info" } else { "error" },
+        "support.settings",
+        "设置备份预览结果 / Settings preview result",
+        json!({"result":result.as_ref().ok(),"error":result.as_ref().err()}),
+    );
+    result
 }
 
 #[tauri::command]
 pub async fn restore_settings(id: String, app: AppHandle) -> Result<Value, String> {
-    let supervisor = app
-        .state::<crate::engine::EngineSupervisor>()
-        .inner()
-        .clone();
-    let _lifecycle = supervisor.lock_idle_for_restore().await?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = SETTINGS_OPERATION.lock().map_err(|e| e.to_string())?;
-        let state = app.state::<SupportState>();
-        let mut pending = state.restore.lock().map_err(|e| e.to_string())?;
-        let preview = pending
-            .as_ref()
-            .filter(|p| p.id == id)
-            .ok_or("请重新预览备份 / Preview the backup again")?;
-        if crate::config::load()? != preview.previous {
-            return Err("设置已变化，请重新预览 / Settings changed; preview again".into());
-        }
-        let directory = crate::config::user_path()?
-            .parent()
-            .ok_or("Missing data directory")?
-            .join("backups");
-        fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-        let original =
-            serde_json::to_vec_pretty(&backup(&preview.previous)?).map_err(|e| e.to_string())?;
-        write_export(
-            &directory.join(format!("before-restore-{}.json", uuid::Uuid::new_v4())),
-            &original,
-        )?;
-        crate::desktop::save(&app, &preview.settings)?;
-        let settings = preview.settings.clone();
-        *pending = None;
-        Ok(settings)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    crate::logs::record(
+        &app,
+        "info",
+        "support.settings",
+        "开始应用设置备份 / Applying settings backup",
+        json!({"preview_id":id}),
+    );
+    let log_app = app.clone();
+    let result = async {
+        let supervisor = app
+            .state::<crate::engine::EngineSupervisor>()
+            .inner()
+            .clone();
+        let _lifecycle = supervisor.lock_idle_for_restore().await?;
+        tauri::async_runtime::spawn_blocking(move || {
+            let _guard = SETTINGS_OPERATION.lock().map_err(|e| e.to_string())?;
+            let state = app.state::<SupportState>();
+            let mut pending = state.restore.lock().map_err(|e| e.to_string())?;
+            let preview = pending
+                .as_ref()
+                .filter(|p| p.id == id)
+                .ok_or("请重新预览备份 / Preview the backup again")?;
+            if crate::config::load()? != preview.previous {
+                return Err("设置已变化，请重新预览 / Settings changed; preview again".into());
+            }
+            let directory = crate::config::user_path()?
+                .parent()
+                .ok_or("Missing data directory")?
+                .join("backups");
+            fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+            let original = serde_json::to_vec_pretty(&backup(&preview.previous)?)
+                .map_err(|e| e.to_string())?;
+            write_export(
+                &directory.join(format!("before-restore-{}.json", uuid::Uuid::new_v4())),
+                &original,
+            )?;
+            crate::desktop::save(&app, &preview.settings)?;
+            let settings = preview.settings.clone();
+            *pending = None;
+            Ok(settings)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    .await;
+    crate::logs::record(
+        &log_app,
+        if result.is_ok() { "info" } else { "error" },
+        "support.settings",
+        "设置应用结果 / Settings restore result",
+        json!({"ok":result.is_ok(),"error":result.as_ref().err()}),
+    );
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn journal_position_and_diagnostic_choice_survive_backup_and_old_backups_use_defaults() {
+        let mut source = defaults();
+        source["app"]["diagnostic_images"] = json!(true);
+        source["journal"]["auto_enter"] = json!(true);
+        source["journal"]["preview_position"] = json!({"x":0.73,"y":0.26,"preset":"custom"});
+        let mut value = backup(&source).unwrap();
+        assert_eq!(import_backup(&value).unwrap(), source);
+        value["settings"]["journal"]["preview_position"]["x"] = json!(1.1);
+        assert!(import_backup(&value).is_err());
+        value["settings"]["journal"]
+            .as_object_mut()
+            .unwrap()
+            .remove("preview_position");
+        value["settings"]["journal"]
+            .as_object_mut()
+            .unwrap()
+            .remove("auto_enter");
+        value["settings"]["app"]
+            .as_object_mut()
+            .unwrap()
+            .remove("diagnostic_images");
+        let restored = import_backup(&value).unwrap();
+        assert_eq!(
+            restored["journal"]["preview_position"],
+            json!({"x":0.5,"y":0.5,"preset":"center"})
+        );
+        assert_eq!(restored["journal"]["auto_enter"], json!(false));
+        assert_eq!(restored["app"]["diagnostic_images"], json!(false));
+    }
     #[test]
     fn backup_round_trip_uses_known_settings_and_rejects_external_schema_errors() {
         let mut source = defaults();

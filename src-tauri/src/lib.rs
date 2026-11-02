@@ -1,9 +1,12 @@
 mod commands;
 mod config;
 mod desktop;
+mod diagnostic_files;
 mod engine;
 mod journal;
 mod journal_dialog;
+mod journal_recognition;
+mod journal_shortcut;
 mod launcher;
 mod launcher_news;
 mod logs;
@@ -51,6 +54,7 @@ pub fn run() {
                 .build(),
         )
         .manage(EngineSupervisor::default())
+        .manage(journal_recognition::RecognitionState::default())
         .manage(launcher::Launcher::default())
         .manage(power::PowerManager::default())
         .manage(updates::UpdateManager::default())
@@ -73,6 +77,7 @@ pub fn run() {
             launcher_news::get_game_announcements,
             launcher_news::open_game_announcement,
             desktop::open_logs_directory,
+            desktop::open_screenshots_directory,
             desktop::minimize_to_taskbar,
             window_size::reset_window_size,
             journal_dialog::choose_game_executable,
@@ -94,6 +99,8 @@ pub fn run() {
             support::preview_settings_restore,
             support::restore_settings,
             support_bundle::preview_diagnostics,
+            support_bundle::list_diagnostic_sessions,
+            support_bundle::discard_diagnostics,
             support_bundle::export_diagnostics,
             commands::settings::append_ui_log,
             commands::settings::set_power_prevention,
@@ -101,6 +108,9 @@ pub fn run() {
             journal::journal_import_pack,
             journal::journal_read_image,
             journal::journal_open_directory,
+            journal_recognition::journal_recognize,
+            journal_recognition::journal_cancel_recognition,
+            journal_recognition::journal_save_feedback,
             journal_dialog::journal_choose_pack_source,
             commands::diagnostics::detect_window,
             commands::diagnostics::task_preflight,
@@ -111,12 +121,16 @@ pub fn run() {
         ])
         .setup(|app| {
             logs::prune().map_err(std::io::Error::other)?;
+            logs::record(app.handle(), "info", "app.lifecycle", "助手启动 / Assistant starting", json!({"version":env!("CARGO_PKG_VERSION")}));
             let settings = config::load().map_err(std::io::Error::other)?;
             window_size::restore(app.handle()).map_err(std::io::Error::other)?;
             desktop::create_tray(app.handle())?;
             launcher::manager::start_monitor(app.handle().clone());
             if let Err(error) = desktop::initialize(app.handle(), &settings) {
                 logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"DESKTOP_SETTINGS_FAILED","message":error,"recoverable":true,"details":{}}));
+            }
+            if let Err(error) = journal_shortcut::start(app.handle().clone(), &settings) {
+                logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"RECOGNITION_SHORTCUT_FAILED","message":error,"recoverable":true,"details":{}}));
             }
             let system = settings["app"]["prevent_system_sleep"]
                 .as_bool()

@@ -3,12 +3,34 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import logging
+import os
 import sys
 from pathlib import Path
 
-from app.engine import AutomationEngine
+# OpenCV reads this before its first import; bound decoded map allocation too.
+os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", "16777216")
 from config.loader import load_config
 from core.resources import resource_root
+from ipc.messages import event
+
+
+class RuntimeLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        level = "error" if record.levelno >= logging.ERROR else record.levelname.lower()
+        return json.dumps(event("log", level=level, source=record.name,
+                                message=super().format(record), data={"important": level != "debug"}), ensure_ascii=False)
+
+
+def configure_logging() -> None:
+    # Only this application's standard logger; don't enable verbose third-party traces.
+    logger = logging.getLogger("window.automation")
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(RuntimeLogFormatter())
+    logger.handlers = [handler]
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
 
 def configure_stdio() -> None:
@@ -26,6 +48,7 @@ def parse_args() -> argparse.Namespace:
         default=resource_root() / "config" / "default.json",
     )
     parser.add_argument("--self-test", action="store_true", help="Check packaged dependencies without touching the game")
+    parser.add_argument("--recognize-journal", action="store_true", help="Capture and recognize once without starting automation")
     return parser.parse_args()
 
 
@@ -41,6 +64,10 @@ async def run() -> int:
         # stdout is unavailable until the writer exists; stderr preserves IPC integrity.
         print(f"CONFIG_INVALID: {error}", file=sys.stderr)
         return 2
+    if args.recognize_journal:
+        from app.journal_recognition import main
+        return main(config)
+    from app.engine import AutomationEngine
     engine = AutomationEngine(config)
     await engine.run()
     return 0
@@ -48,4 +75,5 @@ async def run() -> int:
 
 if __name__ == "__main__":
     configure_stdio()
+    configure_logging()
     raise SystemExit(asyncio.run(run()))

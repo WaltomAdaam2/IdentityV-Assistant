@@ -14,6 +14,8 @@ Rust owns the Python child process, NDJSON transport, configuration file access,
 
 Python owns window discovery, capture, vision, OCR interfaces, state detection, task decisions, recovery, metrics, and input. Tasks use an `AutomationContext`; visual detectors return evidence and never send input directly.
 
+Journal recognition uses the same Python entry point in `--recognize-journal` mode without constructing the automation engine. Rust validates imported template paths, owns that one-shot child, forwards progress and terminates only that child on cancellation or timeout. This avoids adopting or stopping a paused automation engine just to capture a map. Task-start/resume acknowledgements and queue transitions remain mutually exclusive with recognition. Python performs WGC-only capture and geometry matching; React receives candidate identities and an in-memory preview, not file access authority or game-action decisions. The foreground-scoped shortcut only observes and forwards the selected key; it never invokes native window activation.
+
 ```text
 React UI -> Tauri commands -> Rust supervisor -> NDJSON stdin -> Python engine
 React UI <- engine-event  <- Rust parser     <- NDJSON stdout <- Python engine

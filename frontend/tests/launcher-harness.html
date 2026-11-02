@@ -9,6 +9,9 @@ window.__launcherTest = { calls: [], newsFailure: true, selectedGamePath: "D:\\G
 window.__launcherTest.loadFailure = new URLSearchParams(location.search).has("loadFail");
 window.__launcherTest.emitLog = (payload) => emit("engine-event", { type: "log", level: "info", data: { important: true }, ...payload });
 window.__launcherTest.emitComponentProgress = (payload) => emit("component-update-progress", payload);
+window.__launcherTest.emitRecognitionProgress = (payload) => emit("journal-recognition-progress", payload);
+window.__launcherTest.emitRecognitionPreview = (payload) => emit("journal-recognition-preview", payload);
+window.__launcherTest.recognitionShortcut = () => emit("journal-recognition-shortcut", { hwnd: 123 });
 window.__launcherTest.updateStatus = { phase: "idle", info: null, downloaded: 0, total: null, error: null, source: "direct" };
 window.__launcherTest.emitUpdate = async (patch) => {
   Object.assign(window.__launcherTest.updateStatus, patch);
@@ -18,7 +21,7 @@ window.__launcherTest.launcherStatus = { phase: "idle", component_path: "C:\\idv
 mockIPC((command, args) => {
   window.__launcherTest.calls.push({ command, args });
   if (command === "load_settings" && window.__launcherTest.loadFailure) return Promise.reject("Fixture: configuration unreadable");
-  if (command === "load_settings") return { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
+  if (command === "load_settings") return JSON.parse(sessionStorage.getItem("journal-test-settings") || "null") ?? { app: { launch_engine_on_start: false, check_updates_on_start: false, check_component_updates_on_launch: false }, journal: { collapsed: true } };
   if (command === "save_settings" && window.__launcherTest.saveFailure) return Promise.reject("快捷键已被占用或无法注册：Hotkey already registered: HotKey { mods: Modifiers(0x0), key: F3, id: 162 }");
   if (command === "save_settings") { window.__launcherTest.savedSettings = structuredClone(args.settings); return null; }
   if (command === "support_choose_path") return window.__launcherTest.cancelSupportPicker ? null : "C:\\fixture\\support.json";
@@ -29,7 +32,17 @@ mockIPC((command, args) => {
   }
   if (command === "restore_settings") { window.__launcherTest.savedSettings = structuredClone(window.__launcherTest.restoreSettings); return window.__launcherTest.restoreSettings; }
   if (["export_settings", "export_diagnostics"].includes(command) && window.__launcherTest.exportSupportFailure) return Promise.reject("无法写入所选位置 / Access denied");
-  if (command === "preview_diagnostics") return {id:"bundle-fixture",truncated:false,files:[{name:"environment.json",size:200},{name:"settings.redacted.json",size:500},{name:"session.redacted.jsonl",size:1000},...(args.includeImages ? [{name:"images/failure-fixture.png",size:2048}] : [])]};
+  if (command === "list_diagnostic_sessions") return {current:"current",sessions:window.__launcherTest.diagnosticSessions ?? [
+    {id:"current",started:"2026-11-01T10:36:33Z",last_record:"2026-11-01T11:20:41Z",legacy:false,current:true,log_records:123,reports:17,images:645},
+    {id:"recent",started:"2026-10-30T09:10:00Z",last_record:"2026-10-30T11:20:00Z",legacy:false,current:false,log_records:50,reports:2,images:40},
+    {id:"older",started:"2026-10-28T08:00:00Z",last_record:"2026-10-28T09:30:00Z",legacy:false,current:false,log_records:80,reports:3,images:0},
+    {id:"legacy:2026-10-27",started:null,last_record:"2026-10-27T10:00:00Z",legacy:true,current:false,log_records:40,reports:0,images:0},
+  ]};
+  if (command === "preview_diagnostics") {
+    if (window.__launcherTest.previewFailure) return Promise.reject("Fixture: historical session is unavailable");
+    const result = {id:"bundle-fixture",truncated:false,files:[{name:"environment.json",size:200},{name:"settings.redacted.json",size:500},{name:"session.redacted.jsonl",size:1000},...(args.historicalSessions || []).map(id=>({name:`sessions/${id}/session.redacted.jsonl`,size:500})),...(args.includeImages ? [{name:"images/failure-fixture.png",size:2048}] : [])]};
+    return window.__launcherTest.deferPreview ? new Promise(resolve => {window.__launcherTest.finishPreview=()=>resolve(result);}) : result;
+  }
   if (command === "send_engine_command" && window.__launcherTest.failPreflight && ["start_task","start_tasks"].includes(args.command.type)) return window.__launcherTest.emitLog({type:"task_preflight",ok:false,code:"capture_failed",for_start:true,warnings:[]});
   if (command === "task_preflight") return window.__launcherTest.emitLog({type:"task_preflight",ok:true,code:"ready",for_start:false,warnings:[]}).then(() => ({requested:true,request_id:"fixture"}));
   if (command === "get_engine_snapshot" && window.__launcherTest.snapshotFailure) return Promise.reject("Fixture: status unavailable");
@@ -48,7 +61,12 @@ mockIPC((command, args) => {
     return window.__launcherTest.emitUpdate({ phase: "cancelled" }).then(() => window.__launcherTest.finishDownload?.());
   }
   if (command === "journal_list_packs") return { directory: "fixture", packs: window.__launcherTest.packs || [], errors: [] };
-  if (command === "journal_read_image") return "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="tan"/></svg>');
+  if (command === "journal_recognize") {
+    window.__launcherTest.recognitionRequest = args;
+    return new Promise((resolve, reject) => { window.__launcherTest.finishRecognition = resolve; window.__launcherTest.failRecognition = reject; });
+  }
+  if (command === "journal_cancel_recognition") return null;
+  if (command === "journal_read_image") return window.__launcherTest.mapImage || "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="tan"/></svg>');
   if (command === "journal_choose_pack_source") return window.__launcherTest.importSources ?? null;
   if (command === "journal_import_pack") {
     const finish = () => window.__launcherTest.importErrors?.[args.sourcePath]

@@ -208,7 +208,7 @@ pub(super) async fn apply(
         .env("PROGRAMDATA", data)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .creation_flags(0x08000000)
         .kill_on_drop(true)
         .spawn()
@@ -220,16 +220,36 @@ pub(super) async fn apply(
         .await
         .map_err(|e| e.to_string())?;
     let stdout = child.stdout.take().ok_or("无法读取组件更新进度")?;
+    let stderr = child.stderr.take().ok_or("无法读取组件更新错误")?;
+    let read_errors = async {
+        let mut lines = BufReader::new(stderr).lines();
+        while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
+            crate::logs::emit(
+                app,
+                crate::logs::stderr_record(&line, "launcher.hotfix.stderr"),
+            );
+        }
+        Ok::<_, String>(())
+    };
     let read = async {
         let mut lines = BufReader::new(stdout).lines();
         let mut result = None;
         while let Some(line) = lines.next_line().await.map_err(|e| e.to_string())? {
             if let Some(payload) = line.strip_prefix("IDV_UPDATE_PROGRESS ") {
                 if let Some(progress) = parse_progress(payload) {
+                    crate::logs::record(
+                        app,
+                        "debug",
+                        "launcher.hotfix",
+                        "组件更新进度 / Component update progress",
+                        progress.clone(),
+                    );
                     let _ = app.emit("component-update-progress", progress);
                 }
             } else if let Some(payload) = line.strip_prefix("IDV_UPDATE_RESULT ") {
                 result = serde_json::from_str::<Value>(payload).ok();
+            } else {
+                crate::logs::record(app, "debug", "launcher.hotfix", &line, json!({}));
             }
         }
         Ok::<_, String>(result)
@@ -237,12 +257,13 @@ pub(super) async fn apply(
     let wait = async {
         tokio::try_join!(
             async { child.wait().await.map_err(|e| e.to_string()) },
-            read
+            read,
+            read_errors
         )
     };
     tokio::pin!(wait);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
-    let (status, result) = loop {
+    let (status, result, ()) = loop {
         if closing.load(Ordering::Relaxed) || tokio::time::Instant::now() >= deadline {
             // The worker checks cancellation before and after downloads, before
             // replacing a module. Give an in-flight HTTP request time to return.

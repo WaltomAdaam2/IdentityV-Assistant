@@ -8,7 +8,7 @@ engine/build/
 engine/dist/
 engine/.venv/
 engine/.pytest_cache/
-.scratch/pytest-*/
+.scratch/
 engine/**/__pycache__/
 *.py[cod]
 logs/
@@ -19,3 +19,5 @@ config/user.json
 .codex/
 *.log
 src-tauri/gen/
+/AGENTS.md
+/docs/agents/

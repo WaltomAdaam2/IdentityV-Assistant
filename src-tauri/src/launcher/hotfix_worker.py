@@ -23,7 +23,10 @@ def download_source(url, fallbacks, report, cancelled):
     import requests
     from ssl_utils import should_verify_ssl
     with requests.Session() as session:
-        session.trust_env = False
+        # Honor the user's system/environment proxy, just like metadata checks.
+        # Forcing direct connections makes raw.githubusercontent.com time out
+        # even when checking the same update through the proxy succeeds.
+        session.trust_env = True
         error = "Download failed"
         for candidate in [url, *fallbacks]:
             check_cancelled()
@@ -134,6 +137,7 @@ def apply(source_dir, data_dir, request, cancelled=None):
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     try:
         request = json.loads(sys.stdin.readline())
         cancelled = threading.Event()

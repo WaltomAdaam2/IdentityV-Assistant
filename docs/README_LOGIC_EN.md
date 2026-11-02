@@ -48,7 +48,7 @@ Explicit engine startup, including F3, or task startup activates the game layout
 
 ## Journal and map-pack format
 
-Use Ctrl/Shift to select multiple ZIP files. Each pack imports independently; a failure does not stop later packs. Top notices show normal results for one second and errors for eight seconds, then fade over 600 ms. Hover or keyboard focus retains the notice; Close dismisses immediately. Completion stays visible after scrolling or leaving the journal, and details remain in logs.
+Use Ctrl/Shift to select multiple ZIP files. Each pack imports independently; a failure does not stop later packs. Top notices stay for two seconds, then fade and collapse over half a second. Hover or keyboard focus retains the notice; manual dismissal is also available. Completion stays visible after scrolling or leaving the journal, and details remain in logs.
 
 Import reads only PNG/JPEG/WebP files referenced by `pack.json`. It does not replace an existing `packId`, modify source ZIPs or read another application's data. Root or nested `pack.json` is supported; legacy `manifest.json` is not. Traversal, links, duplicate entries and excessive extraction are rejected. Current bounds include 20 MiB per image, 512 MiB per pack, 2 MiB per descriptor, 20,000 entries and 16 path levels.
 
@@ -70,6 +70,20 @@ Door categories are `lf`, `rf`, `lr`, `triple` and `td`. `floors` maps base imag
 
 Season, difficulty, doors and display mode save silently. Reopening the page resets floor to 1F and expands filters. Detail and preview views stay inside the assistant, not over the game. Esc leaves preview first, then returns to the list.
 
+### Recognize a first-floor map (0.1.11)
+
+Select the season, difficulty and base/route display, show the minimap or expanded map in the game, then choose **Recognize 1F map**. The default **P** shortcut can be changed in Settings. It works only while the game is foreground, preserves the game's key input, and updates the Journal candidate grid without opening the in-game map or activating the assistant. Pause or stop automation first; recognition is blocked while tasks are running or starting.
+
+Recognition searches only first-floor templates for the selected season and difficulty, ignoring the door filter. Route mode requires an available first-floor route image and never silently substitutes a base display image. Door category and map number identify each candidate, so different doors can each have a Map 1. The interface shows up to four accepted candidates in match order, without accuracy percentages; logs and diagnostics retain the full results. **Automatically open the best match**, below the recognition button, defaults off and remembers your choice. When enabled, a successful match opens the first candidate in the full-window preview without activating the assistant or taking game focus. Automatic entry does not confirm that the candidate is correct.
+
+Drag the black map area, or focus it and use arrow keys (Shift moves faster). All maps and floors share the saved position across restarts. Changing the image or window size restores the relative position while keeping at least 16 pixels clear at every edge. Close, floor and position controls stay above the map. Beside Close, choose top-left, top-right, center (default), bottom-left or bottom-right. Clicking the selected preset again keeps it selected; dragging or moving with arrow keys clears the preset selection and saves a custom position. Close the preview to return to the candidate list and choose another map.
+
+A separate read-only process captures through WGC, without starting the automation service, changing game layout, sending game input or falling back to desktop capture. A tentative crop appears centered between the existing dividers during matching and updates when a better-matching region is found. **View recognized region** remains collapsed in the result. Each attempt keeps local diagnostic evidence as described below. Cancellation, changed recognition filters and leaving Journal invalidate the old request; late results cannot replace newer choices. Failed matches clear old candidates and ask you to open the first-floor map and retry. Requests time out after 120 seconds; image decoding is capped at 16,777,216 pixels.
+
+Each recognition reuses normalized query edges and resized images, with a 32 MiB refinement cache released on completion or cancellation. This reuse does not change the scale search or match scores. Localization and geometry thresholds are heuristics. Limited exploration, occlusion, complex HUDs, game scaling and similar structures can cause missed or ambiguous matches. Generated fixtures and template-crop checks do not establish real gameplay accuracy. Check the candidates and recognized region before using the result.
+
+The minimum region size applies both to proposals and to visible geometry after background cropping. Regions with a shorter side below 64 pixels are rejected so padding cannot make a small icon pass validation. Expand or zoom the map, or explore further, when the visible minimap is too small. This check does not exclude every larger HUD false match.
+
 ## Local data, logs and diagnostics
 
 ```text
@@ -78,16 +92,17 @@ Season, difficulty, doors and display mode save silently. Reopening the page res
   logs\YYYY-MM-DD.jsonl       Complete engine and UI events
   debug\captures\            Explicitly requested debug captures
   debug\failures\            Automatic failure screenshots
+  debug\recognition\<id>\   Per-attempt reports and images
   backups\                   Settings saved before restoration
   journal\packs\<packId>\    Imported maps
   login-data\idv-login\      Independent login-component data
 ```
 
-Dated logs retain the latest thirty days. The interface shows the current session, up to 99,000 entries at 1,000 per page; clearing it does not delete disk logs. Developer mode reveals retained details. Check logs and screenshots for personal information before sharing them.
+Dated logs retain the latest seven days. The interface shows the current session, up to 99,000 entries at 1,000 per page; clearing it does not delete disk logs. Normal mode simplifies presentation only; developer mode expands and searches detailed fields from the same redacted records. Recognition triggers, helper startup, capture, localization, matching, candidates, elapsed time, cancellation and failures enter the runtime log. Image binary and credentials are excluded from text logs. Check logs and screenshots for personal information before sharing them.
 
 Diagnostics discover windows, capture frames manually and inspect templates. Diagnostic input needs separate enabling and is unavailable while a task runs or is paused.
 
-Failure screenshots default on and can be disabled in Settings. An error pause or window-recovery timeout saves at most one most recent successful WGC game-window frame per failure, skipping when none is available. Automatic saving excludes DXcam/MSS screen-region frames to avoid capturing other windows covering the game. Filenames and logs preserve the actual capture time, which may precede the failure. Retention is limited to 20 images and 100 MiB total, with a 20 MiB per-image limit. Only generated failure images are pruned; manual captures remain untouched. Images stay local and may contain names or chat.
+Failure screenshots default on and can be disabled in Settings. An error pause or window-recovery timeout saves at most one most recent successful WGC game-window frame per failure, skipping when none is available. Automatic saving excludes DXcam/MSS screen-region frames to avoid capturing other windows covering the game. Filenames and logs preserve the actual capture time, which may precede the failure. Retention is limited to 20 images and 100 MiB total, with a 20 MiB per-image limit. The count limit applies only to failure images; all assistant-generated screenshots also expire after three days. Unrelated manually added files are preserved. Images stay local and may contain names or chat.
 
 ### Settings backup and restore
 
@@ -97,7 +112,15 @@ A configuration read failure blocks editing and offers Reload settings. Failed s
 
 ### Diagnostic bundles
 
-The centered preview lists files, total size and whether screenshots are included. Choose a ZIP destination; nothing uploads automatically. Defaults include assistant/engine state and versions, necessary environment, up to 4 MiB of the current assistant session's logs, and redacted settings. Account directories, credentials, private keys, maps and component runtimes are excluded. Sensitive fields and text containing paths, URLs or credential markers are filtered, but review logs before sharing. Screenshots require a separate selection and include only recent application-generated debug/failure images, up to 20 images / 100 MiB. Images are not text-redacted. The preview reports when the log limit was reached.
+The default filename is `IdentityV-diagnostics-YYYY-MM-DD-HHmmss-SSS.zip`, using the local date, time and milliseconds to distinguish exports.
+
+Choose **Export diagnostics**, select sessions, preview, then choose a ZIP destination; nothing uploads automatically. No historical selection means the current session only. Multiple historical sessions may be added, with selections reset on each open. Logs cover all modules: startup, settings changes, tasks, updates, map operations and recognition. Each attempt has a separate `recognition/<request-id>/flow.redacted.json` with filters, stages, localization checks, per-template scores and acceptance/rejection reasons, timings and cancellation reasons. Every sliding-search position is not logged. Environment and redacted settings reflect the current preview, not historical snapshots. Account directories, credentials, private keys and component runtimes are excluded. Review the contents before sharing.
+
+**Include screenshots in diagnostics** defaults off and remembers your choice. It applies to the current and all selected historical sessions. Enabled exports include available images from the past three days: full windows (`full.png`), crops (`region_*.png`), processed edges/masks (`edges_*.png`, `mask_*.png`), exact prepared template edges (`template_*.png`), final regions (`region.png`) and session debug/failure images. Later attempts do not replace earlier evidence; cancellation or failure retains evidence already received. Images are not text-redacted. Sessions aged three to seven days contain logs and recognition text reports only. Legacy logs without session IDs appear separately by date, without inferred image ownership.
+
+Current-only ZIPs are limited to **100 MB**; adding historical sessions removes the total size limit. Logs and reports take priority; remaining capacity includes the newest complete image groups first. Oversized or missing groups are omitted as a whole, without reducing image quality. Preview and `manifest.json` list omissions and reasons. Preview streams files into a frozen temporary ZIP; return to selection and preview again to include later operations. Saving or closing releases that temporary file. Local screenshots expire after three days, logs and recognition reports after seven. The running app prunes only its own expired files and retries locked files later. Settings → Recognition and diagnostics offers log and screenshot folder buttons.
+
+The recognition feedback button has been removed; previously saved feedback remains with its evidence. Developers can use the [offline replay command](development.md#offline-diagnostic-replay) with the captured frame and prepared templates, without operating the game or automatically adjusting thresholds.
 
 ## Updates and validation limits
 
@@ -105,4 +128,6 @@ Assistant and login-component updates are separate. Assistant startup checking c
 
 Component hotfixes in 0.1.9 also show actual per-module byte counts and download speed. Reliable server lengths enable totals and percentages; otherwise the total remains unknown. Applying files and restoring the proxy have separate stages and are not presented as downloading.
 
-See [Updates and releases](updates_EN.md) for repository migration, legacy compatibility and publishing. Tests cover screenshot recognition, logic, mocked IPC and package integrity. Per user instruction, 0.1.9 and 0.1.10 do not receive installation, native-app execution, live account authentication or live gameplay validation.
+Assistant installers do not bundle login-component hotfixes. Updating the assistant reuses the installed component and does not apply those patches. Component reminders can be skipped for the current batch; new versions or commits still prompt, and manual checks remain available. The assistant's automatic-check switch does not control component checks. Hotfix downloads honor the selected source and system/environment proxies while retaining official backup, compilation/replacement and pending-validation/rollback handling. Download failure is not reported as successful installation; progress and errors enter the runtime log.
+
+See [Updates and releases](updates_EN.md) for repository migration, legacy compatibility and publishing. Tests cover screenshot recognition, logic, mocked IPC and package integrity. Validation of 0.1.9 and 0.1.10 does not cover installation, native-app execution, live account authentication or live gameplay.

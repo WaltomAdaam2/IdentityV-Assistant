@@ -72,6 +72,7 @@ pub fn initialize(app: &AppHandle, settings: &Value) -> Result<(), String> {
 }
 
 pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
+    crate::journal_shortcut::validate(settings)?;
     let (hotkey, scale, startup, tray) = preferences(settings)?;
     let manager = app.state::<DesktopSettings>();
     let mut registered = manager.hotkey.lock().unwrap();
@@ -140,6 +141,18 @@ pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
         *registered = Some(hotkey);
     }
     manager.tray.store(tray, Ordering::Relaxed);
+    crate::journal_shortcut::configure(settings)?;
+    let mut changes = Vec::new();
+    crate::support::differences(&old, settings, "settings", &mut changes);
+    if !changes.is_empty() {
+        crate::logs::record(
+            app,
+            "info",
+            "settings",
+            "设置已保存 / Settings saved",
+            serde_json::json!({"changes":changes}),
+        );
+    }
     Ok(())
 }
 
@@ -228,6 +241,9 @@ fn set_startup(_: bool) -> Result<(), String> {
 }
 
 pub fn quit(app: &AppHandle) {
+    crate::journal_shortcut::stop();
+    app.state::<crate::journal_recognition::RecognitionState>()
+        .cancel_active();
     if app
         .state::<DesktopSettings>()
         .quitting
@@ -236,6 +252,13 @@ pub fn quit(app: &AppHandle) {
         return;
     }
     crate::window_size::flush(app);
+    crate::logs::record(
+        app,
+        "info",
+        "app.lifecycle",
+        "助手正在退出 / Assistant shutting down",
+        serde_json::json!({}),
+    );
     let app = app.clone();
     let supervisor = app
         .state::<crate::engine::EngineSupervisor>()
@@ -316,7 +339,16 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
 #[tauri::command]
 pub fn open_logs_directory() -> Result<(), String> {
     let folder = crate::config::user_path()?.parent().unwrap().join("logs");
-    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    open_diagnostic_directory(folder)
+}
+
+#[tauri::command]
+pub fn open_screenshots_directory() -> Result<(), String> {
+    open_diagnostic_directory(crate::diagnostic_files::root()?)
+}
+
+fn open_diagnostic_directory(folder: std::path::PathBuf) -> Result<(), String> {
+    crate::diagnostic_files::ensure_directory(&folder)?;
     #[cfg(windows)]
     {
         hidden_command("explorer.exe")

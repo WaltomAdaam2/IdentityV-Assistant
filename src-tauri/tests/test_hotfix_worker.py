@@ -35,8 +35,9 @@ class HotfixWorkerTests(unittest.TestCase):
             self.assertEqual(result, (True, b"abcdef", ""))
             self.assertEqual(events[0], ("downloading", 0, expected_total))
             self.assertEqual(events[-2:], [("downloading", 6, expected_total), ("applying", 6, expected_total)])
-            self.assertFalse(session.trust_env)
+            self.assertTrue(session.trust_env)
             self.assertTrue(session.get.call_args.kwargs["stream"])
+            self.assertTrue(session.get.call_args.kwargs["verify"])
 
     def test_already_cancelled_download_never_imports_or_contacts_http(self):
         cancelled = worker.threading.Event()
@@ -61,11 +62,12 @@ class HotfixWorkerTests(unittest.TestCase):
                 "    def get(self, *args, **kwargs): return self\n"
                 "    def iter_content(self, **kwargs):\n"
                 "        Path('started').write_text('ready')\n        sleep(0.5)\n        yield b'new'\n", encoding="utf-8")
-            (root / "hotfixmgr.py").write_text("import time\nfrom pathlib import Path\n"
+            (root / "hotfixmgr.py").write_text("import time,sys\nfrom pathlib import Path\nprint('组件更新诊断', file=sys.stderr)\n"
                 "def _download_text(*args):\n    Path('started').write_text('ready')\n    from time import sleep\n    sleep(0.5)\n    return True, b'new', ''\n"
                 "def handle_if_needed(snapshot):\n    _download_text('url', [])\n    Path('fixture.pyc').write_bytes(b'changed')\n"
                 "def _get_records(): return {}\n", encoding="utf-8")
-            process = subprocess.Popen([sys.executable, "-I", "-B", str(worker.__file__), str(root), str(root)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", creationflags=0x08000000)
+            bootstrap = "import runpy,sys; sys.stderr.reconfigure(encoding='gbk'); sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')"
+            process = subprocess.Popen([sys.executable, "-I", "-B", "-c", bootstrap, str(worker.__file__), str(root), str(root)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", creationflags=0x08000000)
             try:
                 process.stdin.write(json.dumps({"source": "direct", "current_version": "v6.3.2-stable", "hotfixes": [{"target_module": "fixture", "target_commit": "abcdef1234567"}]}) + "\n")
                 process.stdin.flush()
@@ -75,6 +77,7 @@ class HotfixWorkerTests(unittest.TestCase):
                 self.assertTrue((root / "started").exists())
                 output, errors = process.communicate("cancel\n", timeout=5)
                 self.assertIn("组件更新已取消", output, errors)
+                self.assertIn("组件更新诊断", errors)
                 self.assertEqual((root / "fixture.pyc").read_bytes(), b"unchanged")
             finally:
                 if process.poll() is None:

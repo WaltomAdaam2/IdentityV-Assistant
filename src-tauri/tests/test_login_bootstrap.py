@@ -72,17 +72,37 @@ class ManagedLoginTests(unittest.TestCase):
                 bootstrap.import_certificate(None, "fixture.pem")
             self.assertEqual(run.call_args.kwargs["creationflags"], 0x08000000)
 
-    def test_logs_filter_debug_preserve_severity_and_redact_credentials(self):
+    def test_logs_keep_debug_and_complete_redacted_text(self):
         import io, json
         output = io.StringIO()
         with patch.object(bootstrap, "OUTPUT", output):
-            bootstrap.emit("DEBUG", "ignore")
+            bootstrap.emit("DEBUG", "details" * 1000)
             bootstrap.emit("CRITICAL", 'token=secret password="two words" https://example.test/?ticket=hidden')
-        record = json.loads(output.getvalue().split("IDV_ASSISTANT_LOG ", 1)[1])
+        records = [json.loads(line.removeprefix("IDV_ASSISTANT_LOG ")) for line in output.getvalue().splitlines()]
+        self.assertEqual("".join(r["message"] for r in records if r["level"] == "DEBUG"), "details" * 1000)
+        self.assertTrue(all(len(r["message"]) <= 4000 for r in records))
+        record = records[-1]
         self.assertEqual(record["level"], "CRITICAL")
         self.assertNotIn("secret", record["message"])
         self.assertNotIn("two words", record["message"])
         self.assertNotIn("hidden", record["message"])
+
+    def test_sensitive_records_are_redacted_before_chunking(self):
+        import io, json
+        for message in [
+            "response=data:image/png;base64," + "Z" * 9000,
+            '{"private_key":"' + "Z" * 9000 + '"}',
+            '{"username":"private-user","email":"private@example.test"}',
+            "-----BEGIN RSA PRIVATE KEY-----\n" + "Z" * 9000,
+        ] + [json.dumps({key: "Z" * 9000}) for key in ("api_key", "apikey", "image_base64", "image_data", "screenshot_base64", "preview", "credentials", "accounts")]:
+            with self.subTest(message=message[:30]):
+                output = io.StringIO()
+                with patch.object(bootstrap, "OUTPUT", output):
+                    bootstrap.emit("DEBUG", message)
+                self.assertIn("redacted", output.getvalue())
+                self.assertNotIn("ZZ", output.getvalue())
+                self.assertNotIn("private-user", output.getvalue())
+                self.assertNotIn("private@example.test", output.getvalue())
 
 
 if __name__ == "__main__":

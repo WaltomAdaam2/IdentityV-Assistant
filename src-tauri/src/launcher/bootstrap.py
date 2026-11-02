@@ -20,13 +20,18 @@ def stage(phase):
 
 
 def emit(level, message):
-    if level not in {"INFO", "WARNING", "ERROR", "CRITICAL"}:
+    if level not in {"TRACE", "DEBUG", "SUCCESS", "INFO", "WARNING", "ERROR", "CRITICAL"}:
         return
-    message = re.sub(r"(?im)(authorization|cookie)\s*[:=].*$", r"\1: [redacted]", str(message))
-    message = re.sub(r"https?://[^\s\"']+", lambda m: m[0].split("?", 1)[0] + ("?[redacted]" if "?" in m[0] else ""), message)
-    message = re.sub(r'''(?i)((?:access_?token|refresh_?token|token|password|passwd|authorization|cookie|secret|ticket|session_?id)\s*["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}]+)''', r"\1[redacted]", message)
+    message = str(message)
+    # Redact the complete record BEFORE splitting: later chunks may not retain
+    # the field name, image prefix or PEM header needed to identify private data.
+    if re.search(r'''(?i)(data:image/|-----BEGIN [A-Z ]*PRIVATE KEY|bearer\s|(?:token|password|passwd|authorization|cookie|secret|ticket|session_?id|private[_ -]?key|api_?key|credentials?|accounts?|username|email|preview|image_base64|image_data|screenshot_base64|账号|密码)\s*["']?\s*[:=：])''', message):
+        message = "[redacted sensitive component record]"
+    message = re.sub(r"https?://[^\s\"']+", lambda m: re.sub(r"(https?://)[^/@]+@", r"\1[redacted]@", m[0].split("?", 1)[0]) + ("?[redacted]" if "?" in m[0] else ""), message)
     with OUTPUT_LOCK:
-        OUTPUT.write("IDV_ASSISTANT_LOG " + json.dumps({"level": level, "message": message[:4000]}, ensure_ascii=False) + "\n")
+        # Keep complete redacted text while bounding each native pipe record.
+        for offset in range(0, max(1, len(message)), 4000):
+            OUTPUT.write("IDV_ASSISTANT_LOG " + json.dumps({"level": level, "message": message[offset:offset + 4000]}, ensure_ascii=False) + "\n")
         OUTPUT.flush()
 
 
@@ -100,8 +105,7 @@ def main():
             raise RuntimeError("请先从助手启动登录代理")
         return
     import logutil
-    from prefetch_context import in_prefetch
-    logutil.logger.add(lambda message: emit(message.record["level"].name, message.record["message"]), level="INFO", filter=lambda record: not in_prefetch())
+    logutil.logger.add(lambda message: emit(message.record["level"].name, str(message)), level="TRACE", format="{message}")
     import certmgr
     certmgr.certmgr.import_to_root = import_certificate
     adapt(upstream)

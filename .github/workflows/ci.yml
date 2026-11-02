@@ -39,7 +39,7 @@ jobs:
         run: pnpm build
 
       - name: Test frontend helpers
-        run: node --test frontend/tests/logs.test.mjs frontend/tests/download-progress.test.mjs
+        run: node --test frontend/tests/logs.test.mjs frontend/tests/download-progress.test.mjs frontend/tests/journal-data.test.mjs
 
       - name: Test draft-only release gates
         shell: powershell
@@ -60,9 +60,9 @@ jobs:
         working-directory: engine
         run: uv run pytest
 
-      - name: Test component hotfix worker
+      - name: Test component bootstrap and hotfix worker
         working-directory: engine
-        run: uv run python -m unittest discover -s ../src-tauri/tests -p test_hotfix_worker.py -v
+        run: uv run python -m unittest discover -s ../src-tauri/tests -p "test_*.py" -v
 
       - name: Select stable Rust toolchain
         run: |
