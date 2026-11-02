@@ -23,6 +23,7 @@ test("runtime logs show concise summaries and expandable searchable developer de
     browser("wait", "--text", "识图完成 fixture");
     assert.equal(evaluate("document.querySelectorAll('.log-details').length"), 0);
     click("设置");
+    wait("!!document.querySelector('.settings-form')");
     browser("find", "role", "switch", "check", "--name", "开发者模式", "--exact");
     click("运行日志");
     wait("!!document.querySelector('.log-details')");

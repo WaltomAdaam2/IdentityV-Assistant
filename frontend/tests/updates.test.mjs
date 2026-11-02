@@ -43,8 +43,14 @@ test("download speed and remaining time sit beside progress, stall safely and re
     browser("wait", "--fn", "Boolean(document.querySelector('.update-transfer'))");
     evaluate("window.__launcherTest.emitUpdate({downloaded: 2000000})");
     browser("wait", "--fn", "document.querySelector('.update-transfer').textContent.includes('预计剩余')");
-    assert.equal(evaluate("document.querySelector('.update-progress-row progress').value"), 20);
-    assert.equal(evaluate("document.querySelector('.update-transfer').getBoundingClientRect().left >= document.querySelector('.update-progress-row progress').getBoundingClientRect().right"), true);
+    assert.equal(evaluate("document.querySelector('.update-download progress').value"), 20);
+    assert.equal(evaluate(`(() => {
+      const bar = document.querySelector('.update-download progress').getBoundingClientRect();
+      const summary = document.querySelector('.update-progress-details > small').getBoundingClientRect();
+      const transfer = document.querySelector('.update-transfer').getBoundingClientRect();
+      return transfer.top >= bar.bottom && transfer.left >= summary.right
+        && Math.abs(transfer.top - summary.top) < 1 && Math.abs(transfer.right - bar.right) < 1;
+    })()`), true);
     browser("set", "viewport", "520", "760");
     assert.equal(evaluate("document.querySelector('.update-dialog').scrollWidth <= document.querySelector('.update-dialog').clientWidth"), true);
     browser("wait", "--fn", "document.querySelector('.update-transfer').textContent.includes('0 B/s剩余时间待估算')");
@@ -53,9 +59,9 @@ test("download speed and remaining time sit beside progress, stall safely and re
     assert.equal(evaluate("Boolean(document.querySelector('.update-transfer'))"), false);
     browser("find", "role", "button", "click", "--name", "下载更新 · 9.5 MB", "--exact");
     browser("wait", "--fn", "document.querySelector('.update-transfer')?.textContent.includes('0 B/s剩余时间待估算')");
-    assert.equal(evaluate("document.querySelector('.update-progress-row progress').value"), 0);
+    assert.equal(evaluate("document.querySelector('.update-download progress').value"), 0);
     evaluate("window.__launcherTest.emitUpdate({total: null, downloaded: 1000000})");
-    browser("wait", "--fn", "document.querySelector('.update-progress-row progress')?.hasAttribute('value') === false");
+    browser("wait", "--fn", "document.querySelector('.update-download progress')?.hasAttribute('value') === false");
     assert.ok(evaluate("document.querySelector('.update-transfer').textContent").includes("剩余时间待估算"));
   } finally { browser("close"); }
 });

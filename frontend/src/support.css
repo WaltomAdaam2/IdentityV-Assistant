@@ -13,7 +13,12 @@
 .support-summary strong { color: var(--title); font-size: 14px; }
 .support-summary > span { font-variant-numeric: tabular-nums; font-size: 13px; }
 .support-sessions { max-height: 32vh; overflow: auto; overscroll-behavior: contain; border-block: 1px solid var(--border); }
-.support-session { display: flex; align-items: flex-start; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.support-session { display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.support-session:has(input:checked) { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.support-session:has(input:enabled):hover, .support-session:focus-within { background: var(--accent-soft); }
+.support-session:has(input:disabled) { cursor: default; }
+.support-session input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.support-files:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .support-session:last-child { border-bottom: 0; }
 .support-session input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 18px; margin: 2px 0 0; accent-color: var(--accent); }
 .support-session > span { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 0; font-size: 13px; line-height: 1.6; }
