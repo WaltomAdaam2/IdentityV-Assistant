@@ -222,3 +222,38 @@ test("map dragging remembers position, clamps edges, and keeps position presets 
     assert.ok(Math.abs((reopened.y + reopened.bottom) / 2 / reopened.height - restoredPosition.y) < 0.002);
   } finally { browser("close"); }
 });
+
+test("repeated P cancels the helper, waits for release, and only starts the latest request", () => {
+  try {
+    setup(); click("识别一楼地图"); wait("!!window.__launcherTest.finishRecognition");
+    evaluate("window.__finishOld=window.__launcherTest.finishRecognition; window.__launcherTest.recognitionShortcut(); window.__launcherTest.recognitionShortcut()");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_cancel_recognition').length>=1");
+    assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length"),1);
+    evaluate("window.__finishOld({keys:['lf:1'],preview:null,warnings:[]})");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length===2");
+    assert.equal(evaluate("document.querySelectorAll('.journal-map').length"),0);
+    evaluate("window.__launcherTest.finishRecognition({difficulty:'hard',keys:['rf:1'],preview:null,warnings:[]})");
+    wait("document.querySelectorAll('.journal-map').length===1");
+    assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"),"右前 · 地图 1");
+    click("查看右前 · 地图 1"); browser("press","l");
+    wait("window.__launcherTest.calls.some(c=>c.command==='journal_read_image' && c.args.path==='right-upper.png')");
+    browser("press","l");
+    wait("document.querySelector('.journal-floor-switch button[aria-pressed=true]').textContent==='1F'");
+  } finally { browser("close"); }
+});
+
+test("detected difficulty persists without cancelling results or automatic entry", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html?desktop`);
+    evaluate("window.__launcherTest.packs=[{id:'nightmare',season_id:'s0',difficulty:'nightmare',maps:[{index:1,category:'lf',name:'',floors:{1:'n1.png',2:'n2.png',b1f:'nb.png'},display:{}}]}]");
+    click("加页手记"); wait("!!document.querySelector('.journal') && !document.querySelector('.journal-viewer[aria-busy=true]')");
+    browser("find","role","switch","check","--name","自动进入最匹配地图","--exact");
+    click("识别一楼地图"); wait("!!window.__launcherTest.finishRecognition");
+    evaluate("window.__launcherTest.finishRecognition({difficulty:'nightmare',keys:['lf:1'],preview:null,warnings:[]})");
+    wait("!!document.querySelector('.journal-full-preview:modal')");
+    wait("window.__launcherTest.savedSettings?.journal.difficulty==='nightmare'");
+    browser("press","l"); wait("window.__launcherTest.calls.at(-1).command!=='unused' && [...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='2F'");
+    browser("press","l"); wait("[...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='地下室'");
+    assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition')"),false);
+  } finally { browser("close"); }
+});

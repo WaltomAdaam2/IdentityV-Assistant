@@ -1,4 +1,5 @@
 use super::{component::LoginRuntime, runtime};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -59,7 +60,7 @@ async fn download(
     size: u64,
     hash: &str,
     cancelled: &AtomicBool,
-    progress: &impl Fn(String),
+    progress: &impl Fn(Value),
 ) -> Result<(), String> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder()
@@ -84,7 +85,10 @@ async fn download(
     let mut file = fs::File::create(target).map_err(|e| e.to_string())?;
     let mut count = 0;
     let mut digest = Sha256::new();
-    let mut percent = u64::MAX;
+    let mut last_progress = std::time::Instant::now() - Duration::from_secs(1);
+    progress(
+        json!({"phase":"downloading","downloaded":0,"total":size,"file":target.file_name().unwrap_or_default().to_string_lossy(),"cancellable":true}),
+    );
     while let Some(chunk) = cancellable(
         async { response.chunk().await.map_err(|e| e.to_string()) },
         cancelled,
@@ -97,9 +101,11 @@ async fn download(
         }
         digest.update(&chunk);
         file.write_all(&chunk).map_err(|e| e.to_string())?;
-        if count * 100 / size != percent {
-            percent = count * 100 / size;
-            progress(format!("正在下载并校验组件：{percent}%"));
+        if last_progress.elapsed() >= Duration::from_millis(100) || count == size {
+            last_progress = std::time::Instant::now();
+            progress(
+                json!({"phase":"downloading","downloaded":count,"total":size,"file":target.file_name().unwrap_or_default().to_string_lossy(),"cancellable":true}),
+            );
         }
     }
     verify_digest(count, &format!("{:x}", digest.finalize()), size, hash)?;
@@ -109,7 +115,7 @@ async fn download(
 pub(super) async fn install(
     source: &str,
     cancelled: &AtomicBool,
-    progress: impl Fn(String),
+    progress: impl Fn(Value),
 ) -> Result<LoginRuntime, String> {
     let destination = runtime::managed_root()?;
     if destination.exists() {
@@ -159,7 +165,7 @@ pub(super) async fn install(
     entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     fs::write(&unpacker, bytes).map_err(|e| e.to_string())?;
     check_cancel(cancelled)?;
-    progress("下载校验通过，正在解包官方组件…".into());
+    progress(json!({"phase":"extracting","downloaded":0,"total":null,"cancellable":true}));
     let extracted = staging.path().join("extracted");
     let mut command = tokio::process::Command::new(unpacker);
     command
@@ -195,7 +201,7 @@ pub(super) async fn install(
     }
     let root = extracted.join("{app}");
     let runtime = runtime::runtime_from_selection(root.clone())?;
-    progress("正在校验组件版本…".into());
+    progress(json!({"phase":"verifying","downloaded":0,"total":null,"cancellable":true}));
     cancellable(runtime::verify_version(&runtime), cancelled).await?;
     check_cancel(cancelled)?;
     fs::rename(root, &destination).map_err(|e| format!("无法保存官方组件：{e}"))?;

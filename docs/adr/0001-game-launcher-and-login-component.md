@@ -54,3 +54,7 @@ hotfixes and rollback records. Before applying, require a strict atomic write vi
 the pinned runtime's cache API. Report success only after reading back the
 requested records and validation/restart bookkeeping from disk; in-memory records
 alone are insufficient because ordinary upstream cached writes tolerate failures.
+
+### 0.2.0: compatible full releases replace module hotfixes
+
+This supersedes the hotfix workflow above. Do not fetch cloud hotfix metadata or run upstream hotfix application. Keep existing account and historical validation data. Check full-release metadata on game launch/manual request, but install only a size/hash-pinned compatible version. Unsupported upstream versions wait for an assistant release. Use a separate managed version directory and atomic configuration switch; preserve external installations. Downloads can be cancelled while the owned proxy keeps running. During configuration, pause only the owned proxy, restore it against the new runtime, and roll back configuration/old proxy on failure. Block app exit during installation. Reuse the assistant progress dialog rather than sending the user to GitHub.

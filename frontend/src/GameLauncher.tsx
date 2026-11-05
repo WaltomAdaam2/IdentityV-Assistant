@@ -7,8 +7,8 @@ import "./launcher.css";
 
 const skippedUpdatesKey = "idv-assistant:skipped-component-updates";
 const updateIds = (info: ComponentUpdateInfo) => [
-  ...(info.release_url ? [`release:${info.version}`] : []),
-  ...info.hotfixes.map(item => `hotfix:${info.current_version}|${item.target_module}@${item.target_commit}`),
+  ...(info.available ? [`release:${info.version}`] : []),
+  ...(info.unsupported_version ? [`unsupported:${info.unsupported_version}`] : []),
 ];
 const readSkippedUpdates = (): string[] => {
   try {
@@ -156,31 +156,37 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
     } catch { setPreferenceError(true); }
   };
   const closeUpdate = (resume = false) => {
+    if (updatePhase !== "idle") return;
     setUpdateOpen(false);
     const pending = continueAfterUpdate.current;
     continueAfterUpdate.current = false;
     if (pending && resume) void startGame();
   };
-  const applyHotfixes = async () => {
+  const installUpdate = async () => {
     setUpdatePhase("applying"); setUpdateError(""); setUpdateProgress(null);
     let unlisten: (() => void) | undefined;
     try {
       unlisten = await bridge.onComponentUpdateProgress(setUpdateProgress);
-      await bridge.applyLoginHotfixes(appSettings.update_source);
-      setUpdateInfo((info) => info && {...info, hotfixes: []});
-      if (continueAfterUpdate.current) closeUpdate(true);
+      await bridge.installLoginUpdate(appSettings.update_source);
+      setUpdateInfo((info) => info && {...info, current_version: info.version, available: false});
+      // Keep the completion visible; the user can continue launching explicitly.
     } catch (error) { setUpdateInfo(null); setUpdateError(String(error)); }
-    finally { unlisten?.(); setUpdatePhase("idle"); setUpdateProgress(null); }
+    finally { unlisten?.(); setUpdatePhase("idle"); setUpdateProgress(null); setCancelling(false); }
   };
   const configureComponent = async (download: boolean) => {
     setConfiguring(true);
     setLaunchError("");
-    try { await bridge.configureLoginComponent(download); }
-    catch (error) { setLaunchError(String(error)); }
+    setUpdateOpen(true); setUpdatePhase("applying"); setUpdateError(""); setUpdateInfo(null); setUpdateProgress(null);
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = await bridge.onComponentUpdateProgress(setUpdateProgress);
+      await bridge.configureLoginComponent(download);
+    }
+    catch (error) { setLaunchError(String(error)); setUpdateError(String(error)); }
     finally {
       try { setStatus(await bridge.getLauncherStatus()); }
       catch (error) { setStatusError(String(error)); }
-      setConfiguring(false);
+      setConfiguring(false); unlisten?.(); setUpdatePhase("idle"); setUpdateProgress(null); setCancelling(false);
     }
   };
   const chooseComponent = async () => {
@@ -235,8 +241,12 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   return <section className="game-launcher" aria-label={zh ? "游戏启动" : "Game launch"}>
     {updateOpen && <ComponentUpdateDialog info={updateInfo} error={updateError} phase={updatePhase} progress={updateProgress} source={appSettings.update_source} language={language} continuing={continueAfterUpdate.current}
       skipUpdates={skipUpdates} preferenceError={preferenceError} onSkipUpdates={saveUpdatePreference}
-      onSource={(source) => onAppSettingsChange({...appSettings, update_source: source})} onClose={() => closeUpdate()} onContinue={() => closeUpdate(true)} onCheck={() => void checkUpdates(continueAfterUpdate.current)} onApply={() => void applyHotfixes()}
-      onDownload={() => void bridge.openLoginUpdate(appSettings.update_source).catch((error) => setUpdateError(String(error)))} />}
+      onSource={(source) => onAppSettingsChange({...appSettings, update_source: source})} onClose={() => closeUpdate()} onContinue={() => closeUpdate(true)} onCheck={() => void checkUpdates(continueAfterUpdate.current)} onInstall={() => void installUpdate()}
+      cancelling={cancelling} onCancel={() => {
+        if (cancelling) return;
+        setCancelling(true);
+        void bridge.cancelGameLaunch().catch(error => { setUpdateError(String(error)); setCancelling(false); });
+      }} />}
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />
     <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message || undefined}>
       <span className={`dot ${proxyDot}`} aria-hidden="true" /><span className="launcher-proxy-label" key={proxyPhase}>{proxyLabel}</span>

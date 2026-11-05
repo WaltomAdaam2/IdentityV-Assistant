@@ -73,8 +73,8 @@ def adapt(upstream):
     upstream.handle_error_and_exit = fail
     upstream.hotfixmgr.restart_self = managed_restart
     def managed_updates(*_args, **_kwargs):
-        # The assistant checks at game launch and applies only the snapshot the
-        # user confirmed. Do not open a second Qt prompt or start a countdown.
+        # Module hotfixes are disabled. Compatible full releases are installed by
+        # the assistant; upstream must not prompt or mutate its running modules.
         return None
 
     upstream.handle_update = managed_updates

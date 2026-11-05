@@ -46,8 +46,8 @@ export function previewPlacement(view: { width: number; height: number }, aspect
     Math.max(16, Math.min(size - image - 16, (Number.isFinite(value) ? value : 0.5) * size - image / 2));
   return { width, height, x: coordinate(position.x, view.width, width), y: coordinate(position.y, view.height, height) };
 }
-export interface RecognitionResult { request_id: string; keys: string[]; preview: string | null; warnings: string[] }
-export interface RecognitionProgress { request_id: string; stage: "capturing" | "locating" | "matching"; completed: number; total: number }
+export interface RecognitionResult { difficulty?: "hard" | "nightmare"; request_id: string; keys: string[]; preview: string | null; warnings: string[] }
+export interface RecognitionProgress { request_id: string; stage: "capturing" | "difficulty" | "locating" | "matching"; completed: number; total: number }
 export const journalApi = {
   list: () => invoke<JournalLibrary>("journal_list_packs"),
   choose: () => invoke<string[] | null>("journal_choose_pack_source"),

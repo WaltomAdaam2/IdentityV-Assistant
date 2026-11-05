@@ -60,7 +60,7 @@ jobs:
         working-directory: engine
         run: uv run pytest
 
-      - name: Test component bootstrap and hotfix worker
+      - name: Test component bootstrap and retired hotfix guard
         working-directory: engine
         run: uv run python -m unittest discover -s ../src-tauri/tests -p "test_*.py" -v
 

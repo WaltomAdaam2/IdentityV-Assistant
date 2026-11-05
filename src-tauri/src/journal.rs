@@ -9,6 +9,12 @@ use std::{
     sync::Mutex,
 };
 
+mod builtin;
+
+pub(crate) fn ensure_builtins(app: &tauri::AppHandle) -> Result<(), String> {
+    builtin::ensure(app)
+}
+
 static PACK_WRITE: Mutex<()> = Mutex::new(());
 const MAX_IMAGE: u64 = 20 * 1024 * 1024;
 const MAX_PACK: u64 = 512 * 1024 * 1024;
@@ -248,7 +254,13 @@ fn list(root: &Path) -> Result<JournalLibrary, String> {
                 .push(format!("{}：{e}", entry.file_name().to_string_lossy())),
         }
     }
-    library.packs.sort_by(|a, b| a.id.cmp(&b.id));
+    // Custom packs retain priority when they intentionally override a bundled map.
+    library.packs.sort_by_key(|pack| {
+        (
+            matches!(pack.id.as_str(), "s0_hard_11-05" | "s0_nightmare_11-05"),
+            pack.id.clone(),
+        )
+    });
     Ok(library)
 }
 
@@ -312,9 +324,6 @@ fn recognition_templates_at(
             let (path, _) = image_file(&pack_root, path)?;
             templates.push(serde_json::json!({"key": key, "path": path}));
         }
-    }
-    if templates.is_empty() {
-        return Err("当前分类缺少一楼地图，请导入对应地图包 / Import first-floor maps for the selected category".into());
     }
     Ok(serde_json::Value::Array(templates))
 }
@@ -423,8 +432,13 @@ fn import_zip(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
     if fs::metadata(source).map_err(io)?.len() > MAX_PACK {
         return Err("ZIP 文件超过 512 MiB".into());
     }
-    let mut archive = zip::ZipArchive::new(fs::File::open(source).map_err(io)?)
-        .map_err(|e| format!("无法读取 ZIP：{e}"))?;
+    import_archive(root, fs::File::open(source).map_err(io)?)
+}
+fn import_archive(
+    root: &Path,
+    source: impl Read + std::io::Seek,
+) -> Result<JournalLibrary, String> {
+    let mut archive = zip::ZipArchive::new(source).map_err(|e| format!("无法读取 ZIP：{e}"))?;
     if archive.len() > MAX_ENTRIES {
         return Err("ZIP 条目超过 20000".into());
     }
@@ -507,10 +521,13 @@ fn import_zip(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
     finish_import(root, &staging, &pack)
 }
 #[tauri::command]
-pub async fn journal_list_packs() -> Result<JournalLibrary, String> {
-    tauri::async_runtime::spawn_blocking(|| list(&packs_root()?))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn journal_list_packs(app: tauri::AppHandle) -> Result<JournalLibrary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        builtin::ensure(&app)?;
+        list(&packs_root()?)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 fn validate_zip_source(source: &Path) -> Result<(), String> {
     if source.is_file()
@@ -664,7 +681,10 @@ mod tests {
             Path::new(route[0]["path"].as_str().unwrap()),
             root.path().join("base/map.png").canonicalize().unwrap()
         );
-        assert!(recognition_templates_at(root.path(), "s1", "hard", "route").is_err());
+        assert_eq!(
+            recognition_templates_at(root.path(), "s1", "hard", "route").unwrap(),
+            serde_json::json!([])
+        );
     }
 
     #[test]

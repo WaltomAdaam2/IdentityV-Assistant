@@ -7,21 +7,21 @@ import type { Settings } from "./types";
 import { SettingIcon } from "./SettingRow";
 import "./updates.css";
 
-export default function ComponentUpdateDialog({ info, error, phase, progress, source, language, continuing, skipUpdates, preferenceError, onSkipUpdates, onSource, onClose, onContinue, onCheck, onApply, onDownload }: {
+export default function ComponentUpdateDialog({ info, error, phase, progress, source, language, continuing, skipUpdates, preferenceError, onSkipUpdates, onSource, onClose, onContinue, onCheck, onInstall, cancelling, onCancel }: {
   info: ComponentUpdateInfo | null; error: string; phase: "checking" | "applying" | "idle";
   progress: ComponentUpdateProgress | null;
   source: Settings["app"]["update_source"]; language: Settings["app"]["language"]; continuing: boolean;
   skipUpdates: boolean; preferenceError: boolean; onSkipUpdates: (checked: boolean) => void;
   onSource: (source: Settings["app"]["update_source"]) => void; onClose: () => void; onContinue: () => void; onCheck: () => void;
-  onApply: () => void; onDownload: () => void;
+  onInstall: () => void; cancelling: boolean; onCancel: () => void;
 }) {
   const continueOnClose = useRef(false);
   const {dialog, closing, close} = useDialog(true, () => continueOnClose.current ? onContinue() : onClose());
   const zh = language === "zh-CN";
-  const available = !!info && (!!info.release_url || info.hotfixes.length > 0);
+  const available = !!info?.available;
   const busy = phase !== "idle";
   const state = error ? "error" : busy ? phase === "checking" ? "checking" : "installing" : available ? "available" : "current";
-  const labels = zh ? {checking:"正在检查组件更新…", installing:"正在应用组件更新…", error:"组件更新未完成", available:"发现组件更新", current:"组件已是最新版本"} : {checking:"Checking component updates…", installing:"Applying component updates…", error:"Component update failed", available:"Component update available", current:"Component is up to date"};
+  const labels = zh ? {checking:"正在检查组件更新…", installing:"正在应用组件更新…", error:"组件更新未完成", available:"发现组件更新", current:"组件已是最新兼容版本"} : {checking:"Checking component updates…", installing:"Applying component updates…", error:"Component update failed", available:"Component update available", current:"Compatible component is up to date"};
   return createPortal(<dialog ref={dialog} data-closing={closing || undefined} className={`update-dialog${available ? " has-release" : ""}`} aria-labelledby="component-update-title" onCancel={(event) => {event.preventDefault(); if (!busy) close();}}>
     <button className="update-dialog-close" disabled={busy} aria-label={zh ? "关闭组件更新" : "Close component update"} onClick={() => close()}>×</button>
     <header className={`update-dialog-heading phase-${state}`}>
@@ -29,27 +29,27 @@ export default function ComponentUpdateDialog({ info, error, phase, progress, so
       <div><h2 id="component-update-title">{labels[state]}</h2><p>{zh ? "官方登录组件 · 更新前由你确认。" : "Official login component · Updates require your confirmation."}</p></div>
     </header>
     <dl className="update-facts">
-      <div><dt>{zh ? "当前版本" : "Installed version"}</dt><dd>{info?.current_version || "—"}{info?.release_url && <><span className="update-version-arrow"> → </span><strong>{info.version}</strong></>}</dd></div>
+      <div><dt>{zh ? "当前版本" : "Installed version"}</dt><dd>{info?.current_version || "—"}{info?.available && <><span className="update-version-arrow"> → </span><strong>{info.version}</strong></>}</dd></div>
       <div><dt><label htmlFor="component-update-source">{zh ? "更新源" : "Update source"}</label></dt><dd><select id="component-update-source" disabled={busy} value={source} onChange={(event) => onSource(event.target.value as Settings["app"]["update_source"])}>
         <option value="direct">{zh ? "GitHub 直连（默认）" : "GitHub direct (default)"}</option><option value="proxy">GH-Proxy</option><option value="ghfast">GHFast</option><option value="ghproxy_net">ghproxy.net</option>
       </select></dd></div>
     </dl>
-    {available && <section className="update-dialog-notes" aria-label={zh ? "更新日志" : "Release notes"}><h3>{zh ? "更新日志" : "Release notes"}</h3>{info.notes && <p>{info.notes}</p>}{info.hotfixes.map((item) => <p key={`${item.target_module}@${item.target_commit}`}><strong>{item.target_module}</strong> · {item.target_commit.slice(0, 8)}<br />{item.note}</p>)}</section>}
-    {info?.hotfixes.length ? <p>{zh ? "应用热更新会暂时停止并恢复助手启动的代理，游戏会保留。" : "Applying hotfixes temporarily stops and restores the assistant's proxy; the game stays open."}</p> : null}
-    {info?.release_url && <p>{zh ? "完整新版将从所选源下载。更换组件前需要确认与助手兼容。" : "Download the full release from the selected source. Check assistant compatibility before replacing the component."}</p>}
+    {available && <section className="update-dialog-notes" aria-label={zh ? "更新日志" : "Release notes"}><h3>{zh ? "更新日志" : "Release notes"}</h3>{info.notes && <p>{info.notes}</p>}</section>}
+    {available && <p>{zh ? "将下载、校验并配置已适配的完整组件。账号数据保留；失败时尝试恢复原组件配置。" : "Downloads, verifies and configures the compatible full component. Account data is preserved; failures attempt to restore the previous configuration."}</p>}
+    {info?.unsupported_version && <p role="status">{zh ? `上游 ${info.unsupported_version} 尚未适配，请等待助手更新；继续使用当前兼容组件。` : `Upstream ${info.unsupported_version} is not supported yet. Keep the compatible component until an assistant update.`}</p>}
     {error && <details className="update-error" open><summary>{zh ? "错误详情" : "Error details"}</summary><p role="alert">{error}</p></details>}
     {available && <label className="check-label update-skip"><input type="checkbox" disabled={busy} checked={skipUpdates} onChange={event => onSkipUpdates(event.target.checked)} />{zh ? "不再提醒本批组件更新" : "Don't remind me about these component updates"}</label>}
-    {available && <p className="update-hint">{zh ? "新版本或新提交仍会提醒，也可以随时手动检查。" : "New versions or commits will still prompt. You can check manually at any time."}</p>}
+    {available && <p className="update-hint">{zh ? "新版本仍会提醒，也可以随时手动检查。" : "New versions will still prompt. You can check manually at any time."}</p>}
     {preferenceError && <p role="alert" className="update-error">{zh ? "提醒偏好未保存，请重试。" : "Could not save this preference. Try again."}</p>}
     {busy && (progress?.phase === "downloading" ? <div>
-      <small>{zh ? "正在下载模块：" : "Downloading module: "}{progress.module}</small>
-      <DownloadProgress key={`${progress.module}@${progress.commit}`} downloaded={progress.downloaded} total={progress.total} language={language} />
-    </div> : <div className="update-download"><progress aria-label={labels[state]} /><small role="status">{phase === "checking" ? labels.checking : progress?.phase === "applying" ? (zh ? "正在编译并应用模块…" : "Compiling and applying module…") : progress?.phase === "restoring" ? (zh ? "正在恢复登录代理…" : "Restoring login proxy…") : (zh ? "正在准备热更新…" : "Preparing hotfixes…")}</small></div>)}
+      <small>{zh ? "正在下载组件：" : "Downloading component: "}{progress.file}</small>
+      <DownloadProgress key={progress.file} downloaded={progress.downloaded} total={progress.total} language={language} />
+    </div> : <div className="update-download"><progress aria-label={labels[state]} /><small role="status">{phase === "checking" ? labels.checking : progress?.phase === "applying" ? (zh ? "正在配置组件…" : "Configuring component…") : progress?.phase === "restoring" ? (zh ? "正在恢复登录代理…" : "Restoring login proxy…") : (zh ? "正在解包并校验组件…" : "Extracting and verifying component…")}</small></div>)}
     <footer className="update-actions">
       <button disabled={busy} onClick={onCheck}>{zh ? "重新检查" : "Check again"}</button>
       <button autoFocus disabled={busy} onClick={() => {continueOnClose.current = continuing; close();}}>{continuing ? (zh ? "继续启动游戏" : "Continue launching") : (zh ? "关闭" : "Close")}</button>
-      {info?.release_url && <button className="primary" disabled={busy} onClick={onDownload}>{zh ? "下载官方新版" : "Download official release"}</button>}
-      {!!info?.hotfixes.length && <button className="primary" disabled={busy} onClick={onApply}>{zh ? "应用热更新" : "Apply hotfixes"}</button>}
+      {info?.available && <button className="primary" disabled={busy} onClick={onInstall}>{zh ? "更新组件" : "Update component"}</button>}
+      {phase === "applying" && progress?.cancellable !== false && <button disabled={cancelling} onClick={onCancel}>{cancelling ? (zh ? "正在取消…" : "Cancelling…") : (zh ? "取消下载" : "Cancel download")}</button>}
     </footer>
   </dialog>, document.body);
 }

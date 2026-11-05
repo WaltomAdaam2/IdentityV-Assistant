@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { createPortal } from "react-dom";
 import type { Settings } from "./types";
 import type { RecognitionView } from "./useJournalRecognition";
@@ -109,6 +111,29 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     !(floor === "b1f" && settings.difficulty === "hard") &&
     matchingMaps(library.packs, { ...settings, floor }, recognizedKeys).some((map) => map.key === selectedKey)
   ).map(([floor]) => floor)), [library.packs, settings, selectedKey, recognizedKeys]);
+  useEffect(() => {
+    const cycle = () => {
+      if (!selectedKey || recognizing || document.querySelector("dialog:modal:not(.journal-full-preview)")) return;
+      const floors = quickFloors.map(([value]) => value).filter(value => availableFloors.has(value));
+      if (floors.length) {
+        const next = floors[(floors.indexOf(floor as typeof floors[number]) + 1) % floors.length];
+        setFloor(next);
+        onLog(zh ? `地图楼层切换：${next}` : `Map floor changed: ${next}`);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key.toLowerCase() !== "l" || event.repeat || event.defaultPrevented ||
+          event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
+          target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      cycle();
+    };
+    window.addEventListener("keydown", onKey);
+    let disposed = false;
+    const subscription = isTauri() ? listen("journal-floor-shortcut", () => { if (!disposed) cycle(); }) : null;
+    void subscription?.catch(reason => { if (!disposed) onNotice(String(reason), true); });
+    return () => { disposed = true; window.removeEventListener("keydown", onKey); void subscription?.then(stop => stop()).catch(() => {}); };
+  }, [selectedKey, recognizing, availableFloors, floor, zh]);
   const mapName = (map: typeof maps[number]) => {
     const name = map.name || (zh ? `地图 ${map.index}` : `Map ${map.index}`);
     const door = groups[1].options.find(([value]) => value === map.category)?.[zh ? 1 : 2] || map.category;
@@ -202,7 +227,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
             <span>{zh ? "自动进入最匹配地图" : "Automatically open the best match"}</span>
             <input type="checkbox" role="switch" checked={settings.auto_enter} onChange={event => onSettingsChange({ ...savedSettings, auto_enter: event.target.checked })} />
           </label>
-          <p className="journal-recognition-hint">{zh ? `游戏前台按 ${shortcut} 也可识别，不切走游戏焦点。仅识别当前赛季、难度的一楼。` : `Press ${shortcut} in the game without losing focus. Matches 1F in the selected season and difficulty.`}</p>
+          <p className="journal-recognition-hint">{zh ? `游戏前台按 ${shortcut} 也可识别，不切走游戏焦点。自动判断困难／噩梦，仅识别当前赛季一楼；再次按键重新截图。L 切换助手地图楼层。` : `Press ${shortcut} in the game without losing focus. Detects difficulty automatically; matches 1F in this season. Press again to restart. L changes the assistant map floor.`}</p>
           <div className="journal-options journal-tools">
             <button type="button" disabled={busy} onClick={() => void importPack()}>{zh ? "导入地图包" : "Import map packs"}</button>
             <button type="button" disabled={busy} onClick={() => void reload()}>{zh ? "刷新地图" : "Refresh maps"}</button>
@@ -220,7 +245,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
             </div>
           </div>
           <p role="status">{recognizing
-            ? ({ capturing: zh ? "正在截图…" : "Capturing…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
+            ? ({ capturing: zh ? "正在截图…" : "Capturing…", difficulty: zh ? "正在判断地图难度…" : "Detecting difficulty…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
               + (recognition.progress?.total ? ` ${recognition.progress.completed} / ${recognition.progress.total}` : "")
             : recognition.error || (recognition.result?.keys.length
               ? (recognition.result.keys.length > 1 ? (zh ? "按匹配顺序最多显示 4 张候选，请核对；也可继续探索后重新识别。" : "Up to 4 candidates in matching order. Check a map, or explore further and recognize again.") : (zh ? "点击候选查看地图；楼层按钮只切换看图。" : "Choose the candidate to view it; floor buttons only change the view."))

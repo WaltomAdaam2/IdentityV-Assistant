@@ -18,6 +18,7 @@ import numpy as np
 from capture.wgc_capture import WindowsGraphicsCapture
 from config.schema import EngineConfig
 from ipc.messages import event
+from vision.journal_difficulty import detect_difficulty
 from vision.journal_matcher import MAX_PIXELS, prepare_template, recognize
 from window.windows import WindowsWindowManager
 
@@ -62,11 +63,21 @@ def run_recognition(request: dict, config: EngineConfig,
             emit("journal_recognition_preview", preview=value, region=vars(region))
 
     items = request.get("templates")
-    if not isinstance(items, list) or not items:
+    if "templates_by_difficulty" not in request and (not isinstance(items, list) or not items):
         raise ValueError("当前分类没有可识别的一楼地图 / No eligible first-floor maps in this category")
     progress("capturing", 0, 0)
     frame = capture(config, request.get("window_handle"))
     diagnostic_image("full", frame)
+    difficulty = None
+    if "templates_by_difficulty" in request:
+        progress("difficulty", 0, 0)
+        difficulty, evidence = detect_difficulty(frame)
+        diagnostic({"stage": "difficulty_detected", "difficulty": difficulty, **evidence})
+        items = request["templates_by_difficulty"].get(difficulty, [])
+        if not items:
+            raise ValueError("检测到的难度缺少一楼地图，请导入对应地图包 / No first-floor maps for the detected difficulty")
+    diagnostic({"stage": "indexed", "difficulty": difficulty, "template_count": len(items),
+                "template_keys": [item["key"] for item in items]})
     warnings: list[str] = []
 
     def templates():
@@ -98,7 +109,7 @@ def run_recognition(request: dict, config: EngineConfig,
         crop = matches[0].region.crop(frame)
         diagnostic_image("region", crop)
         preview = make_preview(crop)
-    return {"keys": [match.key for match in matches], "preview": preview, "warnings": warnings,
+    return {"difficulty": difficulty, "keys": [match.key for match in matches], "preview": preview, "warnings": warnings,
             "elapsed_ms": round((perf_counter() - started) * 1000),
             "matches": [{"key": match.key, "region": vars(match.region), "geometry_cost": match.score,
                          "coverage": match.coverage, "unexplained": match.unexplained}

@@ -130,7 +130,7 @@ pub(super) fn component_path(directory: &Path) -> Result<Option<PathBuf>, String
     }))
 }
 
-pub(super) async fn verify_version(runtime: &LoginRuntime) -> Result<(), String> {
+pub(super) async fn read_version(runtime: &LoginRuntime) -> Result<String, String> {
     let mut command = tokio::process::Command::new(&runtime.python);
     command.args(["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import buildinfo; print(buildinfo.VERSION)"])
         .arg(runtime.script.parent().ok_or("登录组件目录无效")?)
@@ -140,22 +140,30 @@ pub(super) async fn verify_version(runtime: &LoginRuntime) -> Result<(), String>
         .await
         .map_err(|_| "读取登录组件版本超时")?
         .map_err(|e| e.to_string())?;
-    if !output.status.success()
-        || String::from_utf8_lossy(&output.stdout).trim() != SUPPORTED_VERSION
-    {
-        return Err("当前仅支持官方 idv-login v6.3.2-stable，请选择对应版本".into());
+    if !output.status.success() {
+        return Err("无法读取组件版本 / Could not read component version".into());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+pub(super) async fn verify_version(runtime: &LoginRuntime) -> Result<(), String> {
+    if read_version(runtime).await? != SUPPORTED_VERSION {
+        return Err(format!("组件版本尚未适配，请使用助手支持的 {SUPPORTED_VERSION} / Unsupported component version"));
     }
     Ok(())
 }
 
 pub(super) fn save_component(directory: &Path, python: &Path) -> Result<(), String> {
     fs::create_dir_all(directory).map_err(|e| e.to_string())?;
-    fs::write(
-        directory.join("launcher.json"),
-        serde_json::to_vec(python.to_str().ok_or("登录组件路径无效")?)
-            .map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    let mut pending = tempfile::NamedTempFile::new_in(directory).map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec(python.to_str().ok_or("登录组件路径无效")?)
+        .map_err(|e| e.to_string())?;
+    pending.write_all(&bytes).map_err(|e| e.to_string())?;
+    pending.as_file().sync_all().map_err(|e| e.to_string())?;
+    pending
+        .persist(directory.join("launcher.json"))
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub(super) fn ensure_can_start() -> Result<(), String> {
