@@ -72,11 +72,22 @@ fn seed(root: &Path) -> Result<Vec<Value>, String> {
         )?;
         let expected: JournalPack =
             serde_json::from_slice(&descriptor).map_err(|e| e.to_string())?;
-        let existing: JournalPack = serde_json::from_slice(&read_bounded(
-            fs::File::open(inside(&destination, "pack.json")?).map_err(io)?,
-            MAX_DESCRIPTOR,
-        )?)
-        .map_err(|e| e.to_string())?;
+        // Read only the descriptor: missing images are repaired below.
+        let descriptor = (|| -> Result<JournalPack, String> {
+            let bytes = read_bounded(
+                fs::File::open(inside(&destination, "pack.json")?).map_err(io)?,
+                MAX_DESCRIPTOR,
+            )?;
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())
+        })();
+        let existing = match descriptor {
+            Ok(pack) => pack,
+            Err(error) => {
+                events.push(json!({"pack":id,"conflict":true,
+                    "action":"unreadable_manifest_preserved","error":error}));
+                continue;
+            }
+        };
         if serde_json::to_value(&existing).unwrap() != serde_json::to_value(&expected).unwrap() {
             events.push(json!({"pack":id,"conflict":true,"action":"custom_manifest_preserved"}));
             continue;
@@ -231,6 +242,17 @@ mod tests {
         assert!(seed(&root).unwrap().iter().any(|e| e["conflict"] == true));
         assert_eq!(fs::read(image).unwrap(), b"custom image");
         assert_eq!(list(&root).unwrap().packs.len(), 2);
+        let descriptor = root.join(&first.id).join("pack.json");
+        fs::write(&descriptor, b"user's unfinished edit").unwrap();
+        assert!(seed(&root)
+            .unwrap()
+            .iter()
+            .any(|event| event["action"] == "unreadable_manifest_preserved"));
+        assert_eq!(fs::read(descriptor).unwrap(), b"user's unfinished edit");
+        let remaining = list(&root).unwrap();
+        assert_eq!(remaining.packs.len(), 1);
+        assert_eq!(remaining.packs[0].difficulty, "nightmare");
+        assert_eq!(remaining.packs[0].maps.len(), 26);
     }
 
     #[test]
