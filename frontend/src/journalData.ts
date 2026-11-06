@@ -28,9 +28,9 @@ export function matchingMaps(packs: JournalPack[], filters: JournalSettings, rec
     if (pack.season_id !== filters.season || pack.difficulty !== filters.difficulty) continue;
     for (const map of pack.maps) {
       const key = `${map.category}:${map.index}`;
-      if (order ? !order.has(key) : map.category !== filters.door) continue;
-      const layers = filters.display === "route" ? map.display : map.floors;
-      const path = layers[filters.floor] ?? (filters.floor === "b1f" ? layers["3"] : undefined);
+      if (order ? !order.has(key) : filters.season !== "s1" && map.category !== filters.door) continue;
+      const layers = filters.display === "route" && filters.season !== "s1" ? map.display : map.floors;
+      const path = layers[filters.floor] ?? (filters.season !== "s1" && filters.floor === "b1f" ? layers["3"] : undefined);
       if (!path || maps.has(key)) continue;
       maps.set(key, { key, index: map.index, category: map.category, name: map.name,
         image: { packId: pack.id, path } });
@@ -55,7 +55,7 @@ export const journalApi = {
   image: (image: MapImage) => invoke<string>("journal_read_image", { packId: image.packId, path: image.path }),
   openDirectory: () => invoke<void>("journal_open_directory"),
   recognize: (requestId: string, filters: JournalSettings, windowHandle?: number) => invoke<RecognitionResult>("journal_recognize", {
-    requestId, season: filters.season, difficulty: filters.difficulty, display: filters.display, windowHandle,
+    requestId, season: filters.season, difficulty: filters.difficulty, display: filters.season === "s1" ? "pure" : filters.display, windowHandle,
   }),
   cancel: (requestId: string, reason: string) => invoke<void>("journal_cancel_recognition", { requestId, reason }),
 };

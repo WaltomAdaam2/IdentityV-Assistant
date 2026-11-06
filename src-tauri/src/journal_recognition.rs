@@ -305,7 +305,11 @@ pub async fn journal_recognize(
         &app,
         "info",
         "journal.recognition",
-        "开始识别一楼地图 / Starting first-floor recognition",
+        if season == "s1" {
+            "开始识别地下1层地图 / Starting B1 map recognition"
+        } else {
+            "开始识别一楼地图 / Starting first-floor recognition"
+        },
         json!({"request_id":request_id,"season":season,"difficulty":difficulty,"display":display,
             "trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
     );
@@ -326,7 +330,7 @@ pub async fn journal_recognize(
         );
         state.start_diagnostics(
             &request_id,
-            json!({"season":season,"difficulty":"auto","requested_difficulty":difficulty,"display":display,
+            json!({"season":season,"difficulty":if season == "s1" {difficulty.as_str()} else {"auto"},"requested_difficulty":difficulty,"display":display,
         "floor":1,"trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
             &root,
         )
@@ -416,17 +420,30 @@ async fn recognize(
     state: &RecognitionState,
     id: &str,
     season: String,
-    _difficulty: String,
+    difficulty: String,
     display: String,
     window_handle: Option<isize>,
     mut cancelled: watch::Receiver<bool>,
 ) -> Result<Value, String> {
     let maps_app = app.clone();
+    let request_season = season.clone();
+    let request_difficulty = difficulty.clone();
     let templates = tauri::async_runtime::spawn_blocking(move || {
         crate::journal::ensure_builtins(&maps_app)?;
-        // Index paths only; Python selects one pool after reading the captured floor labels.
-        let hard = crate::journal::recognition_templates(&season, "hard", &display)?;
-        let nightmare = crate::journal::recognition_templates(&season, "nightmare", &display)?;
+        if !["hard", "nightmare"].contains(&difficulty.as_str()) {
+            return Err("无效地图难度 / Invalid map difficulty".to_string());
+        }
+        // S1 shares floor labels between difficulties; only index the selected pool.
+        let hard = if season != "s1" || difficulty == "hard" {
+            crate::journal::recognition_templates(&season, "hard", &display)?
+        } else {
+            json!([])
+        };
+        let nightmare = if season != "s1" || difficulty == "nightmare" {
+            crate::journal::recognition_templates(&season, "nightmare", &display)?
+        } else {
+            json!([])
+        };
         Ok::<_, String>(json!({"hard":hard,"nightmare":nightmare}))
     })
     .await
@@ -478,7 +495,8 @@ async fn recognize(
             }
         });
         let mut input = child.stdin.take().ok_or("Missing recognition input")?;
-        let request = json!({"request_id": id, "templates_by_difficulty": templates, "window_handle": window_handle});
+        let request = json!({"request_id": id, "season":request_season, "difficulty":request_difficulty,
+            "templates_by_difficulty": templates, "window_handle": window_handle});
         input
             .write_all(format!("{request}\n").as_bytes())
             .await

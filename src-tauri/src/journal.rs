@@ -172,6 +172,18 @@ fn read_bounded(reader: impl Read, limit: u64) -> Result<Vec<u8>, String> {
     }
     Ok(bytes)
 }
+fn normalize_floor_aliases(season: &str, layers: &mut BTreeMap<String, String>) {
+    // Earlier imports mistakenly stored S1 B3 under S0's basement alias.
+    let (old, current) = if season == "s1" {
+        ("b1f", "3")
+    } else {
+        ("3", "b1f")
+    };
+    if let Some(path) = layers.remove(old) {
+        layers.entry(current.into()).or_insert(path);
+    }
+}
+
 fn parse_pack(
     bytes: &[u8],
     mut image_size: impl FnMut(&str) -> Result<u64, String>,
@@ -206,11 +218,14 @@ fn parse_pack(
             return Err("地图缺少 floors 识别层".into());
         }
         for layers in [&mut map.floors, &mut map.display] {
-            if let Some(path) = layers.remove("3") {
-                layers.entry("b1f".into()).or_insert(path);
-            }
+            normalize_floor_aliases(&pack.season_id, layers);
             for (floor, path) in layers {
-                if !["1", "2", "b1f"].contains(&floor.as_str()) {
+                let allowed = if pack.season_id == "s1" {
+                    &["1", "2", "3"][..]
+                } else {
+                    &["1", "2", "b1f"][..]
+                };
+                if !allowed.contains(&floor.as_str()) {
                     return Err(format!("不支持楼层 {floor}"));
                 }
                 if files.insert(path.clone()) {
@@ -257,7 +272,10 @@ fn list(root: &Path) -> Result<JournalLibrary, String> {
     // Custom packs retain priority when they intentionally override a bundled map.
     library.packs.sort_by_key(|pack| {
         (
-            matches!(pack.id.as_str(), "s0_hard_11-05" | "s0_nightmare_11-05"),
+            matches!(
+                pack.id.as_str(),
+                "s0_hard_11-05" | "s0_nightmare_11-05" | "s1_hard" | "s1_nightmare"
+            ),
             pack.id.clone(),
         )
     });
@@ -685,6 +703,48 @@ mod tests {
             recognition_templates_at(root.path(), "s1", "hard", "route").unwrap(),
             serde_json::json!([])
         );
+    }
+
+    #[test]
+    fn s1_retains_third_underground_floor_and_indexes_only_b1() {
+        let root = tempfile::tempdir().unwrap();
+        let pack = root.path().join("s1_test");
+        fs::create_dir(&pack).unwrap();
+        for floor in ["1", "2", "3"] {
+            fs::write(pack.join(format!("{floor}.png")), b"fixture").unwrap();
+        }
+        let mut descriptor = serde_json::json!({"id":"s1_test","name":"S1","season_id":"s1","difficulty":"hard","maps":[
+            {"index":1,"category":"td","floors":{"1":"1.png","2":"2.png","3":"3.png"}},
+            {"index":2,"category":"td","floors":{"3":"3.png"}}
+        ]});
+        fs::write(pack.join("pack.json"), descriptor.to_string()).unwrap();
+        let loaded = load_pack(&pack).unwrap();
+        assert!(loaded.maps[0].floors.contains_key("3"));
+        assert!(!loaded.maps[0].floors.contains_key("b1f"));
+        let templates = recognition_templates_at(root.path(), "s1", "hard", "pure").unwrap();
+        assert_eq!(templates.as_array().unwrap().len(), 1);
+        assert_eq!(templates[0]["key"], "td:1");
+        assert_eq!(
+            Path::new(templates[0]["path"].as_str().unwrap()),
+            pack.join("1.png").canonicalize().unwrap()
+        );
+        let b3 = descriptor["maps"][0]["floors"]
+            .as_object_mut()
+            .unwrap()
+            .remove("3")
+            .unwrap();
+        descriptor["maps"][0]["floors"]["b1f"] = b3;
+        fs::write(pack.join("pack.json"), descriptor.to_string()).unwrap();
+        assert_eq!(load_pack(&pack).unwrap().maps[0].floors["3"], "3.png");
+        for unsupported in ["4"] {
+            descriptor["maps"][0]["floors"][unsupported] = serde_json::json!("1.png");
+            fs::write(pack.join("pack.json"), descriptor.to_string()).unwrap();
+            assert!(load_pack(&pack).is_err());
+            descriptor["maps"][0]["floors"]
+                .as_object_mut()
+                .unwrap()
+                .remove(unsupported);
+        }
     }
 
     #[test]

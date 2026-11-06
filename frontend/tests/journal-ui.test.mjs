@@ -22,6 +22,42 @@ function setup() {
   click("加页手记");
   wait("!!document.querySelector('.journal') && !document.querySelector('.journal-viewer[aria-busy=true]')");
 }
+
+test("S1 preserves S0 view preferences, uses selected difficulty, and cycles B1 through B3", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html?desktop`);
+    evaluate(`window.__launcherTest.packs=[
+      {id:'s0',season_id:'s0',season_name:'S0 厄运之女',difficulty:'hard',maps:[{index:1,category:'lf',floors:{1:'s0.png'},display:{1:'route.png'}}]},
+      ...['hard','nightmare'].map(difficulty=>({id:'s1_'+difficulty,season_id:'s1',season_name:'S1 磷光症',difficulty,maps:[{index:1,category:'td',floors:{1:'b1.png',2:'b2.png',3:'b3.png'},display:{}}]}))]`);
+    click("加页手记"); wait("!document.querySelector('.journal-viewer[aria-busy=true]')");
+    click("速刷"); wait("window.__launcherTest.savedSettings?.journal.display==='route'");
+    browser("select", ".journal-season select", "s1");
+    wait("!!Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='识别地下1层地图')");
+    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.journal-filters legend'),e=>e.textContent)"), ["难度","楼层","显示"]);
+    assert.equal(evaluate("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷').disabled"), true);
+    assert.equal(evaluate("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='纯净').getAttribute('aria-pressed')"), "true");
+    click("纯净");
+    assert.equal(evaluate("window.__launcherTest.savedSettings.journal.display"), "route");
+    click("噩梦"); click("识别地下1层地图"); wait("!!window.__launcherTest.finishRecognition");
+    assert.deepEqual(evaluate("(({season,difficulty,display})=>({season,difficulty,display}))(window.__launcherTest.recognitionRequest)"), {season:"s1",difficulty:"nightmare",display:"pure"});
+    evaluate("window.__launcherTest.finishRecognition({keys:['td:1'],difficulty:'nightmare',preview:null,warnings:[]})");
+    wait("document.querySelectorAll('.journal-map').length===1");
+    assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"), "地图 1");
+    click("查看地图 1"); wait("!!document.querySelector('.journal-detail img')"); click("进入地图");
+    wait("!!document.querySelector('.journal-full-preview:modal img')");
+    for (const [key,label] of [["2","地下2层"],["3","地下3层"],["1","地下1层"]]) {
+      browser("press", "l");
+      wait(`document.querySelector('.journal-preview-floors button[aria-pressed=true]')?.textContent==='${label}'`);
+      wait(`window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b${key}.png'`);
+    }
+    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.journal-preview-floors button'),e=>e.textContent)"), ["地下1层","地下2层","地下3层"]);
+    click("退出全窗口预览"); wait("!document.querySelector('.journal-full-preview')");
+    browser("select", ".journal-season select", "s0");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.getAttribute('aria-pressed')==='true'");
+    assert.equal(evaluate("window.__launcherTest.savedSettings.journal.display"), "route");
+    assert.equal(evaluate("window.__launcherTest.savedSettings.journal.door"), "lf");
+  } finally { browser("close"); }
+});
 test("recognition updates existing grid, keeps same-number doors distinct, and opens only on click", () => {
   try {
     setup(); click("识别一楼地图");

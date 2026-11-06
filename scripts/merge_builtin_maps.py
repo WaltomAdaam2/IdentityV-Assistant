@@ -1,6 +1,7 @@
 """Build the two bundled S0 packs from the five original user-supplied archives.
 
 Usage: python scripts/merge_builtin_maps.py <source directory>
+       python scripts/merge_builtin_maps.py --s1 <combined S1 archive>
 Images retain their original bytes. Source fingerprints protect customized imports.
 """
 import hashlib
@@ -73,5 +74,28 @@ def build(source: Path, output: Path):
     (output / "sources.json").write_text(json.dumps(provenance, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def split_s1(source: Path, output: Path):
+    """Keep each supplied S1 pack and its original image bytes intact."""
+    with ZipFile(source) as archive:
+        for difficulty, count in (("hard", 14), ("nightmare", 15)):
+            prefix = f"s1_{difficulty}/"
+            descriptor = archive.read(prefix + "pack.json")
+            pack = json.loads(descriptor.decode("utf-8-sig"))
+            assert pack.get("season_id", pack.get("seasonId")) == "s1"
+            assert pack["difficulty"] == difficulty and len(pack["maps"]) == count
+            assert all(set(item["floors"]) == {"1", "2", "3"} and not item.get("display") for item in pack["maps"])
+            paths = {path for item in pack["maps"] for path in item["floors"].values()}
+            with ZipFile(output / f"s1_{difficulty}.zip", "w") as target:
+                for path in sorted(paths | {"pack.json"}):
+                    info = ZipInfo(path, (2026, 11, 6, 0, 0, 0))
+                    info.compress_type = ZIP_DEFLATED
+                    target.writestr(info, archive.read(prefix + path))
+            print(f"s1_{difficulty}: {count} maps, {len(paths)} images")
+
+
 if __name__ == "__main__":
-    build(Path(sys.argv[1]), Path(__file__).resolve().parents[1] / "assets/journal")
+    output = Path(__file__).resolve().parents[1] / "assets/journal"
+    if sys.argv[1] == "--s1":
+        split_s1(Path(sys.argv[2]), output)
+    else:
+        build(Path(sys.argv[1]), output)

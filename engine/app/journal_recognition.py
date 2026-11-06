@@ -70,12 +70,18 @@ def run_recognition(request: dict, config: EngineConfig,
     diagnostic_image("full", frame)
     difficulty = None
     if "templates_by_difficulty" in request:
-        progress("difficulty", 0, 0)
-        difficulty, evidence = detect_difficulty(frame)
-        diagnostic({"stage": "difficulty_detected", "difficulty": difficulty, **evidence})
+        if request.get("season") == "s1":
+            difficulty = request.get("difficulty")
+            if difficulty not in ("hard", "nightmare"):
+                raise ValueError("请选择 S1 地图难度 / Select the S1 map difficulty")
+            diagnostic({"stage": "difficulty_selected", "difficulty": difficulty, "mode": "manual", "season": "s1"})
+        else:
+            progress("difficulty", 0, 0)
+            difficulty, evidence = detect_difficulty(frame)
+            diagnostic({"stage": "difficulty_detected", "difficulty": difficulty, **evidence})
         items = request["templates_by_difficulty"].get(difficulty, [])
         if not items:
-            raise ValueError("检测到的难度缺少一楼地图，请导入对应地图包 / No first-floor maps for the detected difficulty")
+            raise ValueError("所选难度缺少地下1层地图，请导入对应地图包 / No B1 maps for the selected difficulty" if request.get("season") == "s1" else "检测到的难度缺少一楼地图，请导入对应地图包 / No first-floor maps for the detected difficulty")
     diagnostic({"stage": "indexed", "difficulty": difficulty, "template_count": len(items),
                 "template_keys": [item["key"] for item in items]})
     warnings: list[str] = []

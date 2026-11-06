@@ -20,6 +20,17 @@ test("candidate floor and route views never fall back to an unavailable image", 
   assert.deepEqual(matchingMaps(packs, { ...defaultJournalSettings, season: "s1" }, keys), []);
 });
 
+test("S1 ignores S0 door and route preferences and keeps B3 distinct from S0 basement", () => {
+  const seasonal = [{ id: "s1_hard", season_id: "s1", difficulty: "hard", maps: [
+    { index: 1, category: "td", name: "", floors: { 1: "b1.png", 2: "b2.png", 3: "b3.png" }, display: {} },
+  ] }];
+  const filters = { ...defaultJournalSettings, season: "s1", display: "route" };
+  assert.deepEqual(matchingMaps(seasonal, filters).map(map => map.image.path), ["b1.png"]);
+  assert.deepEqual(matchingMaps(seasonal, { ...filters, floor: "3" }).map(map => map.image.path), ["b3.png"]);
+  assert.deepEqual(matchingMaps(seasonal, { ...filters, floor: "b1f" }), []);
+  assert.deepEqual(matchingMaps(seasonal, { ...filters, difficulty: "nightmare" }), []);
+});
+
 test("recognition shows only the first four ranked identities without limiting normal browsing", () => {
   const many = [{ ...packs[0], maps: Array.from({ length: 6 }, (_, i) => ({ ...packs[0].maps[0], index: i + 1 })) }];
   const ranked = ["lf:6", "lf:2", "lf:5", "lf:1", "lf:4", "lf:3"];

@@ -55,3 +55,31 @@ def test_capture_selects_detected_pool_before_loading_templates(monkeypatch, tmp
     }}, parse_config({}), lambda *args, **kwargs: None, capture=lambda *_: frame("hard"))
     assert prepared == ["lf:1"]
     assert result["difficulty"] == "hard"
+
+
+@pytest.mark.parametrize("kind", ["hard", "nightmare"])
+def test_s1_uses_selected_pool_without_s0_floor_detection(monkeypatch, tmp_path, kind):
+    from app import journal_recognition as service
+    from config.loader import parse_config
+    from test_journal_matcher import map_image
+    path = tmp_path / "b1.png"
+    cv2.imwrite(str(path), map_image())
+    prepared, records = [], []
+    def forbidden(_):
+        raise AssertionError("S1 must not use S0 floor labels")
+    monkeypatch.setattr(service, "detect_difficulty", forbidden)
+    def match(_frame, templates, **kwargs):
+        prepared.extend(t.key for t in templates)
+        return []
+    monkeypatch.setattr(service, "recognize", match)
+    pools = {key: [{"key": "wrong", "path": "must-not-open"}] for key in ("hard", "nightmare")}
+    pools[kind] = [{"key": "td:1", "path": str(path)}]
+    def emit(name, **details):
+        if name == "journal_recognition_diagnostic":
+            records.append(details)
+    result = service.run_recognition({"season": "s1", "difficulty": kind,
+        "templates_by_difficulty": pools}, parse_config({}), emit,
+        capture=lambda *_: frame("nightmare"))
+    assert prepared == ["td:1"]
+    assert result["difficulty"] == kind
+    assert any(item.get("stage") == "difficulty_selected" and item["mode"] == "manual" for item in records)

@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::io::Cursor;
 
-const PACKS: [(&str, &[u8]); 2] = [
+const PACKS: [(&str, &[u8]); 4] = [
     (
         "s0_hard_11-05",
         include_bytes!("../../../assets/journal/s0_hard_11-05.zip"),
@@ -11,6 +11,14 @@ const PACKS: [(&str, &[u8]); 2] = [
     (
         "s0_nightmare_11-05",
         include_bytes!("../../../assets/journal/s0_nightmare_11-05.zip"),
+    ),
+    (
+        "s1_hard",
+        include_bytes!("../../../assets/journal/s1_hard.zip"),
+    ),
+    (
+        "s1_nightmare",
+        include_bytes!("../../../assets/journal/s1_nightmare.zip"),
     ),
 ];
 static SEEDED: Mutex<bool> = Mutex::new(false);
@@ -80,7 +88,7 @@ fn seed(root: &Path) -> Result<Vec<Value>, String> {
             )?;
             serde_json::from_slice(&bytes).map_err(|error| error.to_string())
         })();
-        let existing = match descriptor {
+        let mut existing = match descriptor {
             Ok(pack) => pack,
             Err(error) => {
                 events.push(json!({"pack":id,"conflict":true,
@@ -88,6 +96,10 @@ fn seed(root: &Path) -> Result<Vec<Value>, String> {
                 continue;
             }
         };
+        for map in &mut existing.maps {
+            normalize_floor_aliases(&existing.season_id, &mut map.floors);
+            normalize_floor_aliases(&existing.season_id, &mut map.display);
+        }
         if serde_json::to_value(&existing).unwrap() != serde_json::to_value(&expected).unwrap() {
             events.push(json!({"pack":id,"conflict":true,"action":"custom_manifest_preserved"}));
             continue;
@@ -216,7 +228,7 @@ fn seed(root: &Path) -> Result<Vec<Value>, String> {
 mod tests {
     use super::*;
     #[test]
-    fn seeds_both_packs_and_repairs_missing_images_without_overwriting_custom_content() {
+    fn seeds_season_packs_and_repairs_missing_images_without_overwriting_custom_content() {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path().join("packs");
         seed(&root).unwrap();
@@ -227,8 +239,22 @@ mod tests {
                 .iter()
                 .map(|p| p.maps.len())
                 .collect::<Vec<_>>(),
-            vec![29, 26]
+            vec![29, 26, 14, 15]
         );
+        for pack in library.packs.iter().filter(|pack| pack.season_id == "s1") {
+            assert_eq!(pack.season_name, "S1 磷光症");
+            for map in &pack.maps {
+                assert_eq!(
+                    map.floors.keys().map(String::as_str).collect::<Vec<_>>(),
+                    vec!["1", "2", "3"]
+                );
+                assert!(map.display.is_empty());
+            }
+        }
+        assert!(seed(&root)
+            .unwrap()
+            .iter()
+            .all(|event| event["action"] != "imported"));
         let first = &library.packs[0];
         let image = root.join(&first.id).join(&first.maps[0].floors["1"]);
         let original = fs::read(&image).unwrap();
@@ -241,7 +267,7 @@ mod tests {
         fs::write(&image, b"custom image").unwrap();
         assert!(seed(&root).unwrap().iter().any(|e| e["conflict"] == true));
         assert_eq!(fs::read(image).unwrap(), b"custom image");
-        assert_eq!(list(&root).unwrap().packs.len(), 2);
+        assert_eq!(list(&root).unwrap().packs.len(), 4);
         let descriptor = root.join(&first.id).join("pack.json");
         fs::write(&descriptor, b"user's unfinished edit").unwrap();
         assert!(seed(&root)
@@ -250,9 +276,39 @@ mod tests {
             .any(|event| event["action"] == "unreadable_manifest_preserved"));
         assert_eq!(fs::read(descriptor).unwrap(), b"user's unfinished edit");
         let remaining = list(&root).unwrap();
-        assert_eq!(remaining.packs.len(), 1);
+        assert_eq!(remaining.packs.len(), 3);
         assert_eq!(remaining.packs[0].difficulty, "nightmare");
         assert_eq!(remaining.packs[0].maps.len(), 26);
+    }
+
+    #[test]
+    fn existing_s1_legacy_floor_alias_is_readable_and_missing_images_are_repaired() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("packs");
+        seed(&root).unwrap();
+        let folder = root.join("s1_hard");
+        let mut pack = load_pack(&folder).unwrap();
+        for map in &mut pack.maps {
+            let path = map.floors.remove("3").unwrap();
+            map.floors.insert("b1f".into(), path);
+        }
+        fs::write(folder.join("pack.json"), serde_json::to_vec(&pack).unwrap()).unwrap();
+        let image = folder.join(&pack.maps[0].floors["b1f"]);
+        let original = fs::read(&image).unwrap();
+        fs::remove_file(&image).unwrap();
+        let events = seed(&root).unwrap();
+        assert!(events
+            .iter()
+            .any(|event| event["pack"] == "s1_hard" && event["repaired_images"] == 1));
+        assert_eq!(fs::read(&image).unwrap(), original);
+        assert_eq!(list(&root).unwrap().packs.len(), 4);
+        assert!(load_pack(&folder).unwrap().maps[0].floors.contains_key("3"));
+        fs::write(&image, b"custom S1 artwork").unwrap();
+        assert!(seed(&root)
+            .unwrap()
+            .iter()
+            .any(|event| event["pack"] == "s1_hard" && event["conflict"] == true));
+        assert_eq!(fs::read(&image).unwrap(), b"custom S1 artwork");
     }
 
     #[test]
@@ -299,7 +355,7 @@ mod tests {
                 assert!(Path::new(backup["backup"].as_str().unwrap())
                     .join("pack.json")
                     .is_file());
-                assert_eq!(list(&root).unwrap().packs.len(), 2);
+                assert_eq!(list(&root).unwrap().packs.len(), 4);
             }
         }
     }
