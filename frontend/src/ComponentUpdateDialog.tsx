@@ -21,9 +21,9 @@ export default function ComponentUpdateDialog({ info, error, phase, progress, so
   const available = !!info?.available;
   const busy = phase !== "idle";
   const state = error ? "error" : busy ? phase === "checking" ? "checking" : "installing" : available ? "available" : "current";
-  const labels = zh ? {checking:"正在检查组件更新…", installing:"正在应用组件更新…", error:"组件更新未完成", available:"发现组件更新", current:"组件已是最新兼容版本"} : {checking:"Checking component updates…", installing:"Applying component updates…", error:"Component update failed", available:"Component update available", current:"Compatible component is up to date"};
-  return createPortal(<dialog ref={dialog} data-closing={closing || undefined} className={`update-dialog${available ? " has-release" : ""}`} aria-labelledby="component-update-title" onCancel={(event) => {event.preventDefault(); if (!busy) close();}}>
-    <button className="update-dialog-close" disabled={busy} aria-label={zh ? "关闭组件更新" : "Close component update"} onClick={() => close()}>×</button>
+  const labels = zh ? {checking:"正在检查组件更新…", installing:"正在应用组件更新…", error:"组件更新未完成", available:"发现组件更新", current:"组件已是最新版本"} : {checking:"Checking component updates…", installing:"Applying component updates…", error:"Component update failed", available:"Component update available", current:"Component is up to date"};
+  return createPortal(<dialog ref={dialog} data-closing={closing || undefined} className={`update-dialog${available ? " has-release" : ""}`} aria-labelledby="component-update-title" onCancel={(event) => {event.preventDefault(); if (phase !== "applying") close();}}>
+    <button className="update-dialog-close" disabled={phase === "applying"} aria-label={zh ? "关闭组件更新" : "Close component update"} onClick={() => close()}>×</button>
     <header className={`update-dialog-heading phase-${state}`}>
       <span className="update-state-icon" aria-hidden="true">{state === "current" ? <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg> : state === "error" ? <svg viewBox="0 0 24 24"><path d="M12 5v9m0 4h.01" /></svg> : <SettingIcon name="refresh" />}</span>
       <div><h2 id="component-update-title">{labels[state]}</h2><p>{zh ? "官方登录组件 · 更新前由你确认。" : "Official login component · Updates require your confirmation."}</p></div>
@@ -35,8 +35,7 @@ export default function ComponentUpdateDialog({ info, error, phase, progress, so
       </select></dd></div>
     </dl>
     {available && <section className="update-dialog-notes" aria-label={zh ? "更新日志" : "Release notes"}><h3>{zh ? "更新日志" : "Release notes"}</h3>{info.notes && <p>{info.notes}</p>}</section>}
-    {available && <p>{zh ? "将下载、校验并配置已适配的完整组件。账号数据保留；失败时尝试恢复原组件配置。" : "Downloads, verifies and configures the compatible full component. Account data is preserved; failures attempt to restore the previous configuration."}</p>}
-    {info?.unsupported_version && <p role="status">{zh ? `上游 ${info.unsupported_version} 尚未适配，请等待助手更新；继续使用当前兼容组件。` : `Upstream ${info.unsupported_version} is not supported yet. Keep the compatible component until an assistant update.`}</p>}
+    {available && <p>{zh ? "将下载、校验并配置官方完整组件。账号数据保留；失败时尝试恢复原组件配置。" : "Downloads, verifies and configures the official full component. Account data is preserved; failures attempt to restore the previous configuration."}</p>}
     {error && <details className="update-error" open><summary>{zh ? "错误详情" : "Error details"}</summary><p role="alert">{error}</p></details>}
     {available && <label className="check-label update-skip"><input type="checkbox" disabled={busy} checked={skipUpdates} onChange={event => onSkipUpdates(event.target.checked)} />{zh ? "不再提醒本批组件更新" : "Don't remind me about these component updates"}</label>}
     {available && <p className="update-hint">{zh ? "新版本仍会提醒，也可以随时手动检查。" : "New versions will still prompt. You can check manually at any time."}</p>}

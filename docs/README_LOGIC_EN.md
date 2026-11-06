@@ -12,11 +12,11 @@ The game launcher, login component and automation engine have separate lifecycle
 
 The launcher locates the official `dwrg.exe`; its settings panel also accepts a manual path. Fever, installers and unrelated executables are rejected. Launch checks component updates, waits for proxy readiness, then starts the game directly.
 
-The reviewed runtime contract is [KKeygen/idv-login v6.3.2-stable](https://github.com/KKeygen/idv-login/releases/tag/v6.3.2-stable). Setup first scans for a valid installed runtime, then offers an official download through the selected source. Select the runtime or its `python-embed/python.exe`, not the downloaded installer. The assistant verifies and extracts downloads without silently executing third-party installer scripts.
+Full component updates use [the latest official KKeygen/idv-login release](https://github.com/KKeygen/idv-login/releases/latest), without an assistant compatibility allowlist. Setup first scans for a valid installed runtime, then offers an official download through the selected source. Select the runtime or its `python-embed/python.exe`, not the downloaded installer. The assistant verifies and extracts downloads without silently executing third-party installer scripts.
 
 Initial login and expired credentials require the user. The component keeps its account data under `%LOCALAPPDATA%\IdentityV-Assistant\login-data\idv-login`; the assistant does not read or display account credentials. The upstream component configures login certificates and a URI handler, unlike the visual automation engine.
 
-Component checks happen on game launch, with a separate manual entry, never at assistant startup. From 0.2.0 all module hotfixes are skipped. Only compatible full releases pinned by size and SHA-256 can be installed: one confirmation downloads, verifies and configures the component. Unsupported future releases wait for an assistant compatibility update.
+Component checks happen on game launch, with a separate manual entry, never at assistant startup. From 0.2.0 all module hotfixes are skipped. One confirmation downloads, verifies and configures the latest official full release using its published size and SHA-256. Failed launch-time checks continue with the installed component and a brief notice; manual checks show the error. Read-only checks can be dismissed without later continuing the launch.
 
 The assistant manages only processes it started and can identify. A pre-existing independent component must be closed by the user; it is not adopted or terminated by executable name. Assistant exit or update closes its owned proxy and attempts to restore the prior URI registration. The game remains open but loses that proxy.
 

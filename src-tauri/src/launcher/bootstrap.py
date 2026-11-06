@@ -1,4 +1,4 @@
-"""Host lifecycle adapter for the pinned official runtime; no login protocol code."""
+"""Host lifecycle adapter for the official runtime; no login protocol code."""
 import importlib.util
 import json
 import os
@@ -73,7 +73,7 @@ def adapt(upstream):
     upstream.handle_error_and_exit = fail
     upstream.hotfixmgr.restart_self = managed_restart
     def managed_updates(*_args, **_kwargs):
-        # Module hotfixes are disabled. Compatible full releases are installed by
+        # Module hotfixes are disabled. Official full releases are installed by
         # the assistant; upstream must not prompt or mutate its running modules.
         return None
 
@@ -91,8 +91,6 @@ def main():
     os.chdir(data)  # Upstream logutil creates log.txt on import.
     sys.path.insert(0, source)
     import buildinfo
-    if buildinfo.VERSION != "v6.3.2-stable":
-        raise RuntimeError("不支持此登录组件版本")
     spec = importlib.util.spec_from_file_location("main", Path(source) / "main.pyc")
     upstream = importlib.util.module_from_spec(spec)
     sys.modules["main"] = upstream
@@ -109,6 +107,7 @@ def main():
     import certmgr
     certmgr.certmgr.import_to_root = import_certificate
     adapt(upstream)
+    upstream.genv.set(f"{buildinfo.VERSION}_first_use", False, True)
 
     def watch_host():
         # The pipe closes if the assistant crashes, too. No console is needed.

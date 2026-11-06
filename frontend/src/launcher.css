@@ -31,7 +31,11 @@
 .launcher-setup button:hover:not(:disabled) { background: #ffffff25; }
 .launcher-setup-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .launcher-game-path { margin-bottom: 10px; overflow: hidden; color: #fff; text-shadow: 0 1px 3px #201d19; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 11px; }
-.launcher-game-error { padding: 10px 12px; margin-bottom: 10px; color: #fff; background: #572e26e6; border-radius: 8px; overflow-wrap: anywhere; font-size: 12px; }
+.launcher-notice-slot { display: grid; grid-template-rows: 1fr; margin-bottom: 10px; opacity: 1; transition: grid-template-rows 500ms ease, margin-bottom 500ms ease, opacity 500ms ease; }
+.launcher-notice-slot.is-leaving { grid-template-rows: 0fr; margin-bottom: 0; opacity: 0; }
+.launcher-game-error { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; color: #fff; background: #572e26e6; border-radius: 8px; overflow-wrap: anywhere; font-size: 12px; }
+.launcher-game-error > span { flex: 1; min-width: 0; }
+.launcher-game-error > button { flex-shrink: 0; padding: 0 3px; color: inherit; background: transparent; border: 0; font-size: 18px; line-height: 1.2; }
 .launcher-launch-controls { display: flex; border-radius: 30px; transition: transform 180ms ease, box-shadow 180ms ease; }
 .launcher-launch-controls:hover { transform: translateY(-2px); box-shadow: 0 7px 16px #0003; }
 .game-launcher .launcher-launch-controls > button:hover:not(:disabled) { transform: none; box-shadow: none; }

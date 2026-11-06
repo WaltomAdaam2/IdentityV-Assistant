@@ -76,7 +76,15 @@ mockIPC((command, args) => {
     return finish();
   }
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
-  if (command === "check_login_updates") return {current_version: window.__launcherTest.hasComponentUpdate ? "v6.2.0" : "v6.3.2-stable", version: window.__launcherTest.componentVersion || "v6.3.2-stable", notes: "测试完整组件更新", available: !!window.__launcherTest.hasComponentUpdate, unsupported_version: window.__launcherTest.unsupportedComponent || null};
+  if (command === "check_login_updates") {
+    const info = {current_version: window.__launcherTest.hasComponentUpdate ? "v6.2.0" : "v6.3.2-stable", version: window.__launcherTest.componentVersion || "v6.3.2-stable", notes: "测试完整组件更新", available: !!window.__launcherTest.hasComponentUpdate};
+    if (window.__launcherTest.checkFailure) return Promise.reject(window.__launcherTest.checkFailure);
+    if (window.__launcherTest.deferComponentCheck) return new Promise((resolve, reject) => {
+      window.__launcherTest.finishComponentCheck = () => resolve(info);
+      window.__launcherTest.failComponentCheck = reject;
+    });
+    return info;
+  }
   if (command === "install_login_update") {
     window.__launcherTest.hasComponentUpdate = false;
     return window.__launcherTest.deferComponentUpdate ? new Promise((resolve, reject) => {

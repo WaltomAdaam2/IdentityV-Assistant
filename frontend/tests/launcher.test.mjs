@@ -207,14 +207,14 @@ test("component updates check at game launch only and share the dialog source ch
     browser("select", "#component-update-source", "ghfast");
     browser("find", "role", "button", "click", "--name", "更新组件", "--exact");
     browser("wait", "--fn", "window.__launcherTest.calls.some(c => c.command === 'install_login_update' && c.args.source === 'ghfast')");
-    browser("wait", "--text", "组件已是最新兼容版本");
+    browser("wait", "--text", "组件已是最新版本");
     browser("find", "role", "button", "click", "--name", "继续启动游戏", "--exact");
     browser("wait", "--text", "取消启动");
     browser("eval", "window.__launcherTest.finishLaunch()");
     browser("wait", "--text", "登录代理已就绪");
     browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
     browser("find", "role", "button", "click", "--name", "检查组件更新", "--exact");
-    browser("wait", "--text", "组件已是最新兼容版本");
+    browser("wait", "--text", "组件已是最新版本");
     browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
     browser("wait", "--fn", "!document.querySelector('.update-dialog')");
     assert.equal(JSON.parse(browser("eval", "Boolean(document.querySelector('.launcher-setup input[type=checkbox]'))")), false);
@@ -252,7 +252,7 @@ test("component update progress shows actual transfer and distinct apply/recover
     browser("eval", "window.__launcherTest.emitComponentProgress({phase:'restoring',file:'',cancellable:false,downloaded:0,total:null})");
     browser("wait", "--text", "正在恢复登录代理");
     browser("eval", "window.__launcherTest.finishComponentUpdate()");
-    browser("wait", "--text", "组件已是最新兼容版本");
+    browser("wait", "--text", "组件已是最新版本");
   } finally { browser("close"); }
 });
 
@@ -563,7 +563,7 @@ test("missing login component opens setup and accepts an installed component", (
     browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
     browser("wait", "--fn", "!document.querySelector('.update-dialog')");
     browser("find", "role", "button", "click", "--name", "官方下载", "--exact");
-    browser("wait", "--text", "组件已是最新兼容版本");
+    browser("wait", "--text", "组件已是最新版本");
     browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
     browser("wait", "--fn", "!document.querySelector('.update-dialog')");
     browser("wait", "--text", "C:\\Assistant\\components\\idv-login\\v6.3.2-stable");
@@ -599,7 +599,76 @@ test("a second click cancels launch and later health failure removes ready statu
   } finally { browser("close"); }
 });
 
-test("component download locks its dialog until cancellation finishes and unsupported releases cannot install", () => {
+test("component startup check failures continue launching and notices dismiss smoothly", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("eval", "window.__launcherTest.checkFailure='GitHub timeout'");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--fn", "!!window.__launcherTest.finishLaunch");
+    assert.equal(JSON.parse(browser("eval", "!!document.querySelector('.update-dialog')")), false);
+    browser("eval", "document.querySelector('.launcher-game-error button').focus()");
+    browser("wait", "2600");
+    assert.equal(JSON.parse(browser("eval", "document.querySelector('.launcher-game-error')?.textContent.includes('更新检查失败')")), true);
+    browser("find", "role", "button", "click", "--name", "关闭启动提示", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.launcher-game-error')");
+    browser("eval", "window.__launcherTest.finishLaunch('操作已取消')");
+    browser("wait", "--fn", "!!document.querySelector('.launcher-game-error')");
+    browser("hover", ".launcher-logo");
+    const timing = JSON.parse(JSON.parse(browser("eval", `(async () => {
+      const element = document.querySelector('.launcher-notice-slot');
+      const initialHeight = element.getBoundingClientRect().height;
+      await new Promise(resolve => setTimeout(resolve, 1850));
+      const held = !element.classList.contains('is-leaving');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const fading = element.isConnected && element.getBoundingClientRect().height < initialHeight && element.getBoundingClientRect().height > 0;
+      await new Promise(resolve => setTimeout(resolve, 550));
+      return JSON.stringify({held, fading, removed:!element.isConnected});
+    })()`)));
+    assert.deepEqual(timing, {held:true, fading:true, removed:true});
+    browser("eval", "window.__launcherTest.finishLaunch=null");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--fn", "!!window.__launcherTest.finishLaunch");
+    browser("eval", "window.__launcherTest.finishLaunch()");
+    browser("wait", "--text", "登录代理已就绪");
+    browser("eval", "Object.assign(window.__launcherTest.launcherStatus,{phase:'error',proxy_phase:'error',message:'后续代理连接失败'})");
+    browser("wait", "--text", "后续代理连接失败");
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    browser("find", "role", "button", "click", "--name", "检查组件更新", "--exact");
+    browser("wait", "--text", "GitHub timeout");
+    browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.update-dialog')");
+  } finally { browser("close"); }
+});
+
+test("closing a component check suppresses its late result and launch continuation", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html`);
+    browser("eval", "window.__launcherTest.deferComponentCheck=true;window.__launcherTest.hasComponentUpdate=true");
+    browser("find", "role", "button", "click", "--name", "游戏启动", "--exact");
+    browser("wait", "--text", "活动与公告");
+    browser("find", "role", "button", "click", "--name", "启动设置", "--exact");
+    browser("find", "role", "button", "click", "--name", "检查组件更新", "--exact");
+    browser("wait", "--fn", "!!window.__launcherTest.finishComponentCheck");
+    browser("find", "role", "button", "click", "--name", "关闭组件更新", "--exact");
+    browser("wait", "--fn", "!document.querySelector('.update-dialog')");
+    browser("eval", "window.__launcherTest.finishComponentCheck()");
+    browser("wait", "300");
+    assert.equal(JSON.parse(browser("eval", "!!document.querySelector('.update-dialog') || window.__launcherTest.calls.some(c=>c.command==='launch_game')")), false);
+    browser("eval", "window.__launcherTest.deferComponentCheck=false;window.__launcherTest.hasComponentUpdate=false");
+    browser("find", "role", "button", "click", "--name", "关闭启动设置", "--exact");
+    browser("find", "role", "button", "click", "--name", "启动游戏", "--exact");
+    browser("wait", "--fn", "!!window.__launcherTest.finishLaunch");
+    assert.equal(JSON.parse(browser("eval", "!!document.querySelector('.update-dialog')")), false);
+    browser("eval", "window.__launcherTest.calls=[]");
+    browser("find", "role", "button", "click", "--name", "概览", "--exact");
+    browser("wait", "400");
+    assert.equal(JSON.parse(browser("eval", "window.__launcherTest.calls.some(c=>c.command==='cancel_game_launch')")), false);
+  } finally { browser("close"); }
+});
+
+test("component download locks its dialog until cancellation finishes and latest releases are offered", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html`);
     browser("eval", "window.__launcherTest.hasComponentUpdate=true; window.__launcherTest.deferComponentUpdate=true");
@@ -617,9 +686,9 @@ test("component download locks its dialog until cancellation finishes and unsupp
     browser("wait","--text","操作已取消");
     browser("find","role","button","click","--name","关闭组件更新","--exact");
     browser("wait","--fn","!document.querySelector('.update-dialog')");
-    browser("eval","window.__launcherTest.unsupportedComponent='v99.0.0';window.__launcherTest.hasComponentUpdate=false");
+    browser("eval","window.__launcherTest.componentVersion='v6.3.3-beta';window.__launcherTest.hasComponentUpdate=true");
     browser("find","role","button","click","--name","启动游戏","--exact");
-    browser("wait","--text","尚未适配");
-    assert.equal(JSON.parse(browser("eval","Array.from(document.querySelectorAll('.update-dialog button')).some(b=>b.textContent==='更新组件')")),false);
+    browser("wait","--text","v6.3.3-beta");
+    assert.equal(JSON.parse(browser("eval","Array.from(document.querySelectorAll('.update-dialog button')).some(b=>b.textContent==='更新组件')")),true);
   } finally { browser("close"); }
 });

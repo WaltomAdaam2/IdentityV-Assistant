@@ -8,8 +8,6 @@ use std::{
 mod windows_process;
 use windows_process::OwnedProcess;
 
-pub(super) const SUPPORTED_VERSION: &str = "v6.3.2-stable";
-
 #[derive(Clone)]
 pub(super) struct LoginRuntime {
     pub python: PathBuf,
@@ -228,9 +226,7 @@ impl ProxySession {
         if health["success"] != true || health["status"] != "ok" {
             return Err("登录组件尚未就绪".into());
         }
-        if health["version"] != SUPPORTED_VERSION {
-            return Err("登录组件版本不受支持，请使用 v6.3.2-stable".into());
-        }
+        super::runtime::parse_version(health["version"].as_str().ok_or("登录组件未返回版本")?)?;
         let mode = local_json(&client, "proxy-mode").await?;
         if mode["success"] != true || mode["mode"] != "process" {
             return Err("登录组件必须使用进程代理模式".into());
@@ -514,6 +510,7 @@ mod tests {
     #[tokio::test]
     async fn waits_for_ready_then_gracefully_stops_only_the_owned_component() {
         let data = tempfile::tempdir().unwrap();
+        std::fs::write(data.path().join("fixture-version"), "v6.3.3-beta").unwrap();
         let external_data = tempfile::tempdir().unwrap();
         let before = std::env::var_os("HTTP_PROXY");
         let external = ProxySession::start(

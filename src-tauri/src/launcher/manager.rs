@@ -105,10 +105,11 @@ impl Launcher {
         let runtime = runtime::runtime_from_python(python)?;
         let current =
             install::cancellable(runtime::read_version(&runtime), &self.cancelled).await?;
-        let info = component_updates::check(&current, source, &self.cancelled).await?;
+        let (info, release) = component_updates::check(&current, source, &self.cancelled).await?;
         *self.update.lock().unwrap() = Some(CheckedUpdate {
             runtime,
             info: info.clone(),
+            release,
         });
         Ok(info)
     }
@@ -142,7 +143,7 @@ impl Launcher {
             .take()
             .ok_or("请先检查组件更新")?;
         if !checked.info.available {
-            return Err("没有已适配的组件更新 / No compatible update available".into());
+            return Err("没有可用的组件更新 / No component update available".into());
         }
         let directory = directory()?;
         if runtime::component_path(&directory)?.as_ref() != Some(&checked.runtime.python) {
@@ -156,7 +157,7 @@ impl Launcher {
         );
         let result = async {
             // Leave the old component running during downloads. Installation targets a separate version directory.
-            let replacement = install::install(source, &self.cancelled, |p| self.update_progress(p)).await?;
+            let replacement = install::install(&checked.release, source, &self.cancelled, |p| self.update_progress(p)).await?;
             install::check_cancel(&self.cancelled)?;
             self.applying.store(true, Ordering::Release);
             self.update_progress(serde_json::json!({"phase":"applying","downloaded":0,"total":null,"cancellable":false}));
@@ -325,7 +326,8 @@ impl Launcher {
                 None if download => {
                     let config = crate::config::load()?;
                     let source = config["app"]["update_source"].as_str().unwrap_or("direct");
-                    install::install(source, &self.cancelled, |progress| self.update_progress(progress))
+                    let release = component_updates::latest(source, &self.cancelled).await?;
+                    install::install(&release, source, &self.cancelled, |progress| self.update_progress(progress))
                     .await?
                 }
                 None => return Err("未找到官方组件，请点击“官方下载”自动下载并配置".into()),

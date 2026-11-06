@@ -27,7 +27,6 @@ export interface ComponentUpdateInfo {
   version: string;
   notes: string;
   available: boolean;
-  unsupported_version: string | null;
 }
 
 export interface ComponentUpdateProgress {

@@ -1,4 +1,4 @@
-use super::{component::LoginRuntime, runtime};
+use super::{component::LoginRuntime, component_updates::ComponentRelease, runtime};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -11,7 +11,6 @@ use std::{
     time::Duration,
 };
 
-const RELEASE: &str = "https://github.com/KKeygen/idv-login/releases/download/v6.3.2-stable/idv-login-v6.3.2-stable.exe";
 const UNPACKER: &str = "https://github.com/jrathlev/InnoUnpacker-Windows-GUI/releases/download/ui_2_2_13/innounp-2.zip";
 
 #[cfg(test)]
@@ -113,14 +112,15 @@ async fn download(
 }
 
 pub(super) async fn install(
+    release: &ComponentRelease,
     source: &str,
     cancelled: &AtomicBool,
     progress: impl Fn(Value),
 ) -> Result<LoginRuntime, String> {
-    let destination = runtime::managed_root()?;
+    let destination = runtime::managed_root(&release.version)?;
     if destination.exists() {
         let runtime = runtime::runtime_from_selection(destination)?;
-        runtime::verify_version(&runtime).await?;
+        runtime::verify_release(&runtime, &release.version).await?;
         return Ok(runtime);
     }
     let selected = crate::update_source::resolve(source)?;
@@ -133,11 +133,11 @@ pub(super) async fn install(
         .map_err(|e| e.to_string())?;
     let installer = staging.path().join("release.exe");
     download(
-        RELEASE,
+        &release.url,
         source,
         &installer,
-        204067592,
-        "87fb99ae511dc5870a8f2d8ca6b4ac3983636521fe93db901512d054068d9083",
+        release.size,
+        &release.sha256,
         cancelled,
         &progress,
     )
@@ -202,7 +202,11 @@ pub(super) async fn install(
     let root = extracted.join("{app}");
     let runtime = runtime::runtime_from_selection(root.clone())?;
     progress(json!({"phase":"verifying","downloaded":0,"total":null,"cancellable":true}));
-    cancellable(runtime::verify_version(&runtime), cancelled).await?;
+    cancellable(
+        runtime::verify_release(&runtime, &release.version),
+        cancelled,
+    )
+    .await?;
     check_cancel(cancelled)?;
     fs::rename(root, &destination).map_err(|e| format!("无法保存官方组件：{e}"))?;
     runtime::runtime_from_selection(destination)

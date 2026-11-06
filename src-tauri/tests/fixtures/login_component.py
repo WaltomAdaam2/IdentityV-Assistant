@@ -57,7 +57,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/_idv-login/health":
             unhealthy = root / "unhealthy"
-            body = {"success": True, "status": "starting" if mode == "not-ready" or (unhealthy.exists() and unhealthy.read_text()) else "ok", "version": "v6.3.2-stable"}
+            version_file = root / "fixture-version"
+            body = {"success": True, "status": "starting" if mode == "not-ready" or (unhealthy.exists() and unhealthy.read_text()) else "ok", "version": version_file.read_text() if version_file.exists() else "v6.3.2-stable"}
         elif path == "/_idv-login/proxy-mode":
             body = {"success": True, "mode": "process" if mode in {"restart-once", "update-prompt"} else mode}
         else:
