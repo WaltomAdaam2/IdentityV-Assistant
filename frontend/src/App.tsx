@@ -27,6 +27,8 @@ import type {
 } from "./types";
 
 const appIcon = new URL("../../src-tauri/icons/128x128@2x.png", import.meta.url).href;
+const feedbackGroup = "1131511789";
+const feedbackGroupUrl = "https://qun.qq.com/universal-share/share?ac=1&authKey=A5oqnLSwmKWjwpkhqBu2xhRE0uCQmSJnmCdoVujD0gy3KTqn1shZ94%2BXPahd85g7&busi_data=eyJncm91cENvZGUiOiIxMTMxNTExNzg5IiwidG9rZW4iOiJaQk5oVmR2dGIxOXJxVnVUR0NSRnM4YzdVL3JwN1NUNkhNWVZVUmRYUUg2Q3Z3dGd5VmRvVEppMzZ6VlMvaTI3IiwidWluIjoiMjczMzc0MTU4MSJ9&data=GawayX1cxudBlw4ewysTk07hQVFVWc7eAh1mw13f_U6l9ZT2c3V6NJa4uotAZMnglCMuwXerPYrKVkRZDuJAfg&svctype=4&tempid=h5_group_info";
 
 type Page =
   | "dashboard"
@@ -753,6 +755,7 @@ function WindowTitleBar({ language }: { language: Language }) {
       <div className="window-title" data-tauri-drag-region>
         <img className="window-title-mark" src={appIcon} alt="" draggable={false} data-tauri-drag-region />
         <span data-tauri-drag-region>Identity V Assistant</span>
+        <span className="window-feedback-group" data-tauri-drag-region>{language === "zh-CN" ? "QQ 反馈群" : "QQ group"} · {feedbackGroup}</span>
       </div>
       <div className="window-drag-space" data-tauri-drag-region />
       <div className="window-controls">
@@ -2697,21 +2700,32 @@ function About({ language }: { language: Language }) {
           <strong>React · TypeScript · Tauri</strong>
         </div>
       </div>
-      <a
-        className="repository-link"
-        href="https://github.com/WaltomAdaam2/IdentityV-Assistant"
-        target="_blank"
-        rel="noreferrer"
-        onClick={(event) => {
-          if (!isTauri()) return;
-          event.preventDefault();
-          setLinkError("");
-          void bridge.openRepository().catch((error) => setLinkError(String(error)));
-        }}
-      >
-        GitHub · WaltomAdaam2/IdentityV-Assistant{" "}
-        <span aria-hidden="true">↗</span>
-      </a>
+      <div className="about-links">
+        <a
+          className="repository-link"
+          href="https://github.com/WaltomAdaam2/IdentityV-Assistant"
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            if (!isTauri()) return;
+            event.preventDefault();
+            setLinkError("");
+            void bridge.openRepository().catch((error) => setLinkError(String(error)));
+          }}
+        >
+          GitHub · WaltomAdaam2/IdentityV-Assistant{" "}
+          <span aria-hidden="true">↗</span>
+        </a>
+        <a className="repository-link" href={feedbackGroupUrl} target="_blank" rel="noreferrer"
+          onClick={event => {
+            if (!isTauri()) return;
+            event.preventDefault();
+            setLinkError("");
+            void bridge.openReleaseLink(feedbackGroupUrl).catch(error => setLinkError(String(error)));
+          }}>
+          {language === "zh-CN" ? "QQ 反馈群" : "QQ feedback group"} · {feedbackGroup} <span aria-hidden="true">↗</span>
+        </a>
+      </div>
       {linkError && <p className="form-error" role="alert">{language === "zh-CN" ? "无法打开浏览器：" : "Could not open browser: "}{linkError}</p>}
     </section>
   );
