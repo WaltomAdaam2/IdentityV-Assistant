@@ -21,7 +21,7 @@ pub(super) struct ProxySession {
     program_data: PathBuf,
     app: Option<tauri::AppHandle>,
     restarts: u8,
-    health_failures: u8,
+    health_failure_since: Option<Instant>,
 }
 
 impl ProxySession {
@@ -67,7 +67,7 @@ impl ProxySession {
             program_data: program_data.to_path_buf(),
             app: app.cloned(),
             restarts: 0,
-            health_failures: 0,
+            health_failure_since: None,
         };
         let result = session.wait_ready(timeout, cancelled, &progress).await;
         match result {
@@ -111,7 +111,7 @@ impl ProxySession {
                 progress("checking");
                 match self.verify_ready().await {
                     Ok(()) => {
-                        self.health_failures = 0;
+                        self.health_failure_since = None;
                         self.restarts = 0;
                         break Ok(());
                     }
@@ -177,15 +177,21 @@ impl ProxySession {
         }
         match self.verify_ready().await {
             Ok(()) => {
-                self.health_failures = 0;
+                self.health_failure_since = None;
                 Ok("ready")
             }
             Err(error) => {
-                self.health_failures = self.health_failures.saturating_add(1);
+                // A busy component can miss several one-second probes after launching
+                // the game. Measure continuous unavailability, not probe count.
+                let failure_expired = self
+                    .health_failure_since
+                    .get_or_insert_with(Instant::now)
+                    .elapsed()
+                    >= Duration::from_secs(10);
                 if !self.is_running()
                     || error.contains("代理模式")
                     || error.contains("组件版本")
-                    || self.health_failures >= 3
+                    || failure_expired
                 {
                     Err(error)
                 } else {
@@ -417,7 +423,23 @@ mod tests {
             session.refresh(&cancelled, |_| {}).await.unwrap(),
             "checking"
         );
+        // Three quick failures during post-launch load are still a recheck.
+        assert_eq!(
+            session.refresh(&cancelled, |_| {}).await.unwrap(),
+            "checking"
+        );
+        std::fs::write(data.path().join("unhealthy"), "").unwrap();
+        assert_eq!(session.refresh(&cancelled, |_| {}).await.unwrap(), "ready");
+        assert!(session.health_failure_since.is_none());
+        std::fs::write(data.path().join("unhealthy"), "busy").unwrap();
+        assert_eq!(
+            session.refresh(&cancelled, |_| {}).await.unwrap(),
+            "checking"
+        );
+        // Advance only the failure-window origin; no slow wall-clock sleep.
+        session.health_failure_since = Some(Instant::now() - Duration::from_secs(10));
         assert!(session.refresh(&cancelled, |_| {}).await.is_err());
+        session.health_failure_since = None;
         session.process.terminate().unwrap();
         assert!(session.refresh(&cancelled, |_| {}).await.is_err());
     }

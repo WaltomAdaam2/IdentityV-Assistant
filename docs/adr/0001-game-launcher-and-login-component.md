@@ -64,3 +64,8 @@ This supersedes the hotfix workflow above. Do not fetch cloud hotfix metadata or
 The November 6 decision supersedes the compatibility allowlist above. Resolve the latest official release and its exact Windows asset from GitHub metadata; require its published size and SHA-256, verify the extracted version matches, and preserve staging, process ownership, configuration rollback and existing account data. Do not block a newer release solely because the assistant has not reviewed it. Upstream API changes can still fail at actual runtime readiness and are reported rather than assumed compatible. Module hotfixes remain disabled.
 
 A failed launch-time update check continues with an already installed component and a dismissible brief notice. Manual checks retain detailed errors. Closing a read-only check cancels it and ignores late results; only actual installation/configuration locks the update dialog.
+
+
+### 0.2.1: tolerate brief post-launch health stalls
+
+After initial readiness, monitor continuous probe failure for at least ten seconds before reporting the proxy unavailable. Show checking during that interval and reset it after a successful probe. This supersedes the three-failed-probes rule: recorded game launches briefly stalled the one-second health endpoint, then recovered a few seconds after the error. Process exit and invalid proxy mode/version still fail immediately; initial startup timeout, ownership and cancellation checks remain unchanged.
