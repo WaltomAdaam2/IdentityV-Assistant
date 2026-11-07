@@ -23,7 +23,7 @@ pub struct SupportState {
 
 fn defaults() -> Value {
     let mut value: Value = serde_json::from_str(include_str!("../../config/default.json")).unwrap();
-    value["journal"] = json!({"season":"s0","difficulty":"hard","door":"lf","floor":"1","display":"pure","collapsed":false,"auto_enter":false,"preview_position":{"x":0.5,"y":0.5,"preset":"center"}});
+    value["journal"] = json!({"season":"s0","difficulty":"hard","auto_difficulty":true,"s1_display":"pure","door":"lf","floor":"1","display":"pure","collapsed":false,"auto_enter":false,"preview_position":{"x":0.5,"y":0.5,"preset":"center"}});
     value
 }
 
@@ -101,6 +101,7 @@ fn validate_tree(value: &Value, template: &Value, path: &str) -> Result<(), Stri
         _ => {}
     }
     let allowed: &[&str] = match path {
+        "settings.journal.s1_display" => &["pure", "route"],
         "settings.journal.preview_position.preset" => &[
             "center",
             "top_left",
@@ -391,9 +392,21 @@ mod tests {
         let mut source = defaults();
         source["app"]["diagnostic_images"] = json!(true);
         source["journal"]["auto_enter"] = json!(true);
+        source["journal"]["auto_difficulty"] = json!(false);
+        source["journal"]["s1_display"] = json!("route");
         source["journal"]["preview_position"] = json!({"x":0.73,"y":0.26,"preset":"custom"});
         let mut value = backup(&source).unwrap();
         assert_eq!(import_backup(&value).unwrap(), source);
+        value["settings"]["journal"]["s1_display"] = json!("invalid");
+        assert!(import_backup(&value).is_err());
+        value["settings"]["journal"]
+            .as_object_mut()
+            .unwrap()
+            .remove("s1_display");
+        value["settings"]["journal"]
+            .as_object_mut()
+            .unwrap()
+            .remove("auto_difficulty");
         value["settings"]["journal"]["preview_position"]["x"] = json!(1.1);
         assert!(import_backup(&value).is_err());
         value["settings"]["journal"]
@@ -414,6 +427,8 @@ mod tests {
             json!({"x":0.5,"y":0.5,"preset":"center"})
         );
         assert_eq!(restored["journal"]["auto_enter"], json!(false));
+        assert_eq!(restored["journal"]["auto_difficulty"], json!(true));
+        assert_eq!(restored["journal"]["s1_display"], json!("pure"));
         assert_eq!(restored["app"]["diagnostic_images"], json!(false));
     }
     #[test]

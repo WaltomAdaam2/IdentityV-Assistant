@@ -1,3 +1,4 @@
+import { messageLanguage } from "./messageLanguage";
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isTauri } from "@tauri-apps/api/core";
@@ -1681,7 +1682,7 @@ export default function App() {
               onMouseLeave={() => setNoticeHovered(false)}
               onFocusCapture={() => { if (dismissedNotice.current !== visibleNotice) { setNoticeFocused(true); setCurrentNotice(visibleNotice); } }}
               onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setNoticeFocused(false); }}>
-              <div className="notice-copy"><span>{visibleNotice.message}</span>{visibleNotice.details && <details><summary>{language === "zh-CN" ? "查看详情" : "View details"}</summary><p>{visibleNotice.details}</p></details>}</div>
+              <div className="notice-copy"><span>{messageLanguage(visibleNotice.message, language)}</span>{visibleNotice.details && <details><summary>{language === "zh-CN" ? "查看详情" : "View details"}</summary><p>{messageLanguage(visibleNotice.details, language)}</p></details>}</div>
               <button aria-label={t.closeNotice} onClick={() => { dismissedNotice.current = visibleNotice; setNotice(null); setNoticeHovered(false); setNoticeFocused(false); }}>
                 ×
               </button>
@@ -1690,8 +1691,8 @@ export default function App() {
           )}
           <div className={`page-content page-${page} page-${pagePhase}`} ref={element => { if (element) element.inert = pagePhase === "leave"; }} style={{ "--page-direction": pageDirection } as CSSProperties}
             onAnimationEnd={(event) => { if (event.target === event.currentTarget && event.animationName === "page-in") setPagePhase("idle"); }}>
-            {(eventError || snapshotError) && <div className="persistent-feedback" role="alert"><div><strong>{language === "zh-CN" ? "状态连接失败，显示内容可能已过时" : "Status connection failed; displayed information may be outdated"}</strong><details><summary>{language === "zh-CN" ? "错误详情" : "Error details"}</summary><p>{eventError || snapshotError}</p></details></div><button onClick={() => setConnectionAttempt(value => value + 1)}>{language === "zh-CN" ? "重新连接" : "Reconnect"}</button></div>}
-            {page === "settings" && settingsSaveError && <div className="persistent-feedback settings-save-error" role="alert"><div><strong>{settingsSaveError.saved ? (language === "zh-CN" ? "设置已保存，但引擎尚未应用" : "Settings saved, but not applied by the engine") : (language === "zh-CN" ? "尚未保存" : "Settings not saved")}</strong><p>{settingsSaveError.message}</p></div><button onClick={() => setSupportRevision(value => value + 1)}>{language === "zh-CN" ? "重试保存" : "Retry save"}</button></div>}
+            {(eventError || snapshotError) && <div className="persistent-feedback" role="alert"><div><strong>{language === "zh-CN" ? "状态连接失败，显示内容可能已过时" : "Status connection failed; displayed information may be outdated"}</strong><details><summary>{language === "zh-CN" ? "错误详情" : "Error details"}</summary><p>{messageLanguage(eventError || snapshotError, language)}</p></details></div><button onClick={() => setConnectionAttempt(value => value + 1)}>{language === "zh-CN" ? "重新连接" : "Reconnect"}</button></div>}
+            {page === "settings" && settingsSaveError && <div className="persistent-feedback settings-save-error" role="alert"><div><strong>{settingsSaveError.saved ? (language === "zh-CN" ? "设置已保存，但引擎尚未应用" : "Settings saved, but not applied by the engine") : (language === "zh-CN" ? "尚未保存" : "Settings not saved")}</strong><p>{messageLanguage(settingsSaveError.message, language)}</p></div><button onClick={() => setSupportRevision(value => value + 1)}>{language === "zh-CN" ? "重试保存" : "Retry save"}</button></div>}
             <UpdatePanel settings={settings} loaded={settingsLoaded} expanded={page === "settings" && settingsLoaded}
               onSettingsChange={(app) => setSettings((previous) => ({ ...previous, app }))}
               onOpen={() => navigate("settings")} />
@@ -2162,7 +2163,7 @@ function Debug({
       {diagnosticError && (
         <section className="diagnostic-error" role="alert">
           <strong>{t.errorTitle}</strong>
-          <span>{diagnosticError.message ?? diagnosticError.code}</span>
+          <span>{messageLanguage(diagnosticError.message ?? diagnosticError.code ?? "", language)}</span>
           {diagnosticError.request_id && (
             <small>
               {t.requestId}: {diagnosticError.request_id}
@@ -2439,7 +2440,7 @@ const Logs = memo(function Logs({
                 </b>
               </span>
               <span>{entry.source}</span>
-              <span>{entry.message}{verbose && entry.details && <details className="log-details"><summary>{language === "zh-CN" ? "详细记录" : "Full record"}</summary><pre>{JSON.stringify(entry.details, null, 2)}</pre></details>}</span>
+              <span>{messageLanguage(entry.message, language)}{verbose && entry.details && <details className="log-details"><summary>{language === "zh-CN" ? "详细记录" : "Full record"}</summary><pre>{JSON.stringify(entry.details, null, 2)}</pre></details>}</span>
             </div>
           ))
         ) : (

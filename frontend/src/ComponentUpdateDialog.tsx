@@ -1,3 +1,4 @@
+import { messageLanguage } from "./messageLanguage";
 import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { useDialog } from "./useDialog";
@@ -36,7 +37,7 @@ export default function ComponentUpdateDialog({ info, error, phase, progress, so
     </dl>
     {available && <section className="update-dialog-notes" aria-label={zh ? "更新日志" : "Release notes"}><h3>{zh ? "更新日志" : "Release notes"}</h3>{info.notes && <p>{info.notes}</p>}</section>}
     {available && <p>{zh ? "将下载、校验并配置官方完整组件。账号数据保留；失败时尝试恢复原组件配置。" : "Downloads, verifies and configures the official full component. Account data is preserved; failures attempt to restore the previous configuration."}</p>}
-    {error && <details className="update-error" open><summary>{zh ? "错误详情" : "Error details"}</summary><p role="alert">{error}</p></details>}
+    {error && <details className="update-error" open><summary>{zh ? "错误详情" : "Error details"}</summary><p role="alert">{messageLanguage(error, language)}</p></details>}
     {available && <label className="check-label update-skip"><input type="checkbox" disabled={busy} checked={skipUpdates} onChange={event => onSkipUpdates(event.target.checked)} />{zh ? "不再提醒本批组件更新" : "Don't remind me about these component updates"}</label>}
     {available && <p className="update-hint">{zh ? "新版本仍会提醒，也可以随时手动检查。" : "New versions will still prompt. You can check manually at any time."}</p>}
     {preferenceError && <p role="alert" className="update-error">{zh ? "提醒偏好未保存，请重试。" : "Could not save this preference. Try again."}</p>}

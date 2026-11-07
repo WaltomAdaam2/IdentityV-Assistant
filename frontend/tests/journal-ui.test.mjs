@@ -23,6 +23,20 @@ function setup() {
   wait("!!document.querySelector('.journal') && !document.querySelector('.journal-viewer[aria-busy=true]')");
 }
 
+test("S0 Auto and manual choices reach recognition without changing the other mode", () => {
+  try {
+    setup();
+    assert.equal(evaluate("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='自动').getAttribute('aria-pressed')"), "true");
+    for (const [label, difficulty] of [["自动", "auto"], ["困难", "hard"], ["噩梦", "nightmare"], ["自动", "auto"]]) {
+      click(label); click("识别一楼地图");
+      wait(`window.__launcherTest.recognitionRequest?.difficulty==='${difficulty}'`);
+      evaluate(`window.__launcherTest.finishRecognition({difficulty:'${difficulty === "auto" ? "nightmare" : difficulty}',keys:[],preview:null,warnings:[]})`);
+      wait("!document.querySelector('.journal-viewer[aria-busy=true]')");
+      assert.equal(evaluate(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='${label}').getAttribute('aria-pressed')`), "true");
+    }
+  } finally { browser("close"); }
+});
+
 test("S1 preserves S0 view preferences, uses selected difficulty, and cycles B1 through B3", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html?desktop`);
@@ -47,7 +61,12 @@ test("S1 preserves S0 view preferences, uses selected difficulty, and cycles B1 
     wait("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b2.png'");
     browser("wait", "--text", "地下2层识图结果");
     assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"), "地图 1");
-    click("查看地图 1"); wait("!!document.querySelector('.journal-detail img')"); click("进入地图");
+    browser("press", "l");
+    assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path"), "b2.png");
+    click("查看地图 1"); wait("!!document.querySelector('.journal-detail img')");
+    browser("press", "l");
+    assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path"), "b2.png");
+    click("进入地图");
     wait("!!document.querySelector('.journal-full-preview:modal img')");
     for (const [key,label] of [["3","地下3层"],["1","地下1层"],["2","地下2层"]]) {
       browser("press", "l");
@@ -69,6 +88,32 @@ test("S1 preserves S0 view preferences, uses selected difficulty, and cycles B1 
     assert.equal(evaluate("window.__launcherTest.savedSettings.journal.door"), "lf");
   } finally { browser("close"); }
 });
+test("imported S1 route images enable route view and preserve separate season preferences", () => {
+  try {
+    setup();
+    evaluate("window.__launcherTest.packs=[...window.__launcherTest.packs,{id:'s1_base',season_id:'s1',difficulty:'hard',maps:[{index:1,category:'td',floors:{1:'base.png'},display:{}}]}]");
+    click("刷新地图");
+    wait("!!document.querySelector('.journal-season option[value=s1]')");
+    browser("select", ".journal-season select", "s1");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.disabled");
+    browser("wait", "--text", "导入此难度的速刷地图包后可用。");
+    evaluate("window.__launcherTest.packs=[...window.__launcherTest.packs,{id:'s1_route',season_id:'s1',difficulty:'hard',maps:[{index:1,category:'td',floors:{1:'base.png'},display:{1:'route.png'}}]}]");
+    click("刷新地图");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.disabled===false");
+    click("速刷");
+    wait("window.__launcherTest.savedSettings?.journal.s1_display==='route'");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='route.png'");
+    click("识别当前楼层地图");
+    wait("window.__launcherTest.recognitionRequest?.display==='route'");
+    evaluate("window.__launcherTest.finishRecognition({difficulty:'hard',floor:'1',keys:['td:1'],preview:null,warnings:[]})");
+    wait("!document.querySelector('.journal-viewer[aria-busy=true]')");
+    browser("select", ".journal-season select", "s0");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='纯净')?.getAttribute('aria-pressed')==='true'");
+    browser("select", ".journal-season select", "s1");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.getAttribute('aria-pressed')==='true'");
+  } finally { browser("close"); }
+});
+
 test("recognition updates existing grid, keeps same-number doors distinct, and opens only on click", () => {
   try {
     setup(); click("识别一楼地图");

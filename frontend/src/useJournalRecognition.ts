@@ -64,9 +64,9 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
   useEffect(() => {
     const old = previousFilters.current;
     previousFilters.current = filters;
-    if (old.season !== filters.season || old.display !== filters.display ||
+    if (old.season !== filters.season || old.display !== filters.display || old.s1_display !== filters.s1_display || old.auto_difficulty !== filters.auto_difficulty ||
       (old.difficulty !== filters.difficulty && view.result?.difficulty !== filters.difficulty)) cancel("filters_changed");
-  }, [filters.season, filters.difficulty, filters.display, cancel]);
+  }, [filters.season, filters.difficulty, filters.display, filters.s1_display, filters.auto_difficulty, cancel]);
   useEffect(() => { if (!active) cancel("page_left"); }, [active, cancel]);
   useEffect(() => {
     if (!isTauri()) return;

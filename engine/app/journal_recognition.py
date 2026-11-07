@@ -79,10 +79,15 @@ def run_recognition(request: dict, config: EngineConfig,
             progress("floor", 0, 0)
             floor, evidence = detect_s1_floor(frame)
             diagnostic({"stage": "floor_detected", **evidence, "floor": floor})
-        else:
+        elif request.get("difficulty", "auto") == "auto":
             progress("difficulty", 0, 0)
             difficulty, evidence = detect_difficulty(frame)
             diagnostic({"stage": "difficulty_detected", "difficulty": difficulty, **evidence})
+        else:
+            difficulty = request.get("difficulty")
+            if difficulty not in ("hard", "nightmare"):
+                raise ValueError("请选择地图难度 / Select a map difficulty")
+            diagnostic({"stage": "difficulty_selected", "difficulty": difficulty, "mode": "manual", "season": "s0"})
         items = request["templates_by_difficulty"].get(difficulty, [])
         if request.get("season") == "s1":
             items = [item for item in items if item.get("floor") == floor]

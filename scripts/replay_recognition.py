@@ -84,7 +84,7 @@ def replay_attempt(bundle, name):
             "original_keys": before["keys"], "replayed_keys": [m.key for m in results],
             "exact_match": same, "comparison_tolerance": 1e-12, "original_matches": before["matches"], "replayed_matches": matches,
             "replay_ms": round((perf_counter() - started) * 1000), "original_total_ms": before["elapsed_ms"],
-            "timing_note": "Replay excludes capture, helper startup and evidence persistence; original total includes them.",
+            "timing_note": "Replay excludes capture and evidence persistence. Original total starts inside recognition and includes capture, template preparation and emitted evidence; neither timing includes helper startup.",
             "scope": "Localization and geometry matching from stored pixels and prepared templates; no native capture or gameplay."}
 
 

@@ -11,6 +11,28 @@ from core.models import Rect
 from test_journal_matcher import map_image
 
 
+@pytest.mark.parametrize("mode,expected", [("auto", "nightmare"), ("hard", "hard"), ("nightmare", "nightmare")])
+def test_s0_difficulty_mode_selects_only_its_pool(monkeypatch, mode, expected):
+    detections = []
+    events = []
+    def detect(frame):
+        detections.append(True)
+        return "nightmare", {}
+    monkeypatch.setattr(service, "detect_difficulty", detect)
+    monkeypatch.setattr(service, "recognize", lambda *args, **kwargs: [])
+    result = service.run_recognition(
+        {"season": "s0", "difficulty": mode, "templates_by_difficulty": {
+            "hard": [{"key": "lf:1", "path": "unused-hard.png"}],
+            "nightmare": [{"key": "rf:2", "path": "unused-nightmare.png"}],
+        }}, parse_config({}), lambda kind, **data: events.append((kind, data)),
+        capture=lambda *_: np.zeros((10, 10, 3), np.uint8))
+    assert result["difficulty"] == expected
+    assert len(detections) == (1 if mode == "auto" else 0)
+    indexed = next(data for kind, data in events if data.get("stage") == "indexed")
+    assert indexed["template_keys"] == (["lf:1"] if expected == "hard" else ["rf:2"])
+    assert result["floor"] == "1"
+
+
 def test_window_capture_uses_only_wgc_and_preserves_layout(monkeypatch):
     calls = []
     rect = Rect(10, 20, 400, 300)

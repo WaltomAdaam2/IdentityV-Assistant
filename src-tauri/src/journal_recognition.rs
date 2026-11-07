@@ -330,7 +330,7 @@ pub async fn journal_recognize(
         );
         state.start_diagnostics(
             &request_id,
-            json!({"season":season,"difficulty":if season == "s1" {difficulty.as_str()} else {"auto"},"requested_difficulty":difficulty,"display":display,
+            json!({"season":season,"difficulty":difficulty,"requested_difficulty":difficulty,"display":display,
         "floor":if season == "s1" {json!("auto")} else {json!(1)},"trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
             &root,
         )
@@ -430,16 +430,18 @@ async fn recognize(
     let request_difficulty = difficulty.clone();
     let templates = tauri::async_runtime::spawn_blocking(move || {
         crate::journal::ensure_builtins(&maps_app)?;
-        if !["hard", "nightmare"].contains(&difficulty.as_str()) {
+        if !["hard", "nightmare"].contains(&difficulty.as_str())
+            && !(season == "s0" && difficulty == "auto")
+        {
             return Err("无效地图难度 / Invalid map difficulty".to_string());
         }
-        // S1 shares floor labels between difficulties; only index the selected pool.
-        let hard = if season != "s1" || difficulty == "hard" {
+        // Manual mode indexes only its selected pool; S0 Auto needs both.
+        let hard = if difficulty == "auto" || difficulty == "hard" {
             crate::journal::recognition_templates(&season, "hard", &display)?
         } else {
             json!([])
         };
-        let nightmare = if season != "s1" || difficulty == "nightmare" {
+        let nightmare = if difficulty == "auto" || difficulty == "nightmare" {
             crate::journal::recognition_templates(&season, "nightmare", &display)?
         } else {
             json!([])
@@ -528,6 +530,7 @@ async fn recognize(
                     let label = match stage {
                         "capturing" => "正在截图 / Capturing game window",
                         "difficulty" => "正在判断地图难度 / Detecting map difficulty",
+                        "floor" => "正在判断地图楼层 / Detecting map floor",
                         "locating" => "正在定位地图 / Locating map region",
                         "matching" => "正在匹配地图 / Matching maps",
                         _ => "识图进度 / Recognition progress",

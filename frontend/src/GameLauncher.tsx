@@ -1,3 +1,4 @@
+import { messageLanguage } from "./messageLanguage";
 import { useEffect, useRef, useState } from "react";
 import { bridge, type Announcement, type LauncherStatus, type ComponentUpdateInfo, type ComponentUpdateProgress } from "./bridge";
 import ComponentUpdateDialog from "./ComponentUpdateDialog";
@@ -45,7 +46,7 @@ function LauncherNotice({message, language}: {message: string; language: Setting
       onMouseLeave={() => setHovered(false)}
       onFocusCapture={() => { if (!dismissed.current) { setFocused(true); setLeaving(false); } }}
       onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
-      <span>{visible.message}</span><button aria-label={language === "zh-CN" ? "关闭启动提示" : "Dismiss launch notice"} onClick={event => {
+      <span>{messageLanguage(visible.message, language)}</span><button aria-label={language === "zh-CN" ? "关闭启动提示" : "Dismiss launch notice"} onClick={event => {
         dismissed.current = true; setHovered(false); setFocused(false); setLeaving(true);
         event.currentTarget.closest(".launcher-actions")?.querySelector<HTMLButtonElement>(".launcher-start")?.focus();
       }}>×</button>
@@ -314,7 +315,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
         void bridge.cancelGameLaunch().catch(error => { setUpdateError(String(error)); setCancelling(false); });
       }} />}
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />
-    <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message || undefined}>
+    <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message ? messageLanguage(status.message, language) : undefined}>
       <span className={`dot ${proxyDot}`} aria-hidden="true" /><span className="launcher-proxy-label" key={proxyPhase}>{proxyLabel}</span>
     </div>
     <div className="launcher-bottom">
