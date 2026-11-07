@@ -22,7 +22,7 @@ fn parse_key(key: &str) -> Result<u32, String> {
     } else if let Some(number) = key
         .strip_prefix('F')
         .and_then(|value| value.parse::<u32>().ok())
-        .filter(|n| (1..=12).contains(n))
+        .filter(|n| (1..=12).contains(n) && key == format!("F{n}"))
     {
         0x70 + number - 1
     } else {
@@ -313,6 +313,8 @@ mod tests {
             json!({"floor_hotkey":"P"}),
             json!({"floor_hotkey":"F3"}),
             json!({"floor_hotkey":"Ctrl+L"}),
+            json!({"floor_hotkey":"F03"}),
+            json!({"recognition_hotkey":"F03"}),
             json!({"recognition_hotkey":"L"}),
         ] {
             assert!(validate(&json!({"app":app})).is_err());
