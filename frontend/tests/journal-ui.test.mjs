@@ -26,6 +26,7 @@ function setup() {
 test("S0 Auto and manual choices reach recognition without changing the other mode", () => {
   try {
     setup();
+    assert.equal(evaluate("document.querySelector('.journal').textContent.includes('自动判断识图难度；当前浏览')"), false);
     assert.equal(evaluate("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='自动').getAttribute('aria-pressed')"), "true");
     for (const [label, difficulty] of [["自动", "auto"], ["困难", "hard"], ["噩梦", "nightmare"], ["自动", "auto"]]) {
       click(label); click("识别一楼地图");
@@ -347,5 +348,34 @@ test("detected difficulty persists without cancelling results or automatic entry
     browser("press","l"); wait("window.__launcherTest.calls.at(-1).command!=='unused' && [...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='2F'");
     browser("press","l"); wait("[...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='地下室'");
     assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition')"),false);
+  } finally { browser("close"); }
+});
+
+
+test("floor shortcut settings persist, exclude conflicts and only cycle inside preview", () => {
+  try {
+    setup(); click("设置"); wait("!!document.querySelector('.settings-form')");
+    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.setting-row')).filter(e=>/快捷键/.test(e.textContent)).map(e=>e.querySelector('select').value)"), ["F3","P","L"]);
+    evaluate("window.__floorSelect=Array.from(document.querySelectorAll('.setting-row')).find(e=>e.textContent.includes('楼层切换快捷键')).querySelector('select'); window.__floorSelect.id='test-floor-key'");
+    assert.deepEqual(evaluate("Array.from(window.__floorSelect.options).filter(e=>e.disabled).map(e=>e.value)"), ["P","F3"]);
+    browser("select", "#test-floor-key", "K");
+    wait("window.__launcherTest.savedSettings?.app.floor_hotkey==='K'");
+    evaluate("sessionStorage.setItem('journal-test-settings',JSON.stringify(window.__launcherTest.savedSettings))");
+    browser("reload");
+    evaluate("window.__launcherTest.packs=[{id:'base',season_id:'s0',difficulty:'hard',maps:[{index:1,category:'lf',floors:{1:'one.png',2:'two.png'},display:{}}]}]");
+    click("设置"); wait("!!document.querySelector('.settings-form')");
+    assert.equal(evaluate("Array.from(document.querySelectorAll('.setting-row')).find(e=>e.textContent.includes('楼层切换快捷键')).querySelector('select').value"), "K");
+    click("加页手记"); wait("!!document.querySelector('.journal-map')");
+    browser("wait", "--text", "进入地图后按 K 切换楼层。");
+    click("查看地图 1"); wait("!!document.querySelector('.journal-detail img')");
+    browser("press", "k");
+    assert.equal(evaluate("document.querySelector('.journal-floor-switch button[aria-pressed=true]').textContent"), "1F");
+    click("进入地图"); wait("!!document.querySelector('.journal-full-preview:modal img')");
+    browser("press", "l");
+    assert.equal(evaluate("document.querySelector('.journal-preview-floors button[aria-pressed=true]').textContent"), "1F");
+    browser("press", "k"); wait("document.querySelector('.journal-preview-floors button[aria-pressed=true]').textContent==='2F'");
+    browser("press", "Control+k");
+    assert.equal(evaluate("document.querySelector('.journal-preview-floors button[aria-pressed=true]').textContent"), "2F");
+    browser("press", "k"); wait("document.querySelector('.journal-preview-floors button[aria-pressed=true]').textContent==='1F'");
   } finally { browser("close"); }
 });

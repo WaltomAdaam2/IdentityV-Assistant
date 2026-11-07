@@ -679,6 +679,7 @@ const defaults: Settings = {
     ui_scale_percent: 100,
     engine_hotkey: "F3",
     recognition_hotkey: "P",
+    floor_hotkey: "L",
     diagnostic_images: false,
     update_prereleases: false,
     developer_mode: false,
@@ -1558,7 +1559,7 @@ export default function App() {
       onExecutableChange={(executable_path) => setSettings((previous) => ({ ...previous, game_window: { ...previous.game_window, executable_path } }))} />,
     journal: <Journal language={language} settings={{ ...defaultJournalSettings, ...settings.journal }} onSettingsChange={(journal) => setSettings((previous) => ({ ...previous, journal }))}
       onLog={message => appendLog("info", message, "journal.recognition", true)}
-      recognition={journalRecognition.view} onRecognize={() => void journalRecognition.start()} onCancelRecognition={journalRecognition.cancel} shortcut={settings.app.recognition_hotkey}
+      recognition={journalRecognition.view} onRecognize={() => void journalRecognition.start()} onCancelRecognition={journalRecognition.cancel} shortcut={settings.app.recognition_hotkey} floorShortcut={settings.app.floor_hotkey}
       onNotice={setNotice} />,
     runtime: (
       <Runtime
@@ -2544,10 +2545,13 @@ function SettingsPage({
           <button disabled={settingsActionBusy || !isTauri()} onClick={() => void desktopAction(bridge.resetWindowSize)}>{language === "zh-CN" ? "恢复默认" : "Restore default"}</button>
         </SettingRow>
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
-          <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select>
+          <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key} disabled={key === settings.app.recognition_hotkey || key === settings.app.floor_hotkey}>{key}</option>)}</select>
         </SettingRow>
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "地图识别快捷键" : "Map recognition shortcut"} description={language === "zh-CN" ? "仅在游戏前台响应，保留原按键，不切走游戏焦点。先在手记中选择赛季、难度与显示方式。" : "Works only while the game is foreground; preserves game input and focus. Select the season, difficulty and display in Journal first."} language={language}>
-          <select value={settings.app.recognition_hotkey} onChange={event => updateApp({ recognition_hotkey: event.target.value })}>{[..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map(key => <option key={key} disabled={key === settings.app.engine_hotkey}>{key}</option>)}</select>
+          <select value={settings.app.recognition_hotkey} onChange={event => updateApp({ recognition_hotkey: event.target.value })}>{[..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map(key => <option key={key} disabled={key === settings.app.engine_hotkey || key === settings.app.floor_hotkey}>{key}</option>)}</select>
+        </SettingRow>
+        <SettingRow icon="keyboard" title={language === "zh-CN" ? "楼层切换快捷键" : "Floor switching shortcut"} description={language === "zh-CN" ? "进入地图的全窗口预览后，在游戏或助手前台切换显示楼层，不操作游戏。" : "Cycle displayed floors in the full-window map preview while the game or assistant is foreground. Does not control the game."} language={language}>
+          <select value={settings.app.floor_hotkey} onChange={event => updateApp({ floor_hotkey: event.target.value })}>{[..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map(key => <option key={key} disabled={key === settings.app.engine_hotkey || key === settings.app.recognition_hotkey}>{key}</option>)}</select>
         </SettingRow>
         <SettingRow icon="play" title={t.launch} description={language === "zh-CN" ? "打开助手时自动启动自动化引擎" : "Start the automation engine when the assistant opens."} language={language}>
           <input

@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static KEY: AtomicU32 = AtomicU32::new(b'P' as u32);
+static FLOOR_KEY: AtomicU32 = AtomicU32::new(b'L' as u32);
 static THREAD: AtomicU32 = AtomicU32::new(0);
 
 fn observe_key(held: &AtomicU32, configured: u32, key: u32, down: bool) -> bool {
@@ -14,11 +15,8 @@ fn observe_key(held: &AtomicU32, configured: u32, key: u32, down: bool) -> bool 
     }
 }
 
-pub(crate) fn validate(settings: &Value) -> Result<u32, String> {
-    let key = settings["app"]["recognition_hotkey"]
-        .as_str()
-        .unwrap_or("P")
-        .to_ascii_uppercase();
+fn parse_key(key: &str) -> Result<u32, String> {
+    let key = key.to_ascii_uppercase();
     let vk = if key.len() == 1 && key.as_bytes()[0].is_ascii_uppercase() {
         key.as_bytes()[0] as u32
     } else if let Some(number) = key
@@ -28,37 +26,43 @@ pub(crate) fn validate(settings: &Value) -> Result<u32, String> {
     {
         0x70 + number - 1
     } else {
-        return Err("识图快捷键需为 A–Z 或 F1–F12 / Choose A–Z or F1–F12".into());
+        return Err("地图快捷键需为 A–Z 或 F1–F12 / Choose A–Z or F1–F12".into());
     };
-    if vk == b'L' as u32 {
-        return Err("L 已用于切换地图楼层 / L is reserved for map floors".into());
-    }
-    let engine = settings["app"]["engine_hotkey"].as_str().unwrap_or("F3");
-    let recognition = key
-        .parse::<tauri_plugin_global_shortcut::Shortcut>()
-        .map_err(|e| e.to_string())?;
-    if engine
-        .parse::<tauri_plugin_global_shortcut::Shortcut>()
-        .is_ok_and(|key| {
-            key == "L"
-                .parse::<tauri_plugin_global_shortcut::Shortcut>()
-                .unwrap()
-        })
-    {
-        return Err("L 已用于切换地图楼层 / L is reserved for map floors".into());
-    }
-    if engine
-        .parse::<tauri_plugin_global_shortcut::Shortcut>()
-        .is_ok_and(|key| key == recognition)
-    {
-        return Err(
-            "识图快捷键不能与引擎快捷键相同 / Recognition and engine shortcuts must differ".into(),
-        );
-    }
     Ok(vk)
 }
+
+pub(crate) fn validate(settings: &Value) -> Result<(u32, u32), String> {
+    let recognition = settings["app"]["recognition_hotkey"]
+        .as_str()
+        .unwrap_or("P")
+        .to_ascii_uppercase();
+    let floor = settings["app"]["floor_hotkey"]
+        .as_str()
+        .unwrap_or("L")
+        .to_ascii_uppercase();
+    let keys = (parse_key(&recognition)?, parse_key(&floor)?);
+    let engine = settings["app"]["engine_hotkey"].as_str().unwrap_or("F3");
+    if keys.0 == keys.1
+        || engine
+            .parse::<tauri_plugin_global_shortcut::Shortcut>()
+            .is_ok_and(|key| {
+                [recognition, floor].iter().any(|value| {
+                    value
+                        .parse::<tauri_plugin_global_shortcut::Shortcut>()
+                        .is_ok_and(|other| key == other)
+                })
+            })
+    {
+        return Err(
+            "识图、楼层切换与引擎快捷键不能相同 / Recognition, floor and engine shortcuts must differ".into(),
+        );
+    }
+    Ok(keys)
+}
 pub(crate) fn configure(settings: &Value) -> Result<(), String> {
-    KEY.store(validate(settings)?, Ordering::Relaxed);
+    let (recognition, floor) = validate(settings)?;
+    KEY.store(recognition, Ordering::Relaxed);
+    FLOOR_KEY.store(floor, Ordering::Relaxed);
     Ok(())
 }
 
@@ -121,11 +125,21 @@ mod native {
                 match wparam.0 as u32 {
                     WM_KEYUP | WM_SYSKEYUP => {
                         observe_key(&DOWN, KEY.load(Ordering::Relaxed), event.vkCode, false);
-                        observe_key(&FLOOR_DOWN, b'L' as u32, event.vkCode, false);
+                        observe_key(
+                            &FLOOR_DOWN,
+                            FLOOR_KEY.load(Ordering::Relaxed),
+                            event.vkCode,
+                            false,
+                        );
                     }
                     WM_KEYDOWN | WM_SYSKEYDOWN
                         if observe_key(&DOWN, KEY.load(Ordering::Relaxed), event.vkCode, true)
-                            || observe_key(&FLOOR_DOWN, b'L' as u32, event.vkCode, true) =>
+                            || observe_key(
+                                &FLOOR_DOWN,
+                                FLOOR_KEY.load(Ordering::Relaxed),
+                                event.vkCode,
+                                true,
+                            ) =>
                     {
                         // Key-only shortcut; modified key combinations retain their own meaning.
                         if [0x10, 0x11, 0x12, 0x5b, 0x5c]
@@ -230,7 +244,7 @@ mod native {
                             serde_json::json!({"hwnd":hwnd,"key":key}),
                         );
                         let _ = app.emit(
-                            if key == b'L' as u32 {
+                            if key == FLOOR_KEY.load(Ordering::Relaxed) {
                                 "journal-floor-shortcut"
                             } else {
                                 "journal-recognition-shortcut"
@@ -284,12 +298,24 @@ mod tests {
     #[test]
     fn configured_game_process_is_required_and_shortcuts_must_differ() {
         let settings = json!({"game_window":{"process_names":["dwrg.exe"],"title_contains":["Identity V"]},"app":{"engine_hotkey":"F3","recognition_hotkey":"P"}});
-        assert_eq!(validate(&settings).unwrap(), b'P' as u32);
+        assert_eq!(validate(&settings).unwrap(), (b'P' as u32, b'L' as u32));
         assert!(matches_game(&settings, "DWRG.EXE", "", ""));
         assert!(!matches_game(&settings, "notepad.exe", "Identity V", ""));
         assert!(
             validate(&json!({"app":{"engine_hotkey":"F3","recognition_hotkey":"F3"}})).is_err()
         );
         assert!(validate(&json!({"app":{"recognition_hotkey":"Ctrl+P"}})).is_err());
+        assert_eq!(
+            validate(&json!({"app":{"recognition_hotkey":"L","floor_hotkey":"F6"}})).unwrap(),
+            (b'L' as u32, 0x75)
+        );
+        for app in [
+            json!({"floor_hotkey":"P"}),
+            json!({"floor_hotkey":"F3"}),
+            json!({"floor_hotkey":"Ctrl+L"}),
+            json!({"recognition_hotkey":"L"}),
+        ] {
+            assert!(validate(&json!({"app":app})).is_err());
+        }
     }
 }

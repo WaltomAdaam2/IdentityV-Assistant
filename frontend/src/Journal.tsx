@@ -45,7 +45,7 @@ function Thumbnail({ image, name, zh }: { image: MapImage; name: string; zh: boo
   </div>;
 }
 
-export default function Journal({ language, settings: savedSettings, onSettingsChange, onNotice, onLog, recognition, onRecognize, onCancelRecognition, shortcut }: {
+export default function Journal({ language, settings: savedSettings, onSettingsChange, onNotice, onLog, recognition, onRecognize, onCancelRecognition, shortcut, floorShortcut }: {
   language: Settings["app"]["language"];
   settings: JournalSettings;
   onSettingsChange: (settings: JournalSettings) => void;
@@ -55,6 +55,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   onRecognize: () => void;
   onCancelRecognition: (reason?: string) => void;
   shortcut: string;
+  floorShortcut: string;
 }) {
   const zh = language === "zh-CN";
   const [floor, setFloor] = useState("1");
@@ -132,7 +133,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     };
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (event.key.toLowerCase() !== "l" || event.repeat || event.defaultPrevented ||
+      if (event.key.toUpperCase() !== floorShortcut.toUpperCase() || event.repeat || event.defaultPrevented ||
           event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
           target?.closest("input, textarea, select, [contenteditable='true']")) return;
       cycle();
@@ -142,7 +143,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     const subscription = isTauri() ? listen("journal-floor-shortcut", () => { if (!disposed) cycle(); }) : null;
     void subscription?.catch(reason => { if (!disposed) onNotice(String(reason), true); });
     return () => { disposed = true; window.removeEventListener("keydown", onKey); void subscription?.then(stop => stop()).catch(() => {}); };
-  }, [selectedKey, recognizing, availableFloors, floor, zh, preview]);
+  }, [selectedKey, recognizing, availableFloors, floor, zh, preview, floorShortcut]);
   const mapName = (map: typeof maps[number]) => {
     const name = map.name || (zh ? `地图 ${map.index}` : `Map ${map.index}`);
     const door = groups[1].options.find(([value]) => value === map.category)?.[zh ? 1 : 2] || map.category;
@@ -236,7 +237,6 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
                 return <button type="button" key={value} disabled={isS1 && !hasS1Routes && group.key === "display" && value === "route"} aria-pressed={selected} className={selected ? "primary" : ""} onClick={() => change({ [group.key]: value, ...(!isS1 && group.key === "difficulty" ? { auto_difficulty: false } : {}) })}>{zh ? chinese : english}</button>;
               })}
             </div>
-            {!isS1 && group.key === "difficulty" && settings.auto_difficulty !== false && <p className="journal-recognition-hint">{zh ? `自动判断识图难度；当前浏览${settings.difficulty === "hard" ? "困难" : "噩梦"}。` : `Detect difficulty on recognition; browsing ${settings.difficulty === "hard" ? "Hard" : "Nightmare"}.`}</p>}
             {isS1 && !hasS1Routes && group.key === "display" && <p className="journal-recognition-hint">{zh ? "导入此难度的速刷地图包后可用。" : "Import a route-map pack for this difficulty to enable this option."}</p>}
           </fieldset>)}
           <div className="journal-options journal-tools">
@@ -248,8 +248,8 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
             <input type="checkbox" role="switch" checked={settings.auto_enter} onChange={event => onSettingsChange({ ...savedSettings, auto_enter: event.target.checked })} />
           </label>
           <p className="journal-recognition-hint">{isS1
-            ? (zh ? `请先选择困难／噩梦；识别时自动判断地下1至3层，并显示对应层地图。游戏前台按 ${shortcut} 识别或重新截图，不切走游戏焦点。进入地图后按 L 切换楼层。` : `Select Hard or Nightmare first. Recognition detects B1–B3 and shows that floor. Press ${shortcut} in the game to recognize or restart without losing focus. L changes floors inside Enter map.`)
-            : (zh ? `游戏前台按 ${shortcut} 识别一楼，再次按键重新截图；不切走游戏焦点。自动模式检测难度，手动模式使用所选难度。进入地图后按 L 切换楼层。` : `Press ${shortcut} in the game to recognize 1F or restart without losing focus. Auto detects difficulty; manual mode uses your selection. L changes floors inside Enter map.`)}</p>
+            ? (zh ? `请先选择困难／噩梦；识别时自动判断地下1至3层，并显示对应层地图。游戏前台按 ${shortcut} 识别或重新截图，不切走游戏焦点。进入地图后按 ${floorShortcut} 切换楼层。` : `Select Hard or Nightmare first. Recognition detects B1–B3 and shows that floor. Press ${shortcut} in the game to recognize or restart without losing focus. ${floorShortcut} changes floors inside Enter map.`)
+            : (zh ? `游戏前台按 ${shortcut} 识别一楼，再次按键重新截图；不切走游戏焦点。自动模式检测难度，手动模式使用所选难度。进入地图后按 ${floorShortcut} 切换楼层。` : `Press ${shortcut} in the game to recognize 1F or restart without losing focus. Auto detects difficulty; manual mode uses your selection. ${floorShortcut} changes floors inside Enter map.`)}</p>
           <div className="journal-options journal-tools">
             <button type="button" disabled={busy} onClick={() => void importPack()}>{zh ? "导入地图包" : "Import map packs"}</button>
             <button type="button" disabled={busy} onClick={() => void reload()}>{zh ? "刷新地图" : "Refresh maps"}</button>
