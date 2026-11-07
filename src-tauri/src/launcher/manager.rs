@@ -42,11 +42,21 @@ impl OwnedLogin {
     }
 }
 
+struct UpdateGuard<'a>(&'a AtomicBool, &'a AtomicBool);
+impl Drop for UpdateGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+        self.1.store(false, Ordering::Release);
+    }
+}
+
 pub struct Launcher {
     operation: AsyncMutex<()>,
     owned: AsyncMutex<Option<OwnedLogin>>,
     status: Mutex<LauncherStatus>,
     closing: AtomicBool,
+    update_busy: AtomicBool,
+    applying: AtomicBool,
     cancelled: AtomicBool,
     update: Mutex<Option<CheckedUpdate>>,
     log_app: std::sync::OnceLock<tauri::AppHandle>,
@@ -64,6 +74,8 @@ impl Default for Launcher {
                 message: None,
             }),
             closing: AtomicBool::new(false),
+            update_busy: AtomicBool::new(false),
+            applying: AtomicBool::new(false),
             cancelled: AtomicBool::new(false),
             update: Mutex::new(None),
             log_app: std::sync::OnceLock::new(),
@@ -91,103 +103,112 @@ impl Launcher {
         let directory = directory()?;
         let python = runtime::component_path(&directory)?.ok_or("请先配置官方登录组件")?;
         let runtime = runtime::runtime_from_python(python)?;
-        install::cancellable(runtime::verify_version(&runtime), &self.cancelled).await?;
-        let info = component_updates::check(
-            &runtime,
-            &directory.join("login-data"),
-            source,
-            &self.cancelled,
-        )
-        .await?;
+        let current =
+            install::cancellable(runtime::read_version(&runtime), &self.cancelled).await?;
+        let (info, release) = component_updates::check(&current, source, &self.cancelled).await?;
         *self.update.lock().unwrap() = Some(CheckedUpdate {
             runtime,
             info: info.clone(),
+            release,
         });
         Ok(info)
     }
 
-    pub async fn apply_hotfixes(&self, source: &str, app: &tauri::AppHandle) -> Result<(), String> {
-        crate::updates::route("https://github.com/", source)?;
+    pub fn update_busy(&self) -> bool {
+        self.update_busy.load(Ordering::Acquire)
+    }
+
+    fn update_progress(&self, progress: serde_json::Value) {
+        if let Some(app) = self.log_app.get() {
+            let _ = app.emit("component-update-progress", &progress);
+            crate::logs::record(
+                app,
+                "debug",
+                "launcher.update",
+                "组件更新进度 / Component update progress",
+                progress,
+            );
+        }
+    }
+
+    pub async fn install_update(&self, source: &str, app: &tauri::AppHandle) -> Result<(), String> {
         let _operation = self.operation.try_lock().map_err(|_| "组件操作正在进行")?;
         if self.closing.load(Ordering::Relaxed) {
             return Err("助手正在退出或更新".into());
         }
-        let mut checked = self
+        let checked = self
             .update
             .lock()
             .unwrap()
             .take()
             .ok_or("请先检查组件更新")?;
+        if !checked.info.available {
+            return Err("没有可用的组件更新 / No component update available".into());
+        }
         let directory = directory()?;
         if runtime::component_path(&directory)?.as_ref() != Some(&checked.runtime.python) {
             return Err("组件路径已改变，请重新检查更新".into());
         }
-        if checked.info.hotfixes.is_empty() {
-            return Ok(());
-        }
-        let mut owned = self.owned.lock().await;
-        if self.closing.load(Ordering::Relaxed) {
-            return Err("助手正在退出或更新".into());
-        }
-        self.report_proxy("updating");
-        let _ = app.emit("component-update-progress", serde_json::json!({"phase":"preparing", "downloaded":0,"total":null,"module":"","commit":""}));
-        let was_running = owned
-            .as_ref()
-            .is_some_and(|component| component.session.is_running());
-        let mut result = async {
-            if let Some(mut component) = owned.take() {
-                let (component, result) = tokio::task::spawn_blocking(move || {
-                    let result = component.session.pause();
-                    (component, result)
-                })
-                .await
-                .map_err(|e| e.to_string())?;
-                *owned = Some(component);
-                result?;
-            } else {
-                runtime::ensure_can_start()?;
-            }
-            let data = directory.join("login-data");
-            runtime::prepare_data(&data)?;
-            component_updates::apply(&checked, &data, source, &self.closing, app).await
-        }
-        .await;
-        if was_running && !self.closing.load(Ordering::Relaxed) {
-            if let Some(component) = owned
-                .as_mut()
-                .filter(|component| !component.session.is_running())
-            {
-                self.report_proxy("restarting");
-                let _ = app.emit("component-update-progress", serde_json::json!({"phase":"restoring", "downloaded":0,"total":null,"module":"","commit":""}));
-                if let Err(recovery) = component
-                    .session
-                    .restart_after_update(&self.closing, |phase| self.report_proxy(phase))
-                    .await
-                {
-                    result = Err(match result {
-                        Err(error) => format!("{error}；代理恢复失败：{recovery}"),
-                        Ok(()) => recovery,
-                    });
-                }
-            }
-        }
-        self.report(
-            if owned.is_some() && result.is_ok() {
-                "ready"
-            } else if result.is_err() {
-                "error"
-            } else {
-                "idle"
-            },
-            result.as_ref().err().cloned(),
+        self.update_busy.store(true, Ordering::Release);
+        let _busy = UpdateGuard(&self.update_busy, &self.applying);
+        self.cancelled.store(false, Ordering::Relaxed);
+        self.update_progress(
+            serde_json::json!({"phase":"preparing","downloaded":0,"total":null,"cancellable":true}),
         );
-        if result.is_ok() {
-            checked.info.hotfixes.clear();
-            *self.update.lock().unwrap() = Some(checked);
-        }
-        crate::logs::emit(
+        let result = async {
+            // Leave the old component running during downloads. Installation targets a separate version directory.
+            let replacement = install::install(&checked.release, source, &self.cancelled, |p| self.update_progress(p)).await?;
+            install::check_cancel(&self.cancelled)?;
+            self.applying.store(true, Ordering::Release);
+            self.update_progress(serde_json::json!({"phase":"applying","downloaded":0,"total":null,"cancellable":false}));
+            let mut owned = self.owned.lock().await;
+            let was_running = owned.as_ref().is_some_and(|c| c.session.is_running());
+            let applied = async {
+                if let Some(mut component) = owned.take() {
+                    let (component, paused) = tauri::async_runtime::spawn_blocking(move || {
+                        let paused = component.session.pause();
+                        (component, paused)
+                    }).await.map_err(|error| error.to_string())?;
+                    *owned = Some(component);
+                    paused?;
+                } else { runtime::ensure_can_start()?; }
+                runtime::save_component(&directory, &replacement.python)?;
+                if was_running {
+                    self.update_progress(serde_json::json!({"phase":"restoring","downloaded":0,"total":null,"cancellable":false}));
+                    let session = ProxySession::start_logged(&replacement, &directory.join("login-data"),
+                        Duration::from_secs(60), &self.closing, Some(app), |phase| self.report_proxy(phase)).await?;
+                    if let Some(component) = owned.as_mut() {
+                        component.session = session;
+                        component.python = replacement.python.clone();
+                    }
+                } else if let Some(component) = owned.take() {
+                    component.stop().await?;
+                }
+                Ok::<(), String>(())
+            }.await;
+            if let Err(mut error) = applied {
+                self.update_progress(serde_json::json!({"phase":"restoring","downloaded":0,"total":null,"cancellable":false}));
+                if let Err(rollback) = runtime::save_component(&directory, &checked.runtime.python) {
+                    error.push_str(&format!("；恢复组件路径失败：{rollback}"));
+                }
+                if was_running {
+                    if let Some(component) = owned.as_mut() {
+                        if let Err(rollback) = component.session.restart_after_update(&self.closing, |phase| self.report_proxy(phase)).await {
+                            error.push_str(&format!("；恢复旧代理失败：{rollback}"));
+                        }
+                    }
+                }
+                return Err(error);
+            }
+            Ok(())
+        }.await;
+        self.finish(&result, "idle");
+        crate::logs::record(
             app,
-            serde_json::json!({"type":"log", "source":"idv-login", "timestamp":chrono::Utc::now().to_rfc3339(), "level":if result.is_ok() {"info"} else {"error"}, "message":result.as_ref().err().cloned().unwrap_or_else(|| "官方热更新已应用".into()), "data":{"important":true}}),
+            if result.is_ok() { "info" } else { "error" },
+            "launcher.update",
+            "组件更新结束 / Component update finished",
+            serde_json::json!({"success":result.is_ok(),"error":result.as_ref().err()}),
         );
         result
     }
@@ -202,11 +223,7 @@ impl Launcher {
         if let Some(app) = self.log_app.get() {
             crate::logs::record(
                 app,
-                if status.message.is_some() {
-                    "warning"
-                } else {
-                    "info"
-                },
+                if phase == "error" { "error" } else { "info" },
                 "launcher.status",
                 "登录组件状态变化 / Login component status changed",
                 serde_json::json!({"phase":phase,"message":status.message}),
@@ -269,11 +286,16 @@ impl Launcher {
     }
 
     pub fn cancel(&self) {
+        if self.applying.load(Ordering::Acquire) {
+            return;
+        }
         self.cancelled.store(true, Ordering::Relaxed);
     }
 
     pub async fn configure(&self, download: bool) -> Result<(), String> {
         let _operation = self.operation.try_lock().map_err(|_| "组件操作正在进行")?;
+        self.update_busy.store(true, Ordering::Release);
+        let _busy = UpdateGuard(&self.update_busy, &self.applying);
         self.cancelled.store(false, Ordering::Relaxed);
         let owned = self.owned.lock().await;
         if self.closing.load(Ordering::Relaxed) {
@@ -304,15 +326,16 @@ impl Launcher {
                 None if download => {
                     let config = crate::config::load()?;
                     let source = config["app"]["update_source"].as_str().unwrap_or("direct");
-                    install::install(source, &self.cancelled, |message| {
-                        self.report("configuring", Some(message))
-                    })
+                    let release = component_updates::latest(source, &self.cancelled).await?;
+                    install::install(&release, source, &self.cancelled, |progress| self.update_progress(progress))
                     .await?
                 }
                 None => return Err("未找到官方组件，请点击“官方下载”自动下载并配置".into()),
             };
             install::cancellable(runtime::verify_version(&component), &self.cancelled).await?;
             install::check_cancel(&self.cancelled)?;
+            self.applying.store(true, Ordering::Release);
+            self.update_progress(serde_json::json!({"phase":"applying","downloaded":0,"total":null,"cancellable":false}));
             runtime::save_component(&directory, &component.python)
         }
         .await;
@@ -468,6 +491,11 @@ impl Launcher {
     }
 
     pub async fn shutdown(&self) -> Result<(), String> {
+        if self.update_busy() {
+            return Err(
+                "请先完成或取消组件更新 / Finish or cancel the component update first".into(),
+            );
+        }
         self.closing.store(true, Ordering::Relaxed);
         self.cancel();
         let mut owned = self.owned.lock().await;
@@ -510,27 +538,13 @@ pub async fn check_login_updates(
 }
 
 #[tauri::command]
-pub async fn apply_login_hotfixes(
+pub async fn install_login_update(
     app: tauri::AppHandle,
     manager: tauri::State<'_, Launcher>,
     source: String,
 ) -> Result<(), String> {
     let source = crate::update_source::resolve(&source)?;
-    manager.apply_hotfixes(&source, &app).await
-}
-
-#[tauri::command]
-pub async fn open_login_update(
-    manager: tauri::State<'_, Launcher>,
-    source: String,
-) -> Result<(), String> {
-    let source = crate::update_source::resolve(&source)?;
-    let update = manager.update.lock().unwrap();
-    let url = update
-        .as_ref()
-        .and_then(|update| update.info.release_url.as_deref())
-        .ok_or("请重新检查官方新版")?;
-    crate::commands::open_url(&crate::updates::route(url, &source)?)
+    manager.install_update(&source, &app).await
 }
 
 pub fn start_monitor(app: tauri::AppHandle) {

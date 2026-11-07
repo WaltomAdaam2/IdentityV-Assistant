@@ -1,9 +1,12 @@
+import { messageLanguage } from "./messageLanguage";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { createPortal } from "react-dom";
 import type { Settings } from "./types";
 import type { RecognitionView } from "./useJournalRecognition";
 import JournalPreviewMap from "./JournalPreviewMap";
-import { importJournalPacks, journalApi, matchingMaps, type JournalLibrary, type JournalSettings, type MapImage } from "./journalData";
+import { importJournalPacks, journalApi, journalDisplay, matchingMaps, type JournalLibrary, type JournalSettings, type MapImage } from "./journalData";
 import "./journal.css";
 
 const groups = [
@@ -13,6 +16,7 @@ const groups = [
   { key: "display", zh: "显示", en: "Display", options: [["pure", "纯净", "Base map"], ["route", "速刷", "Route map"]] },
 ] as const;
 const quickFloors = [["b1f", "地下室", "Basement"], ["1", "1F", "1F"], ["2", "2F", "2F"]] as const;
+const s1Floors = [["1", "地下1层", "B1"], ["2", "地下2层", "B2"], ["3", "地下3层", "B3"]] as const;
 const positions = [["top_left", "左上", "Top left", 0, 0], ["top_right", "右上", "Top right", 1, 0], ["center", "居中", "Center", 0.5, 0.5], ["bottom_left", "左下", "Bottom left", 0, 1], ["bottom_right", "右下", "Bottom right", 1, 1]] as const;
 
 function Thumbnail({ image, name, zh }: { image: MapImage; name: string; zh: boolean }) {
@@ -35,7 +39,7 @@ function Thumbnail({ image, name, zh }: { image: MapImage; name: string; zh: boo
     return () => { active = false; };
   }, [visible, image.packId, image.path]);
   return <div ref={ref} className="journal-thumbnail">
-    {error ? <p role="alert">{zh ? "图片读取失败" : "Could not read image"}<small>{error}</small></p>
+    {error ? <p role="alert">{zh ? "图片读取失败" : "Could not read image"}<small>{messageLanguage(error, zh ? "zh-CN" : "en-US")}</small></p>
       : url ? <img src={url} alt={name} onError={() => setError(zh ? "图片格式无效或已损坏" : "Invalid or damaged image")} />
       : <span>{zh ? "正在读取地图…" : "Loading map…"}</span>}
   </div>;
@@ -55,8 +59,12 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   const zh = language === "zh-CN";
   const [floor, setFloor] = useState("1");
   const [collapsed, setCollapsed] = useState(false);
-  const settings = useMemo(() => ({ ...savedSettings, floor, collapsed }), [savedSettings, floor, collapsed]);
+  const isS1 = savedSettings.season === "s1";
+  const settings = useMemo(() => ({ ...savedSettings, floor, collapsed, display: journalDisplay(savedSettings), ...(isS1 ? { door: "td" } : {}) }), [savedSettings, floor, collapsed, isS1]);
+  const seasonFloors: readonly (readonly [string, string, string])[] = isS1 ? s1Floors : quickFloors;
+  const filterGroups = groups.filter(group => !isS1 || group.key !== "door").map(group => ({ ...group, options: group.key === "floor" && isS1 ? s1Floors : group.options }));
   const [library, setLibrary] = useState<JournalLibrary>({ directory: "", packs: [], errors: [] });
+  const hasS1Routes = library.packs.some(pack => pack.season_id === "s1" && pack.difficulty === settings.difficulty && pack.maps.some(map => Object.keys(map.display).length > 0));
   const [busy, setBusy] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const recognizing = recognition.status === "busy";
@@ -79,8 +87,8 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     else if (lastSelected.current !== null) { mapButtons.current.get(lastSelected.current)?.focus(); lastSelected.current = null; }
   }, [selectedKey]);
   useEffect(() => {
-    if (settings.door === "td") onSettingsChange({ ...settings, door: "lf" });
-  }, [settings, onSettingsChange]);
+    if (!isS1 && savedSettings.door === "td") onSettingsChange({ ...savedSettings, door: "lf" });
+  }, [isS1, savedSettings, onSettingsChange]);
   useEffect(() => {
     let active = true;
     journalApi.list().then((data) => { if (active) setLibrary(data); })
@@ -97,22 +105,48 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   useEffect(() => {
     if (busy || recognition.status !== "done" || !recognition.result || handledResult.current === recognition.result) return;
     handledResult.current = recognition.result;
+    const detectedFloor = isS1 ? recognition.result.floor : "1";
+    if (!detectedFloor) return;
+    setFloor(detectedFloor);
     if (!settings.auto_enter || document.querySelector("dialog:modal:not(.journal-full-preview)")) return;
-    const first = matchingMaps(library.packs, { ...settings, floor: "1" }, recognition.result.keys)[0];
+    const first = matchingMaps(library.packs, { ...settings, floor: detectedFloor }, recognition.result.keys)[0];
     if (first) {
-      setFloor("1"); setSelectedKey(first.key); setPreview("open");
+      setSelectedKey(first.key); setPreview("open");
       onLog(zh ? `识图完成，自动进入第一候选：${first.key}` : `Recognition complete; automatically opened first candidate: ${first.key}`);
     }
   }, [busy, recognition.status, recognition.result, library.packs, settings]);
   const selectedMap = maps.find((map) => map.key === selectedKey);
-  const availableFloors = useMemo(() => new Set(quickFloors.filter(([floor]) =>
+  const availableFloors = useMemo(() => new Set(seasonFloors.filter(([floor]) =>
     !(floor === "b1f" && settings.difficulty === "hard") &&
     matchingMaps(library.packs, { ...settings, floor }, recognizedKeys).some((map) => map.key === selectedKey)
   ).map(([floor]) => floor)), [library.packs, settings, selectedKey, recognizedKeys]);
+  useEffect(() => {
+    const cycle = () => {
+      if (preview !== "open" || !selectedKey || recognizing || document.querySelector("dialog:modal:not(.journal-full-preview)")) return;
+      const floors = seasonFloors.map(([value]) => value).filter(value => availableFloors.has(value));
+      if (floors.length) {
+        const next = floors[(floors.indexOf(floor as typeof floors[number]) + 1) % floors.length];
+        setFloor(next);
+        onLog(zh ? `地图楼层切换：${next}` : `Map floor changed: ${next}`);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key.toLowerCase() !== "l" || event.repeat || event.defaultPrevented ||
+          event.ctrlKey || event.altKey || event.metaKey || event.shiftKey ||
+          target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      cycle();
+    };
+    window.addEventListener("keydown", onKey);
+    let disposed = false;
+    const subscription = isTauri() ? listen("journal-floor-shortcut", () => { if (!disposed) cycle(); }) : null;
+    void subscription?.catch(reason => { if (!disposed) onNotice(String(reason), true); });
+    return () => { disposed = true; window.removeEventListener("keydown", onKey); void subscription?.then(stop => stop()).catch(() => {}); };
+  }, [selectedKey, recognizing, availableFloors, floor, zh, preview]);
   const mapName = (map: typeof maps[number]) => {
     const name = map.name || (zh ? `地图 ${map.index}` : `Map ${map.index}`);
     const door = groups[1].options.find(([value]) => value === map.category)?.[zh ? 1 : 2] || map.category;
-    return recognizedKeys ? `${door} · ${name}` : name;
+    return recognizedKeys && !isS1 ? `${door} · ${name}` : name;
   };
   const selectedName = selectedMap ? mapName(selectedMap) : (zh ? "地图" : "Map");
   const detailKey = selectedMap ? `${selectedMap.image.packId}:${selectedMap.image.path}` : "";
@@ -149,17 +183,20 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     const timer = window.setTimeout(() => setPreview("closed"), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
     return () => window.clearTimeout(timer);
   }, [preview]);
-  const summary = [seasons.find(([id]) => id === settings.season)?.[1], ...groups.filter(group => !recognizedKeys || group.key !== "door").map((group) => group.options.find(([value]) => value === settings[group.key])?.[zh ? 1 : 2])].join(" · ");
+  const summary = [seasons.find(([id]) => id === settings.season)?.[1], ...filterGroups.filter(group => !recognizedKeys || group.key !== "door").map((group) => group.options.find(([value]) => value === settings[group.key])?.[zh ? 1 : 2])].join(" · ");
   const change = (patch: Partial<JournalSettings>) => {
     if (recognizing || Object.keys(patch).some(key => key !== "floor")) onCancelRecognition("filters_changed");
     if (patch.season || patch.difficulty || patch.door) setSelectedKey(null);
     const next = { ...settings, ...patch };
-    if (next.difficulty === "hard" && ["b1f", "3"].includes(next.floor)) next.floor = "1";
+    if (patch.season || (next.season !== "s1" && next.difficulty === "hard" && ["b1f", "3"].includes(next.floor))) next.floor = "1";
     setFloor(next.floor);
-    if (Object.keys(patch).some((key) => key !== "floor")) onSettingsChange({ ...next, floor: "1", collapsed: false });
+    if (Object.keys(patch).some((key) => key !== "floor")) {
+      const savedPatch = isS1 && patch.display ? { ...patch, display: savedSettings.display, s1_display: patch.display } : patch;
+      onSettingsChange({ ...savedSettings, ...savedPatch, floor: "1", collapsed: false });
+    }
   };
   const floorSwitch = () => <div className="journal-floor-switch" role="group" aria-label={zh ? "切换地图楼层" : "Switch map floor"}>
-    {quickFloors.map(([floor, chinese, english]) => <button key={floor} type="button" disabled={!availableFloors.has(floor)} aria-pressed={settings.floor === floor} className={settings.floor === floor ? "primary" : ""} title={!availableFloors.has(floor) ? (zh ? "当前地图没有此楼层" : "This floor is unavailable for this map") : undefined} onClick={() => change({ floor })}>{zh ? chinese : english}</button>)}
+    {seasonFloors.map(([floor, chinese, english]) => <button key={floor} type="button" disabled={!availableFloors.has(floor)} aria-pressed={settings.floor === floor} className={settings.floor === floor ? "primary" : ""} title={!availableFloors.has(floor) ? (zh ? "当前地图没有此楼层" : "This floor is unavailable for this map") : undefined} onClick={() => change({ floor })}>{zh ? chinese : english}</button>)}
   </div>;
   async function reload() {
     onCancelRecognition(); setSelectedKey(null);
@@ -179,7 +216,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     } catch (reason) { onNotice(String(reason), true); } finally { setBusy(false); }
   }
   return <div className="journal">
-    {library.errors.length > 0 && <details className="journal-error"><summary>{zh ? "部分地图包读取失败" : "Some map packs could not be read"}</summary>{library.errors.map((item, index) => <p key={index}>{item}</p>)}</details>}
+    {library.errors.length > 0 && <details className="journal-error"><summary>{zh ? "部分地图包读取失败" : "Some map packs could not be read"}</summary>{library.errors.map((item, index) => <p key={index}>{messageLanguage(item, language)}</p>)}</details>}
     <div className={`journal-layout${settings.collapsed ? " journal-collapsed" : ""}`}>
       <aside className="panel journal-filters">
         <div className="journal-filter-heading">
@@ -190,19 +227,29 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           <label className="journal-season">{zh ? "赛季" : "Season"}
             <select value={settings.season} onChange={(event) => change({ season: event.target.value })}>{seasons.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
           </label>
-          {groups.map((group) => <fieldset key={group.key}>
+          {filterGroups.map((group) => <fieldset key={group.key}>
             <legend>{zh ? group.zh : group.en}</legend>
-            <div className="journal-options">{group.options.filter(([value]) => !(group.key === "floor" && value === "b1f" && settings.difficulty === "hard")).map(([value, chinese, english]) => <button type="button" key={value} aria-pressed={settings[group.key] === value} className={settings[group.key] === value ? "primary" : ""} onClick={() => change({ [group.key]: value })}>{zh ? chinese : english}</button>)}</div>
+            <div className="journal-options">
+              {!isS1 && group.key === "difficulty" && <button type="button" aria-pressed={settings.auto_difficulty !== false} className={settings.auto_difficulty !== false ? "primary" : ""} onClick={() => change({ auto_difficulty: true })}>{zh ? "自动" : "Auto"}</button>}
+              {group.options.filter(([value]) => !(group.key === "floor" && value === "b1f" && settings.difficulty === "hard")).map(([value, chinese, english]) => {
+                const selected = settings[group.key] === value && (isS1 || group.key !== "difficulty" || settings.auto_difficulty === false);
+                return <button type="button" key={value} disabled={isS1 && !hasS1Routes && group.key === "display" && value === "route"} aria-pressed={selected} className={selected ? "primary" : ""} onClick={() => change({ [group.key]: value, ...(!isS1 && group.key === "difficulty" ? { auto_difficulty: false } : {}) })}>{zh ? chinese : english}</button>;
+              })}
+            </div>
+            {!isS1 && group.key === "difficulty" && settings.auto_difficulty !== false && <p className="journal-recognition-hint">{zh ? `自动判断识图难度；当前浏览${settings.difficulty === "hard" ? "困难" : "噩梦"}。` : `Detect difficulty on recognition; browsing ${settings.difficulty === "hard" ? "Hard" : "Nightmare"}.`}</p>}
+            {isS1 && !hasS1Routes && group.key === "display" && <p className="journal-recognition-hint">{zh ? "导入此难度的速刷地图包后可用。" : "Import a route-map pack for this difficulty to enable this option."}</p>}
           </fieldset>)}
           <div className="journal-options journal-tools">
-            <button type="button" className="primary" disabled={busy || recognizing} onClick={onRecognize}>{zh ? "识别一楼地图" : "Recognize 1F map"}</button>
+            <button type="button" className="primary" disabled={busy || recognizing} onClick={onRecognize}>{isS1 ? (zh ? "识别当前楼层地图" : "Recognize current floor") : (zh ? "识别一楼地图" : "Recognize 1F map")}</button>
             {recognizing && <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>}
           </div>
           <label className="journal-auto-enter setting-toggle">
             <span>{zh ? "自动进入最匹配地图" : "Automatically open the best match"}</span>
             <input type="checkbox" role="switch" checked={settings.auto_enter} onChange={event => onSettingsChange({ ...savedSettings, auto_enter: event.target.checked })} />
           </label>
-          <p className="journal-recognition-hint">{zh ? `游戏前台按 ${shortcut} 也可识别，不切走游戏焦点。仅识别当前赛季、难度的一楼。` : `Press ${shortcut} in the game without losing focus. Matches 1F in the selected season and difficulty.`}</p>
+          <p className="journal-recognition-hint">{isS1
+            ? (zh ? `请先选择困难／噩梦；识别时自动判断地下1至3层，并显示对应层地图。游戏前台按 ${shortcut} 识别或重新截图，不切走游戏焦点。进入地图后按 L 切换楼层。` : `Select Hard or Nightmare first. Recognition detects B1–B3 and shows that floor. Press ${shortcut} in the game to recognize or restart without losing focus. L changes floors inside Enter map.`)
+            : (zh ? `游戏前台按 ${shortcut} 识别一楼，再次按键重新截图；不切走游戏焦点。自动模式检测难度，手动模式使用所选难度。进入地图后按 L 切换楼层。` : `Press ${shortcut} in the game to recognize 1F or restart without losing focus. Auto detects difficulty; manual mode uses your selection. L changes floors inside Enter map.`)}</p>
           <div className="journal-options journal-tools">
             <button type="button" disabled={busy} onClick={() => void importPack()}>{zh ? "导入地图包" : "Import map packs"}</button>
             <button type="button" disabled={busy} onClick={() => void reload()}>{zh ? "刷新地图" : "Refresh maps"}</button>
@@ -213,19 +260,19 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
       </aside>
       <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy || recognizing}>
         {recognition.status !== "idle" && <div className="journal-recognition">
-          <div className="journal-recognition-heading"><h2>{zh ? "一楼识图结果" : "First-floor matches"}</h2>
+          <div className="journal-recognition-heading"><h2>{isS1 ? (recognition.result?.floor ? (zh ? `地下${recognition.result.floor}层识图结果` : `B${recognition.result.floor} matches`) : (zh ? "当前楼层识图结果" : "Current-floor matches")) : (zh ? "一楼识图结果" : "First-floor matches")}</h2>
             <div className="journal-options">{recognizing
               ? <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>
               : <><button type="button" onClick={onRecognize}>{zh ? "重新识别" : "Recognize again"}</button><button type="button" onClick={() => { setSelectedKey(null); onCancelRecognition(); }}>{zh ? "返回全部地图" : "Show all maps"}</button></>}
             </div>
           </div>
           <p role="status">{recognizing
-            ? ({ capturing: zh ? "正在截图…" : "Capturing…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
+            ? ({ capturing: zh ? "正在截图…" : "Capturing…", difficulty: zh ? "正在判断地图难度…" : "Detecting difficulty…", floor: zh ? "正在判断地图楼层…" : "Detecting floor…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
               + (recognition.progress?.total ? ` ${recognition.progress.completed} / ${recognition.progress.total}` : "")
-            : recognition.error || (recognition.result?.keys.length
+            : messageLanguage(recognition.error, language) || (recognition.result?.keys.length
               ? (recognition.result.keys.length > 1 ? (zh ? "按匹配顺序最多显示 4 张候选，请核对；也可继续探索后重新识别。" : "Up to 4 candidates in matching order. Check a map, or explore further and recognize again.") : (zh ? "点击候选查看地图；楼层按钮只切换看图。" : "Choose the candidate to view it; floor buttons only change the view."))
-              : (zh ? "未找到匹配地图，请在一楼打开地图后重试。" : "No matching map. Open the first-floor map in the game and try again."))}</p>
-          {!!recognition.result?.warnings.length && <details><summary>{zh ? "部分识别图片不可用" : "Some recognition images are unavailable"}</summary>{recognition.result.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</details>}
+              : (isS1 ? (zh ? "未找到匹配地图，请确认难度并在地下1至3层打开完整地图后重试。" : "No matching map. Check the difficulty and open the full B1, B2 or B3 map before retrying.") : (zh ? "未找到匹配地图，请在一楼打开地图后重试。" : "No matching map. Open the first-floor map in the game and try again.")))}</p>
+          {!!recognition.result?.warnings.length && <details><summary>{zh ? "部分识别图片不可用" : "Some recognition images are unavailable"}</summary>{recognition.result.warnings.map((warning, index) => <p key={index}>{messageLanguage(warning, language)}</p>)}</details>}
           {recognition.result?.preview && <details className="journal-region-preview"><summary>{zh ? "查看识别区域" : "View recognized region"}</summary><img src={recognition.result.preview} alt={zh ? "本次识别使用的游戏地图区域" : "Game map region used for this recognition"} /></details>}
         </div>}
         {busy ? <div className="empty journal-empty">{zh ? "正在读取地图包…" : "Loading map packs…"}</div>
@@ -233,7 +280,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           : selectedKey !== null ? <div className="journal-detail" key={`detail:${selectedKey}`}>
             <button ref={backButton} type="button" className="journal-back" onClick={() => setSelectedKey(null)}>{zh ? "‹ 返回列表" : "‹ Back to list"}</button>
             {!selectedMap ? <p>{zh ? "当前楼层或显示模式暂无此地图。" : "This map is unavailable for the selected floor or display mode."}</p>
-              : detailError ? <p role="alert">{zh ? "图片读取失败：" : "Could not read image: "}{detailError}</p>
+              : detailError ? <p role="alert">{zh ? "图片读取失败：" : "Could not read image: "}{messageLanguage(detailError, language)}</p>
               : detailUrl ? <img key={detailKey} src={detailUrl} alt={selectedName} onError={() => setDetailImage({ key: detailKey, url: "", error: zh ? "图片格式无效或已损坏" : "Invalid or damaged image" })} />
               : <p>{zh ? "正在读取地图…" : "Loading map…"}</p>}
           </div>
@@ -252,7 +299,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
       {detailUrl ? <JournalPreviewMap key={detailKey} src={detailUrl} name={selectedName} zh={zh} position={settings.preview_position}
         onPositionChange={preview_position => onSettingsChange({ ...savedSettings, preview_position: {...preview_position, preset: "custom"} })}
         onError={() => setDetailImage({ key: detailKey, url: "", error: zh ? "图片格式无效或已损坏" : "Invalid or damaged image" })} />
-        : <p className="journal-preview-status" role={detailError ? "alert" : "status"}>{detailError || (zh ? "正在读取地图…" : "Loading map…")}</p>}
+        : <p className="journal-preview-status" role={detailError ? "alert" : "status"}>{messageLanguage(detailError, language) || (zh ? "正在读取地图…" : "Loading map…")}</p>}
       <div className="journal-preview-floors">{floorSwitch()}</div>
       <div className="journal-preview-positions journal-floor-switch" role="group" aria-label={zh ? "地图位置" : "Map position"}>{positions.map(([preset, label, english, x, y]) => <button key={preset} type="button" disabled={!detailUrl}
         className={(settings.preview_position.preset ?? (settings.preview_position.x === 0.5 && settings.preview_position.y === 0.5 ? "center" : "custom")) === preset ? "primary" : undefined}

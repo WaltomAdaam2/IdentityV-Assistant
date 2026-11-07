@@ -54,3 +54,13 @@ hotfixes and rollback records. Before applying, require a strict atomic write vi
 the pinned runtime's cache API. Report success only after reading back the
 requested records and validation/restart bookkeeping from disk; in-memory records
 alone are insufficient because ordinary upstream cached writes tolerate failures.
+
+### 0.2.0: compatible full releases replace module hotfixes
+
+This supersedes the hotfix workflow above. Do not fetch cloud hotfix metadata or run upstream hotfix application. Keep existing account and historical validation data. Check full-release metadata on game launch/manual request, but install only a size/hash-pinned compatible version. Unsupported upstream versions wait for an assistant release. Use a separate managed version directory and atomic configuration switch; preserve external installations. Downloads can be cancelled while the owned proxy keeps running. During configuration, pause only the owned proxy, restore it against the new runtime, and roll back configuration/old proxy on failure. Block app exit during installation. Reuse the assistant progress dialog rather than sending the user to GitHub.
+
+### 0.2.0 refinement: latest official full releases
+
+The November 6 decision supersedes the compatibility allowlist above. Resolve the latest official release and its exact Windows asset from GitHub metadata; require its published size and SHA-256, verify the extracted version matches, and preserve staging, process ownership, configuration rollback and existing account data. Do not block a newer release solely because the assistant has not reviewed it. Upstream API changes can still fail at actual runtime readiness and are reported rather than assumed compatible. Module hotfixes remain disabled.
+
+A failed launch-time update check continues with an already installed component and a dismissible brief notice. Manual checks retain detailed errors. Closing a read-only check cancels it and ignores late results; only actual installation/configuration locks the update dialog.

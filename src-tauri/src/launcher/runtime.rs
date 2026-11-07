@@ -1,4 +1,4 @@
-use super::component::{LoginRuntime, SUPPORTED_VERSION};
+use super::component::LoginRuntime;
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -10,13 +10,25 @@ use winreg::{enums::HKEY_CURRENT_USER, RegKey, RegValue};
 
 const URI_KEY: &str = r"Software\Classes\idvlogin";
 
-pub(super) fn managed_root() -> Result<PathBuf, String> {
+pub(super) fn parse_version(version: &str) -> Result<semver::Version, String> {
+    if version.len() > 80 {
+        return Err("组件版本格式无效".into());
+    }
+    semver::Version::parse(version.strip_prefix('v').unwrap_or(version))
+        .map_err(|_| "组件版本格式无效".into())
+}
+
+pub(super) fn managed_root(version: &str) -> Result<PathBuf, String> {
+    parse_version(version)?;
+    Ok(managed_directory()?.join(version))
+}
+
+fn managed_directory() -> Result<PathBuf, String> {
     Ok(std::env::current_exe()
         .map_err(|e| e.to_string())?
         .parent()
         .ok_or("助手程序目录无效")?
-        .join("components/idv-login")
-        .join(SUPPORTED_VERSION))
+        .join("components/idv-login"))
 }
 
 pub(super) fn runtime_from_selection(path: PathBuf) -> Result<LoginRuntime, String> {
@@ -82,7 +94,18 @@ pub(super) fn component_path(directory: &Path) -> Result<Option<PathBuf>, String
             }
         }
     }
-    let mut roots = vec![managed_root()?];
+    let mut versions: Vec<_> = fs::read_dir(managed_directory()?)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            parse_version(&entry.file_name().to_string_lossy())
+                .ok()
+                .map(|version| (version, entry.path()))
+        })
+        .collect();
+    versions.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut roots: Vec<_> = versions.into_iter().map(|(_, path)| path).collect();
     if let Some(program_data) = std::env::var_os("PROGRAMDATA") {
         let flag = PathBuf::from(program_data).join("idv-login/install_root.flag");
         if fs::metadata(&flag).is_ok_and(|meta| meta.len() <= 4096) {
@@ -130,7 +153,7 @@ pub(super) fn component_path(directory: &Path) -> Result<Option<PathBuf>, String
     }))
 }
 
-pub(super) async fn verify_version(runtime: &LoginRuntime) -> Result<(), String> {
+pub(super) async fn read_version(runtime: &LoginRuntime) -> Result<String, String> {
     let mut command = tokio::process::Command::new(&runtime.python);
     command.args(["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import buildinfo; print(buildinfo.VERSION)"])
         .arg(runtime.script.parent().ok_or("登录组件目录无效")?)
@@ -140,22 +163,35 @@ pub(super) async fn verify_version(runtime: &LoginRuntime) -> Result<(), String>
         .await
         .map_err(|_| "读取登录组件版本超时")?
         .map_err(|e| e.to_string())?;
-    if !output.status.success()
-        || String::from_utf8_lossy(&output.stdout).trim() != SUPPORTED_VERSION
-    {
-        return Err("当前仅支持官方 idv-login v6.3.2-stable，请选择对应版本".into());
+    if !output.status.success() {
+        return Err("无法读取组件版本 / Could not read component version".into());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+pub(super) async fn verify_version(runtime: &LoginRuntime) -> Result<(), String> {
+    parse_version(&read_version(runtime).await?)?;
+    Ok(())
+}
+
+pub(super) async fn verify_release(runtime: &LoginRuntime, expected: &str) -> Result<(), String> {
+    if parse_version(&read_version(runtime).await?)? != parse_version(expected)? {
+        return Err("组件内的版本与下载版本不符，未应用更新".into());
     }
     Ok(())
 }
 
 pub(super) fn save_component(directory: &Path, python: &Path) -> Result<(), String> {
     fs::create_dir_all(directory).map_err(|e| e.to_string())?;
-    fs::write(
-        directory.join("launcher.json"),
-        serde_json::to_vec(python.to_str().ok_or("登录组件路径无效")?)
-            .map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())
+    let mut pending = tempfile::NamedTempFile::new_in(directory).map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec(python.to_str().ok_or("登录组件路径无效")?)
+        .map_err(|e| e.to_string())?;
+    pending.write_all(&bytes).map_err(|e| e.to_string())?;
+    pending.as_file().sync_all().map_err(|e| e.to_string())?;
+    pending
+        .persist(directory.join("launcher.json"))
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub(super) fn ensure_can_start() -> Result<(), String> {
@@ -207,7 +243,6 @@ pub(super) fn prepare_data(program_data: &Path) -> Result<(), String> {
     ] {
         config[flag] = json!(true);
     }
-    config[format!("{SUPPORTED_VERSION}_first_use")] = json!(false);
     for key in [
         "game_settings",
         "game_installation_settings_v1",
@@ -395,7 +430,6 @@ mod tests {
                 ["auto_start"],
             false
         );
-        assert_eq!(config["v6.3.2-stable_first_use"], false);
         let recovery = br#"{"_SAVED_PROXY_ENV":{"HTTP_PROXY":"fixture"}}"#;
         fs::write(&path, recovery).unwrap();
         assert!(prepare_data(directory.path()).is_err());

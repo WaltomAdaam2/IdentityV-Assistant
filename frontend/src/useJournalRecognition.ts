@@ -13,25 +13,42 @@ export interface RecognitionView {
 const empty: RecognitionView = { status: "idle", progress: null, result: null, error: "", preview: null };
 
 export function useJournalRecognition(filters: JournalSettings, active: boolean, ready: boolean,
-  onShortcut: () => boolean, onError: (message: string) => void) {
+  onShortcut: () => boolean, onError: (message: string) => void, onDifficulty: (difficulty: string) => void) {
   const [view, setView] = useState<RecognitionView>(empty);
   const request = useRef<string | null>(null);
-  const latest = useRef({ filters, ready, onShortcut, onError });
-  latest.current = { filters, ready, onShortcut, onError };
+  const sequence = useRef(0);
+  const pending = useRef<{ id: string; result: Promise<RecognitionResult> } | null>(null);
+  const latest = useRef({ filters, ready, onShortcut, onError, onDifficulty });
+  latest.current = { filters, ready, onShortcut, onError, onDifficulty };
   const cancel = useCallback((reason = "user_cancelled") => {
-    const id = request.current;
+    sequence.current++;
+    const id = pending.current?.id;
     request.current = null;
     if (id) void journalApi.cancel(id, reason).catch(() => {});
     setView(empty);
   }, []);
   const start = useCallback(async (windowHandle?: number) => {
-    if (request.current || !latest.current.ready) return;
+    if (!latest.current.ready) return;
+    const ticket = ++sequence.current;
+    const previous = pending.current;
+    request.current = null; // Ignore old progress/results while its helper exits.
+    setView({ ...empty, status: "busy" });
+    if (previous) {
+      await journalApi.cancel(previous.id, "restarted").catch(() => {});
+      await previous.result.catch(() => {});
+    }
+    if (ticket !== sequence.current) return;
     const id = crypto.randomUUID();
     request.current = id;
     setView({ ...empty, status: "busy", progress: { request_id: id, stage: "capturing", completed: 0, total: 0 } });
     try {
-      const result = await journalApi.recognize(id, latest.current.filters, windowHandle);
-      if (request.current === id) setView({ ...empty, status: "done", result: {...result, request_id: id} });
+      const resultPromise = journalApi.recognize(id, latest.current.filters, windowHandle);
+      pending.current = { id, result: resultPromise };
+      const result = await resultPromise;
+      if (request.current === id) {
+        if (result.difficulty) latest.current.onDifficulty(result.difficulty);
+        setView({ ...empty, status: "done", result: {...result, request_id: id} });
+      }
     } catch (reason) {
       if (request.current === id) {
         const error = String(reason);
@@ -40,9 +57,16 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
       }
     } finally {
       if (request.current === id) request.current = null;
+      if (pending.current?.id === id) pending.current = null;
     }
   }, []);
-  useEffect(() => { cancel("filters_changed"); }, [filters.season, filters.difficulty, filters.display, cancel]);
+  const previousFilters = useRef(filters);
+  useEffect(() => {
+    const old = previousFilters.current;
+    previousFilters.current = filters;
+    if (old.season !== filters.season || old.display !== filters.display || old.s1_display !== filters.s1_display || old.auto_difficulty !== filters.auto_difficulty ||
+      (old.difficulty !== filters.difficulty && view.result?.difficulty !== filters.difficulty)) cancel("filters_changed");
+  }, [filters.season, filters.difficulty, filters.display, filters.s1_display, filters.auto_difficulty, cancel]);
   useEffect(() => { if (!active) cancel("page_left"); }, [active, cancel]);
   useEffect(() => {
     if (!isTauri()) return;
@@ -55,7 +79,7 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
         if (!disposed && request.current === payload.request_id) setView(value => ({ ...value, progress: payload }));
       }),
       listen<{ hwnd: number }>("journal-recognition-shortcut", ({ payload }) => {
-        if (!disposed && !request.current && latest.current.ready && latest.current.onShortcut()) void start(payload.hwnd);
+        if (!disposed && latest.current.ready && latest.current.onShortcut()) void start(payload.hwnd);
       }),
     ];
     subscriptions.forEach(subscription => { void subscription.catch(reason => {
@@ -63,7 +87,8 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
     }); });
     return () => {
       disposed = true;
-      const id = request.current;
+      sequence.current++;
+      const id = pending.current?.id;
       request.current = null;
       if (id) void journalApi.cancel(id, "view_disposed").catch(() => {});
       subscriptions.forEach(subscription => { void subscription.then(unlisten => unlisten()).catch(() => {}); });

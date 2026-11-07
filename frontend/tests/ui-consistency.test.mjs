@@ -15,6 +15,25 @@ const evaluate = code => JSON.parse(browser("eval", code));
 const click = name => browser("find", "role", "button", "click", "--name", name, "--exact");
 const wait = code => browser("wait", "--fn", code);
 
+test("feedback group stays visible in the draggable title and opens the supplied invite from About", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html?desktop`);
+    browser("set", "viewport", "1000", "680");
+    wait("!!document.querySelector('.window-feedback-group')");
+    assert.equal(evaluate("document.querySelector('.window-feedback-group').textContent"), "QQ 反馈群 · 1131511789");
+    assert.equal(evaluate("document.querySelector('.window-feedback-group').hasAttribute('data-tauri-drag-region')"), true);
+    assert.equal(evaluate("document.querySelector('.window-title').getBoundingClientRect().right < document.querySelector('.window-controls').getBoundingClientRect().left"), true);
+    click("设置"); wait("!!document.querySelector('.about-links')");
+    const href = evaluate("document.querySelector('.about-links a[href^=\"https://qun.qq.com/\"]').href");
+    const url = new URL(href);
+    assert.equal(url.pathname, "/universal-share/share");
+    assert.equal(JSON.parse(Buffer.from(url.searchParams.get("busi_data"), "base64").toString()).groupCode, "1131511789");
+    browser("find", "role", "link", "click", "--name", "QQ 反馈群 · 1131511789");
+    assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='open_release_link').at(-1).args.url"), href);
+    assert.equal(evaluate("document.documentElement.scrollWidth<=window.innerWidth"), true);
+  } finally { browser("close"); }
+});
+
 test("runtime logs show concise summaries and expandable searchable developer details", () => {
   try {
     browser("open", `${origin}/tests/launcher-harness.html?desktop`);

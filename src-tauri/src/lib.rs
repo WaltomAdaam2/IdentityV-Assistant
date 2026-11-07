@@ -25,6 +25,10 @@ use tauri_plugin_global_shortcut::ShortcutState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            desktop::show_main_window(app);
+            logs::record(app, "info", "app.lifecycle", "重复启动，显示已有窗口 / Restoring existing instance", json!({}));
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -72,8 +76,7 @@ pub fn run() {
             launcher::manager::configure_login_component,
             launcher::manager::cancel_game_launch,
             launcher::manager::check_login_updates,
-            launcher::manager::apply_login_hotfixes,
-            launcher::manager::open_login_update,
+            launcher::manager::install_login_update,
             launcher_news::get_game_announcements,
             launcher_news::open_game_announcement,
             desktop::open_logs_directory,
@@ -124,8 +127,9 @@ pub fn run() {
             logs::record(app.handle(), "info", "app.lifecycle", "助手启动 / Assistant starting", json!({"version":env!("CARGO_PKG_VERSION")}));
             let settings = config::load().map_err(std::io::Error::other)?;
             window_size::restore(app.handle()).map_err(std::io::Error::other)?;
-            desktop::create_tray(app.handle())?;
             launcher::manager::start_monitor(app.handle().clone());
+            let maps_app = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || { let _ = journal::ensure_builtins(&maps_app); });
             if let Err(error) = desktop::initialize(app.handle(), &settings) {
                 logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"DESKTOP_SETTINGS_FAILED","message":error,"recoverable":true,"details":{}}));
             }
@@ -147,12 +151,9 @@ pub fn run() {
             if matches!(event, tauri::WindowEvent::Resized(_)) {
                 window_size::resized(window);
             }
-            let minimize_to_tray = window.state::<desktop::DesktopSettings>().tray.load(std::sync::atomic::Ordering::Relaxed);
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if minimize_to_tray {
-                    let _ = window.hide();
-                } else {
+                if !window.app_handle().state::<launcher::Launcher>().update_busy() {
                     desktop::quit(window.app_handle());
                 }
             }

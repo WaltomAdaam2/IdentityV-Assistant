@@ -9,7 +9,6 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 #[derive(Default)]
 pub struct DesktopSettings {
     hotkey: Mutex<Option<String>>,
-    pub tray: AtomicBool,
     quitting: AtomicBool,
 }
 
@@ -18,7 +17,7 @@ pub fn minimize_to_taskbar(window: tauri::WebviewWindow) -> Result<(), String> {
     window.minimize().map_err(|error| error.to_string())
 }
 
-fn preferences(settings: &Value) -> Result<(String, u64, bool, bool), String> {
+fn preferences(settings: &Value) -> Result<(String, u64, bool), String> {
     let hotkey = settings["app"]["engine_hotkey"]
         .as_str()
         .unwrap_or("F3")
@@ -37,22 +36,20 @@ fn preferences(settings: &Value) -> Result<(String, u64, bool, bool), String> {
         settings["app"]["launch_on_login"]
             .as_bool()
             .unwrap_or(false),
-        settings["app"]["minimize_to_tray"]
-            .as_bool()
-            .unwrap_or(false),
     ))
 }
 
 pub fn initialize(app: &AppHandle, settings: &Value) -> Result<(), String> {
-    let (hotkey, scale, startup, tray) = preferences(settings)?;
+    let (hotkey, scale, startup) = preferences(settings)?;
     let mut errors = Vec::new();
-    match app.global_shortcut().register(hotkey.as_str()) {
+    match crate::journal_shortcut::validate(settings).and_then(|_| {
+        app.global_shortcut()
+            .register(hotkey.as_str())
+            .map_err(|error| error.to_string())
+    }) {
         Ok(()) => *app.state::<DesktopSettings>().hotkey.lock().unwrap() = Some(hotkey),
         Err(error) => errors.push(format!("无法注册快捷键 {hotkey}：{error}")),
     }
-    app.state::<DesktopSettings>()
-        .tray
-        .store(tray, Ordering::Relaxed);
     if let Some(window) = app.get_webview_window("main") {
         if let Err(error) = window.set_zoom(scale as f64 / 100.0) {
             errors.push(error.to_string());
@@ -73,11 +70,11 @@ pub fn initialize(app: &AppHandle, settings: &Value) -> Result<(), String> {
 
 pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
     crate::journal_shortcut::validate(settings)?;
-    let (hotkey, scale, startup, tray) = preferences(settings)?;
+    let (hotkey, scale, startup) = preferences(settings)?;
     let manager = app.state::<DesktopSettings>();
     let mut registered = manager.hotkey.lock().unwrap();
     let old = crate::config::load()?;
-    let (old_hotkey, old_scale, old_startup, _) = preferences(&old)?;
+    let (old_hotkey, old_scale, old_startup) = preferences(&old)?;
     // A failed startup registration must not block unrelated setting saves.
     // Retry registration when the user actually chooses another shortcut.
     let changed = registered.as_deref().unwrap_or(&old_hotkey) != hotkey;
@@ -140,7 +137,6 @@ pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
         }
         *registered = Some(hotkey);
     }
-    manager.tray.store(tray, Ordering::Relaxed);
     crate::journal_shortcut::configure(settings)?;
     let mut changes = Vec::new();
     crate::support::differences(&old, settings, "settings", &mut changes);
@@ -284,56 +280,12 @@ pub fn quit(app: &AppHandle) {
     });
 }
 
-fn handle_tray_click(event: tauri::tray::TrayIconEvent, restore: impl FnOnce()) {
-    use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
-    if matches!(
-        event,
-        TrayIconEvent::Click {
-            button: MouseButton::Left,
-            button_state: MouseButtonState::Up,
-            ..
-        } | TrayIconEvent::DoubleClick {
-            button: MouseButton::Left,
-            ..
-        }
-    ) {
-        restore();
-    }
-}
-
-fn show_main_window(app: &AppHandle) {
+pub fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
-}
-
-pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
-    use tauri::{
-        menu::{Menu, MenuItem},
-        tray::TrayIconBuilder,
-    };
-    let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-    let exit = MenuItem::with_id(app, "exit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &exit])?;
-    let mut tray = TrayIconBuilder::with_id("main")
-        .tooltip("Identity V Assistant")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_tray_icon_event(|tray, event| {
-            handle_tray_click(event, || show_main_window(tray.app_handle()));
-        })
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => show_main_window(app),
-            "exit" => quit(app),
-            _ => {}
-        });
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
-    }
-    tray.build(app)?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -367,45 +319,10 @@ fn open_diagnostic_directory(folder: std::path::PathBuf) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn left_click_and_double_click_request_restore_but_right_click_does_not() {
-        use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
-        let rect = tauri::Rect {
-            position: tauri::PhysicalPosition::new(0, 0).into(),
-            size: tauri::PhysicalSize::new(16, 16).into(),
-        };
-        let click = |button, button_state| TrayIconEvent::Click {
-            id: "main".into(),
-            position: tauri::PhysicalPosition::new(0.0, 0.0),
-            rect,
-            button,
-            button_state,
-        };
-        let double_click = |button| TrayIconEvent::DoubleClick {
-            id: "main".into(),
-            position: tauri::PhysicalPosition::new(0.0, 0.0),
-            rect,
-            button,
-        };
-        for (event, expected) in [
-            (click(MouseButton::Left, MouseButtonState::Up), true),
-            (double_click(MouseButton::Left), true),
-            (click(MouseButton::Left, MouseButtonState::Down), false),
-            (click(MouseButton::Right, MouseButtonState::Up), false),
-            (double_click(MouseButton::Right), false),
-        ] {
-            let mut restored = false;
-            handle_tray_click(event, || restored = true);
-            assert_eq!(restored, expected);
-        }
-    }
     use serde_json::json;
     #[test]
     fn validates_preferences_and_task_user_scope() {
-        assert_eq!(
-            preferences(&json!({})).unwrap(),
-            ("F3".into(), 100, false, false)
-        );
+        assert_eq!(preferences(&json!({})).unwrap(), ("F3".into(), 100, false));
         assert!(preferences(&json!({"app":{"engine_hotkey":"bad key"}})).is_err());
         assert!(preferences(&json!({"app":{"ui_scale_percent":200}})).is_err());
         let xml = startup_xml("S-1-5-21", "C:\\a & b\\app.exe");

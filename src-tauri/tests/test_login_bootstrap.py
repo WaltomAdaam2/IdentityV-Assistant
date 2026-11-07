@@ -13,6 +13,29 @@ spec.loader.exec_module(bootstrap)
 
 
 class ManagedLoginTests(unittest.TestCase):
+    def test_new_official_version_starts_without_allowlist_and_skips_its_first_use_prompt(self):
+        upstream = types.ModuleType("main")
+        upstream.CLI_ARGS = types.SimpleNamespace(uri="", open_ui=False)
+        upstream.genv = Mock()
+        upstream.hotfixmgr = types.SimpleNamespace()
+        upstream.main = Mock()
+        upstream.handle_exit = Mock()
+        upstream_spec = types.SimpleNamespace(loader=types.SimpleNamespace(exec_module=lambda module: None))
+        modules = {
+            "buildinfo": types.SimpleNamespace(VERSION="v6.3.3-beta"),
+            "logutil": types.SimpleNamespace(logger=Mock()),
+            "certmgr": types.SimpleNamespace(certmgr=types.SimpleNamespace()),
+        }
+        cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                with patch.dict(os.environ, {"PROGRAMDATA": directory, "IDV_ASSISTANT_SRC": directory}), patch.dict(sys.modules, modules), patch.object(importlib.util, "spec_from_file_location", return_value=upstream_spec), patch.object(importlib.util, "module_from_spec", return_value=upstream), patch.object(bootstrap.threading.Thread, "start"), patch.object(bootstrap, "emit"), patch.object(bootstrap, "stage"):
+                    bootstrap.main()
+                    upstream.main.assert_called_once_with(upstream.CLI_ARGS)
+                    upstream.genv.set.assert_any_call("v6.3.3-beta_first_use", False, True)
+            finally:
+                os.chdir(cwd)
+
     @unittest.skipUnless(os.environ.get("IDV_OFFICIAL_ROOT"), "official runtime is optional")
     def test_adapter_loads_real_official_modules_without_starting_login(self):
         official = Path(os.environ["IDV_OFFICIAL_ROOT"])

@@ -26,6 +26,12 @@ The application's GPL grant does not relicense those materials or user-imported
 map packs. Map-pack authors retain their rights; obtain their permission before
 redistributing their work.
 
+The map archives bundled from v0.2.0 are the supplied 2026-11-05 S0 and 2026-11-06 S1 collections.
+Their input packages, merge procedure and original-rights boundary are documented
+in [the bundled map inventory](assets/journal/README.md). Floor-selector reference
+images in `assets/templates/journal/` are crops of supplied Identity V screenshots;
+the same game-artwork rights apply.
+
 The optional OpenCV FFmpeg video plugin is excluded from this installer; image
 processing and screen capture do not require it. Shapely includes GEOS under
 LGPL-2.1. This component remains under its original license, including rights to

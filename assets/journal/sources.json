@@ -1,0 +1,1837 @@
+[
+  {
+    "pack": {
+      "id": "s0_nightmare_maps",
+      "name": "S0噩梦地图",
+      "season_id": "s0",
+      "season_name": "S0 厄运之女",
+      "version": "1.0.0",
+      "difficulty": "nightmare",
+      "maps": [
+        {
+          "index": 1,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_1/recog_1.png",
+            "2": "triple_1/recog_2.png",
+            "b1f": "triple_1/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 2,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_2/recog_1.png",
+            "2": "triple_2/recog_2.png",
+            "b1f": "triple_2/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 3,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_3/recog_1.png",
+            "2": "triple_3/recog_2.png",
+            "b1f": "triple_3/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 4,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_4/recog_1.png",
+            "2": "triple_4/recog_2.png",
+            "b1f": "triple_4/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 5,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_5/recog_1.png",
+            "2": "triple_5/recog_2.png",
+            "b1f": "triple_5/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 6,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_6/recog_1.png",
+            "2": "triple_6/recog_2.png",
+            "b1f": "triple_6/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 7,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_7/recog_1.png",
+            "2": "triple_7/recog_2.png",
+            "b1f": "triple_7/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 8,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_8/recog_1.png",
+            "2": "triple_8/recog_2.png",
+            "b1f": "triple_8/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 9,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_1/recog_1.png",
+            "2": "lf_1/recog_2.png",
+            "b1f": "lf_1/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 10,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_2/recog_1.png",
+            "2": "lf_2/recog_2.png",
+            "b1f": "lf_2/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 11,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_3/recog_1.png",
+            "2": "lf_3/recog_2.png",
+            "b1f": "lf_3/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 12,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_4/recog_1.png",
+            "2": "lf_4/recog_2.png",
+            "b1f": "lf_4/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 13,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_5/recog_1.png",
+            "2": "lf_5/recog_2.png",
+            "b1f": "lf_5/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 14,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_1/recog_1.png",
+            "2": "rf_1/recog_2.png",
+            "b1f": "rf_1/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 15,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_2/recog_1.png",
+            "2": "rf_2/recog_2.png",
+            "b1f": "rf_2/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 16,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_3/recog_1.png",
+            "2": "rf_3/recog_2.png",
+            "b1f": "rf_3/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 17,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_4/recog_1.png",
+            "2": "rf_4/recog_2.png",
+            "b1f": "rf_4/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 18,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_5/recog_1.png",
+            "2": "rf_5/recog_2.png",
+            "b1f": "rf_5/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 19,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_6/recog_1.png",
+            "2": "rf_6/recog_2.png",
+            "b1f": "rf_6/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 20,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_1/recog_1.png",
+            "2": "lr_1/recog_2.png",
+            "b1f": "lr_1/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 21,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_2/recog_1.png",
+            "2": "lr_2/recog_2.png",
+            "b1f": "lr_2/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 22,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_3/recog_1.png",
+            "2": "lr_3/recog_2.png",
+            "b1f": "lr_3/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 23,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_4/recog_1.png",
+            "2": "lr_4/recog_2.png",
+            "b1f": "lr_4/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 24,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_5/recog_1.png",
+            "2": "lr_5/recog_2.png",
+            "b1f": "lr_5/recog_3.png"
+          },
+          "display": {}
+        }
+      ]
+    },
+    "files": {
+      "lf_1/recog_1.png": "0b755733bf7936c39a2693335bfef3e472b0a63c86e994830d242721e37af67d",
+      "lf_1/recog_2.png": "8688efceff07a8eee52d1ddf6fc734ece2430808fe01b8bd67a2944ff70b9c38",
+      "lf_1/recog_3.png": "04aade9641880fada1423d34c0e8b44a824916d1da34f534d89600c3b7997eda",
+      "lf_2/recog_1.png": "c8c043eb69d873ea45d874e80da07858c706a9a1de5b244b9908426b682c9336",
+      "lf_2/recog_2.png": "23b6a279ac27704df28f9cfeed56e75ce8009834e3a8db741ed9b0f9ac7cc241",
+      "lf_2/recog_3.png": "acbbeeb9fb045e5786b90d933efbfae1f58b5a5a14a8028bcc1e5e41aa549983",
+      "lf_3/recog_1.png": "f3db491a9dd981bc1c2ab127d8d2a24e6285c50c1c822ce980f77e337f429240",
+      "lf_3/recog_2.png": "ed6b139faffb8df69db6661ea97687860fe4b1e833a0be9783a66371eb8d1d43",
+      "lf_3/recog_3.png": "499fe84bdc226f8ac81ac4fef7d91193c593fe32abf5cb94308945935b1579f9",
+      "lf_4/recog_1.png": "4fce7500065933ac2c7ee46c86a5f8d10ee2174415a8ab379b2e971f2de37db2",
+      "lf_4/recog_2.png": "31aab38e66de93352989a0214a6e8fc31c3cb3e0d598e1707f28166142108cce",
+      "lf_4/recog_3.png": "8dde248fdb68ea4afeba8efca6ed2c7643f54ae34409036721425b6039b286b7",
+      "lf_5/recog_1.png": "dc2b0b71d2b21af50fb3280489a312ec7fa61a547d8206ea3b48e2dac050af8c",
+      "lf_5/recog_2.png": "5c1c1392ccb66232c06e0c8bf6efc9371c7c4fa82e2c25e3577a3ec2a59ce89c",
+      "lf_5/recog_3.png": "fe2fbfcc0df5e6b5829653f9738859e92798de533ae84d8a6b8f8f7c1ed5dae8",
+      "lr_1/recog_1.png": "d11346caae98a6614dba4c6c9c8d474ae1f26fae7aa04da5ee919c7c0c789b21",
+      "lr_1/recog_2.png": "6646b8649f5ac9e140cfe2ada847e1ebdffcbee7d075189e01b3edbb0a0edc1f",
+      "lr_1/recog_3.png": "ebf7a65cbf8b8cfa12c72e3d90eead6385ecc8d8cbbd16b12044798529866ae0",
+      "lr_2/recog_1.png": "5f9ae90f8d4406ccfa29e068c4a1df2db1628191a15c3c72dab2d3b420376422",
+      "lr_2/recog_2.png": "39b5b2e5284775425eb5930ca0a8a62f511195c27c7005e53592ef60e6eb5766",
+      "lr_2/recog_3.png": "d4c57a357cf48f2e5838d164049396d0e73d3407048b0eeeea5a3f9d856d0246",
+      "lr_3/recog_1.png": "8fb71aa313cecf3de4311da2de8a229bbaba668de5a51eb48bb27de858ac2e7f",
+      "lr_3/recog_2.png": "6d427cd4731ba15936cf7501cb1e481623ff9be045f308618ccda6c52dcaf628",
+      "lr_3/recog_3.png": "0a94070a1cd8654c904ed3a9a81b88b01667ae17f3672a40b1fadf7674354fe7",
+      "lr_4/recog_1.png": "516576d27a57f44dd6dc7aca0fe64b2d7a27647d438737f1a04f62b16e76b98e",
+      "lr_4/recog_2.png": "0387b5f006b878ea26c1e44d6ebb9153b6377ad4217782ff5019b05e76c85b80",
+      "lr_4/recog_3.png": "1186cb95738256a37aa4620d12714dfa4199e47e4cb92a8059b07a02870eacf6",
+      "lr_5/recog_1.png": "58314df9f97c5bea69f94c5fcab91632e65d2b477c25e4782afd1f4e59acd222",
+      "lr_5/recog_2.png": "48ac041c6ac67ac712c4a2f5e8af002de545928a5075f007f93733fdc2074cdd",
+      "lr_5/recog_3.png": "0cd73696e2fc6f5b840b773d72777af7244913119fc7072fd926c1c936a52708",
+      "rf_1/recog_1.png": "f1154a273c938056c1a3bcd7591332fb8a538fe1b3a6a9cc96168de70c86538e",
+      "rf_1/recog_2.png": "f0bdf88318c5d932a1f072c9541176f994f30029fdb48a4129808ff6a7619bcf",
+      "rf_1/recog_3.png": "703b97dd90a9d53cc3171bed60e186729e4000bd7f773ea0cc1e04e6026cbe9b",
+      "rf_2/recog_1.png": "c587cc3fcb869912297ea9d2dcc4f9dfbad4c8ba8f0c226bcef0886eb1fcae09",
+      "rf_2/recog_2.png": "2f462317bb4ad53b2b99a4fee37d20a4af994273066b80c0fb340391d1d3c7b2",
+      "rf_2/recog_3.png": "35bf9d3881b3882aa63a636d19f65edf6283fda27349c4fa11a0db369dc98499",
+      "rf_3/recog_1.png": "a3a7c922abbec91d2fbfcb418efd1fed19df02d246499b5848f1eac7ee2f09b6",
+      "rf_3/recog_2.png": "812b468421763e7f311869e2d166a38a5d51458994d05c32af7117142e10ad2d",
+      "rf_3/recog_3.png": "18d9608ea1d843123aa685f3c50804632c880a32879c185d3b48978df44dc285",
+      "rf_4/recog_1.png": "c820ce72a73a9abfe1cf54f448bef2f1e8b1813ed04a8487892d49a842dcf243",
+      "rf_4/recog_2.png": "971d07fc074fbcc35d9cd536c2244b1255ecae0df340c1471e40a069c59aa03c",
+      "rf_4/recog_3.png": "6d509696ae0e6bd03edd878765dea9e6550ce315f78b4c3c046ca9be99311e5b",
+      "rf_5/recog_1.png": "634c76f91280bd4d2efd2b0c651637c483e3d43172bcae217c3efdfe02734e3c",
+      "rf_5/recog_2.png": "c4ddbc8002447b85486528ca04197762cbaf2a5ca457a6d1536032b43a24a481",
+      "rf_5/recog_3.png": "dc51f334bb6ec23ad33b0c4102a6d09dba7225c0d0b7d8b631da2fb457c30766",
+      "rf_6/recog_1.png": "d1f959255797c39f5bf1677fc24007b1f3a487f62a033994a1569344d2215586",
+      "rf_6/recog_2.png": "914750e8f09b06c984da06ebf948a361a7b78280f6edcb15c455899b540d57c8",
+      "rf_6/recog_3.png": "13bae1ada1cec9d495e1877c584d94fbeade0b165f944f0a78ff100ee2e92bc7",
+      "triple_1/recog_1.png": "9ebd76ed18ad6100ad3809e3fd6df8524723cc435b7b4c49273c7fafe232b4fc",
+      "triple_1/recog_2.png": "2bac907594c65ae6bdd9cd7d2baafd8f77e2c694a7578bde5578047f1a9e2f87",
+      "triple_1/recog_3.png": "c0c587c27e3da89cd84a7f814585a5bc25f53ee5533072fab941c5d4d2f551b5",
+      "triple_2/recog_1.png": "885ff1b60241ba818386f766857fcb8981078087fbf11d6a7028540ad4bc99b0",
+      "triple_2/recog_2.png": "7e91417a14f1bf007699d36cdb1efcf73f78757764e97271c5024bdc2b435f01",
+      "triple_2/recog_3.png": "e9d1eb71573fdc859949421c1ae0b89a0a97020a9f94ee90a85bf833bb7240a7",
+      "triple_3/recog_1.png": "a702d0ece442538fa2db603cf7deb98771f36c7b669f2e3115784de6f243040f",
+      "triple_3/recog_2.png": "7c5c3718cd0f17a38a4e1fc657423517f8fe146d712b7805ddd34b81bab5fa3c",
+      "triple_3/recog_3.png": "c2d32c2220d6ac9daf44c722672b727fe2e358352ccb9260ef819a995dbda466",
+      "triple_4/recog_1.png": "5d86f9eb93c909bfb44afaad19efadcd0fe4d67ba83f2a3b33032773e1f51ded",
+      "triple_4/recog_2.png": "ba265c5d12d9f9eff506e7414a0229c2dd9bd73a6a492693e0876f8d2b0dd52f",
+      "triple_4/recog_3.png": "9f600253ad45236d7dcdfbb72bf347d008eac050a64b14ee70f9ae8c2c92b866",
+      "triple_5/recog_1.png": "1e03fcdd640f55b3c59e5969528f0aed9513bd16dbda77ee403432e9f2508107",
+      "triple_5/recog_2.png": "936a3b0873b54334ea056f0b3b7a1631e706c1db03d62ca5e8eb24d4bc7451be",
+      "triple_5/recog_3.png": "8b1ec9f753e67af048a776860bdfe57042f2c4c10f8ffbe66de0788add50b2c6",
+      "triple_6/recog_1.png": "9748b18049564226e35aadb3956fc1572605eb8b6f2120886d6779c5876d2348",
+      "triple_6/recog_2.png": "928dfe426daaa078e3f24d54d17218307181ab5f1542b5e253769ccbcb9728ed",
+      "triple_6/recog_3.png": "42082fd84d70f3305406a640ecb85158e49340d8c5d9b65024e62c2bf2ab5d79",
+      "triple_7/recog_1.png": "c50df05b1ae3e315e6a919137668551defd32332f9eb4d2c2cfd91171518d234",
+      "triple_7/recog_2.png": "97ead34acc6cc5c8267acf83a25319d1cefe9ab5f28303f2be3b1b85cd5c564b",
+      "triple_7/recog_3.png": "74956721994d5f903ca68764b0ec5fda34dc75d77859ba7e3ea62ab6b7a86c63",
+      "triple_8/recog_1.png": "7284e8caaf6723f1b34214e990eed6d1cf1dd1d7363fdc95ed6d017751d1829c",
+      "triple_8/recog_2.png": "4e0394534c8d31793b6cd8a5e7a3a1feca224b324688248c0964e0a9b86ad398",
+      "triple_8/recog_3.png": "8b3a9fcbf5c57ca1d09b20d167fec822ba0152e36e43082bc9d8b514870b6da2"
+    }
+  },
+  {
+    "pack": {
+      "id": "s0_nightmare_speedrun",
+      "name": "s0噩梦速刷图",
+      "season_id": "s0",
+      "season_name": "S0 厄运之女",
+      "version": "1.0.0",
+      "difficulty": "nightmare",
+      "maps": [
+        {
+          "index": 1,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_1/recog_1.png",
+            "2": "triple_1/recog_2.png",
+            "b1f": "triple_1/recog_3.png"
+          },
+          "display": {
+            "1": "triple_1/display_1.png",
+            "2": "triple_1/display_2.png",
+            "b1f": "triple_1/display_3.png"
+          }
+        },
+        {
+          "index": 2,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_2/recog_1.png",
+            "2": "triple_2/recog_2.png",
+            "b1f": "triple_2/recog_3.png"
+          },
+          "display": {
+            "1": "triple_2/display_1.png",
+            "2": "triple_2/display_2.png",
+            "b1f": "triple_2/display_3.png"
+          }
+        },
+        {
+          "index": 3,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_3/recog_1.png",
+            "2": "triple_3/recog_2.png",
+            "b1f": "triple_3/recog_3.png"
+          },
+          "display": {
+            "1": "triple_3/display_1.png",
+            "2": "triple_3/display_2.png",
+            "b1f": "triple_3/display_3.png"
+          }
+        },
+        {
+          "index": 4,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_4/recog_1.png",
+            "2": "triple_4/recog_2.png",
+            "b1f": "triple_4/recog_3.png"
+          },
+          "display": {
+            "1": "triple_4/display_1.png",
+            "2": "triple_4/display_2.png",
+            "b1f": "triple_4/display_3.png"
+          }
+        },
+        {
+          "index": 5,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_5/recog_1.png",
+            "2": "triple_5/recog_2.png",
+            "b1f": "triple_5/recog_3.png"
+          },
+          "display": {
+            "1": "triple_5/display_1.png",
+            "2": "triple_5/display_2.png",
+            "b1f": "triple_5/display_3.png"
+          }
+        },
+        {
+          "index": 6,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_6/recog_1.png",
+            "2": "triple_6/recog_2.png",
+            "b1f": "triple_6/recog_3.png"
+          },
+          "display": {
+            "1": "triple_6/display_1.png",
+            "2": "triple_6/display_2.png",
+            "b1f": "triple_6/display_3.png"
+          }
+        },
+        {
+          "index": 7,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_7/recog_1.png",
+            "2": "triple_7/recog_2.png",
+            "b1f": "triple_7/recog_3.png"
+          },
+          "display": {
+            "1": "triple_7/display_1.png",
+            "2": "triple_7/display_2.png",
+            "b1f": "triple_7/display_3.png"
+          }
+        },
+        {
+          "index": 8,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_8/recog_1.png",
+            "2": "triple_8/recog_2.png",
+            "b1f": "triple_8/recog_3.png"
+          },
+          "display": {
+            "1": "triple_8/display_1.png",
+            "2": "triple_8/display_2.png",
+            "b1f": "triple_8/display_3.png"
+          }
+        },
+        {
+          "index": 9,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_1/recog_1.png",
+            "2": "lf_1/recog_2.png",
+            "b1f": "lf_1/recog_3.png"
+          },
+          "display": {
+            "1": "lf_1/display_1.png",
+            "2": "lf_1/display_2.png",
+            "b1f": "lf_1/display_3.png"
+          }
+        },
+        {
+          "index": 10,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_2/recog_1.png",
+            "2": "lf_2/recog_2.png",
+            "b1f": "lf_2/recog_3.png"
+          },
+          "display": {
+            "1": "lf_2/display_1.png",
+            "2": "lf_2/display_2.png",
+            "b1f": "lf_2/display_3.png"
+          }
+        },
+        {
+          "index": 11,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_3/recog_1.png",
+            "2": "lf_3/recog_2.png",
+            "b1f": "lf_3/recog_3.png"
+          },
+          "display": {
+            "1": "lf_3/display_1.png",
+            "2": "lf_3/display_2.png",
+            "b1f": "lf_3/display_3.png"
+          }
+        },
+        {
+          "index": 12,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_4/recog_1.png",
+            "2": "lf_4/recog_2.png",
+            "b1f": "lf_4/recog_3.png"
+          },
+          "display": {
+            "1": "lf_4/display_1.png",
+            "2": "lf_4/display_2.png",
+            "b1f": "lf_4/display_3.png"
+          }
+        },
+        {
+          "index": 13,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "1": "lf_5/recog_1.png",
+            "2": "lf_5/recog_2.png",
+            "b1f": "lf_5/recog_3.png"
+          },
+          "display": {
+            "1": "lf_5/display_1.png",
+            "2": "lf_5/display_2.png",
+            "b1f": "lf_5/display_3.png"
+          }
+        },
+        {
+          "index": 14,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_1/recog_1.png",
+            "2": "rf_1/recog_2.png",
+            "b1f": "rf_1/recog_3.png"
+          },
+          "display": {
+            "1": "rf_1/display_1.png",
+            "2": "rf_1/display_2.png",
+            "b1f": "rf_1/display_3.png"
+          }
+        },
+        {
+          "index": 15,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_2/recog_1.png",
+            "2": "rf_2/recog_2.png",
+            "b1f": "rf_2/recog_3.png"
+          },
+          "display": {
+            "1": "rf_2/display_1.png",
+            "2": "rf_2/display_2.png",
+            "b1f": "rf_2/display_3.png"
+          }
+        },
+        {
+          "index": 16,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_3/recog_1.png",
+            "2": "rf_3/recog_2.png",
+            "b1f": "rf_3/recog_3.png"
+          },
+          "display": {
+            "1": "rf_3/display_1.png",
+            "2": "rf_3/display_2.png",
+            "b1f": "rf_3/display_3.png"
+          }
+        },
+        {
+          "index": 17,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_4/recog_1.png",
+            "2": "rf_4/recog_2.png",
+            "b1f": "rf_4/recog_3.png"
+          },
+          "display": {
+            "1": "rf_4/display_1.png",
+            "2": "rf_4/display_2.png",
+            "b1f": "rf_4/display_3.png"
+          }
+        },
+        {
+          "index": 18,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_5/recog_1.png",
+            "2": "rf_5/recog_2.png",
+            "b1f": "rf_5/recog_3.png"
+          },
+          "display": {
+            "1": "rf_5/display_1.png",
+            "2": "rf_5/display_2.png",
+            "b1f": "rf_5/display_3.png"
+          }
+        },
+        {
+          "index": 19,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "1": "rf_6/recog_1.png",
+            "2": "rf_6/recog_2.png",
+            "b1f": "rf_6/recog_3.png"
+          },
+          "display": {
+            "1": "rf_6/display_1.png",
+            "2": "rf_6/display_2.png",
+            "b1f": "rf_6/display_3.png"
+          }
+        },
+        {
+          "index": 20,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_1/recog_1.png",
+            "2": "lr_1/recog_2.png",
+            "b1f": "lr_1/recog_3.png"
+          },
+          "display": {
+            "1": "lr_1/display_1.png",
+            "2": "lr_1/display_2.png",
+            "b1f": "lr_1/display_3.png"
+          }
+        },
+        {
+          "index": 21,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_2/recog_1.png",
+            "2": "lr_2/recog_2.png",
+            "b1f": "lr_2/recog_3.png"
+          },
+          "display": {
+            "1": "lr_2/display_1.png",
+            "2": "lr_2/display_2.png",
+            "b1f": "lr_2/display_3.png"
+          }
+        },
+        {
+          "index": 22,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_3/recog_1.png",
+            "2": "lr_3/recog_2.png",
+            "b1f": "lr_3/recog_3.png"
+          },
+          "display": {
+            "1": "lr_3/display_1.png",
+            "2": "lr_3/display_2.png",
+            "b1f": "lr_3/display_3.png"
+          }
+        },
+        {
+          "index": 23,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_4/recog_1.png",
+            "2": "lr_4/recog_2.png",
+            "b1f": "lr_4/recog_3.png"
+          },
+          "display": {
+            "1": "lr_4/display_1.png",
+            "2": "lr_4/display_2.png",
+            "b1f": "lr_4/display_3.png"
+          }
+        },
+        {
+          "index": 24,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "1": "lr_5/recog_1.png",
+            "2": "lr_5/recog_2.png",
+            "b1f": "lr_5/recog_3.png"
+          },
+          "display": {
+            "1": "lr_5/display_1.png",
+            "2": "lr_5/display_2.png",
+            "b1f": "lr_5/display_3.png"
+          }
+        }
+      ]
+    },
+    "files": {
+      "lf_1/display_1.png": "bb31c92710f767ed978f90a79e0aa4972fee57413f665e1fcc7456a64088048d",
+      "lf_1/display_2.png": "a84899691693902057381736338fe219f77c6425773b2eb1d3eb3312b8a5e28d",
+      "lf_1/display_3.png": "12540a2530fc81adbd781bb4dc221a070e5cd2dfbf2e931ab43bd44e8e213f46",
+      "lf_1/recog_1.png": "0b755733bf7936c39a2693335bfef3e472b0a63c86e994830d242721e37af67d",
+      "lf_1/recog_2.png": "8688efceff07a8eee52d1ddf6fc734ece2430808fe01b8bd67a2944ff70b9c38",
+      "lf_1/recog_3.png": "04aade9641880fada1423d34c0e8b44a824916d1da34f534d89600c3b7997eda",
+      "lf_2/display_1.png": "b294a42932494b619475844934066989e302598f3fd134c15d4272da70c0c37d",
+      "lf_2/display_2.png": "5fb5cca832de5e9cf99acbc026858ca575f667168a8b5f02cd64867fd04dae29",
+      "lf_2/display_3.png": "538948c61baa6d881d2b5c0f55ad02ba7ba071a05da71c7e63d78cfa245b64e2",
+      "lf_2/recog_1.png": "c8c043eb69d873ea45d874e80da07858c706a9a1de5b244b9908426b682c9336",
+      "lf_2/recog_2.png": "23b6a279ac27704df28f9cfeed56e75ce8009834e3a8db741ed9b0f9ac7cc241",
+      "lf_2/recog_3.png": "acbbeeb9fb045e5786b90d933efbfae1f58b5a5a14a8028bcc1e5e41aa549983",
+      "lf_3/display_1.png": "06134ee3d334559551fda69f775abf2a2ef1d292c38341ad5210e139012d05f2",
+      "lf_3/display_2.png": "4c7238287bfd9780c64c3b154ef1950826cfa8ff34f7488712440e08672ea065",
+      "lf_3/display_3.png": "083f0ca7d159fb991f32f12ad46c82462bc2ceb2b373425f2e2f1644ca958d13",
+      "lf_3/recog_1.png": "f3db491a9dd981bc1c2ab127d8d2a24e6285c50c1c822ce980f77e337f429240",
+      "lf_3/recog_2.png": "ed6b139faffb8df69db6661ea97687860fe4b1e833a0be9783a66371eb8d1d43",
+      "lf_3/recog_3.png": "499fe84bdc226f8ac81ac4fef7d91193c593fe32abf5cb94308945935b1579f9",
+      "lf_4/display_1.png": "039c1d6f7fbc4499287188324b64e3a0e3a36a487539595b0fc09d013201a1cc",
+      "lf_4/display_2.png": "6e858ed6dab903ef4664f3d32df2c958fa1b1924bcb2c16bcf9673ccc863ec37",
+      "lf_4/display_3.png": "c5cd8bd93577c378330f05c4a69c8c26b5d194ca6fd112f83cc6821a7ef62aec",
+      "lf_4/recog_1.png": "4fce7500065933ac2c7ee46c86a5f8d10ee2174415a8ab379b2e971f2de37db2",
+      "lf_4/recog_2.png": "31aab38e66de93352989a0214a6e8fc31c3cb3e0d598e1707f28166142108cce",
+      "lf_4/recog_3.png": "8dde248fdb68ea4afeba8efca6ed2c7643f54ae34409036721425b6039b286b7",
+      "lf_5/display_1.png": "998fafecfa678f513e30a9b4536d267002dfce6ab66babbeb1e779ed6e3a2799",
+      "lf_5/display_2.png": "b31f4a0ae26554e676dac28fdb541bc12076c32f2276cdc2d992eeea2f6f1561",
+      "lf_5/display_3.png": "6ecdf01ba27a37ebb1528df01777d510fe42c30aaa5c08f6f063edb0a65fbd63",
+      "lf_5/recog_1.png": "dc2b0b71d2b21af50fb3280489a312ec7fa61a547d8206ea3b48e2dac050af8c",
+      "lf_5/recog_2.png": "5c1c1392ccb66232c06e0c8bf6efc9371c7c4fa82e2c25e3577a3ec2a59ce89c",
+      "lf_5/recog_3.png": "fe2fbfcc0df5e6b5829653f9738859e92798de533ae84d8a6b8f8f7c1ed5dae8",
+      "lr_1/display_1.png": "f2530c47eb0f3f6df61f7e2aba843f656f43b49e479a1bb6d201a16a5a89b2f0",
+      "lr_1/display_2.png": "d9b6641b9eecf1cb4ba6104257accbc973b73e72ba334f4888b420be2b85bacb",
+      "lr_1/display_3.png": "f547a06e739cf00f3fc750b55b4c1a11d6e988842af8085a006337e66c5f78ee",
+      "lr_1/recog_1.png": "d11346caae98a6614dba4c6c9c8d474ae1f26fae7aa04da5ee919c7c0c789b21",
+      "lr_1/recog_2.png": "6646b8649f5ac9e140cfe2ada847e1ebdffcbee7d075189e01b3edbb0a0edc1f",
+      "lr_1/recog_3.png": "ebf7a65cbf8b8cfa12c72e3d90eead6385ecc8d8cbbd16b12044798529866ae0",
+      "lr_2/display_1.png": "8bbd1822af9d03148e949bdbebad6b350d23882e9310f606f1d1ca1068df4702",
+      "lr_2/display_2.png": "c667f4b7e099ef4331545f0f15b99fd3b3122504256badbacdd956fbdc851728",
+      "lr_2/display_3.png": "bb0ca7ee404749a07e3b866ae10929fe23e510a8a397de069955006ed128fc1d",
+      "lr_2/recog_1.png": "5f9ae90f8d4406ccfa29e068c4a1df2db1628191a15c3c72dab2d3b420376422",
+      "lr_2/recog_2.png": "39b5b2e5284775425eb5930ca0a8a62f511195c27c7005e53592ef60e6eb5766",
+      "lr_2/recog_3.png": "d4c57a357cf48f2e5838d164049396d0e73d3407048b0eeeea5a3f9d856d0246",
+      "lr_3/display_1.png": "5f75870036328590d16fd3044df5f190446666fc57ea63296615d36584998e2c",
+      "lr_3/display_2.png": "edea2dece82a8eae1cd35b8f68f86f40bc51b87c1132fc516ca661a591581e26",
+      "lr_3/display_3.png": "ff15c184085f23a26ed045d6a10e794096d0f3d472d77357675dff4c44957a32",
+      "lr_3/recog_1.png": "8fb71aa313cecf3de4311da2de8a229bbaba668de5a51eb48bb27de858ac2e7f",
+      "lr_3/recog_2.png": "6d427cd4731ba15936cf7501cb1e481623ff9be045f308618ccda6c52dcaf628",
+      "lr_3/recog_3.png": "0a94070a1cd8654c904ed3a9a81b88b01667ae17f3672a40b1fadf7674354fe7",
+      "lr_4/display_1.png": "905f8815958cab5bd1b00b2488ea2aa498ff0cf007f14a9a8529d93d3a0ca0d6",
+      "lr_4/display_2.png": "e99aae10cabad50237298615f432da741fc81fc748fdf744a97d149e187aeafd",
+      "lr_4/display_3.png": "19992f4829bedaa91cfcf4f99863fad5677c523a1d2ba861139f5c0a4ab81161",
+      "lr_4/recog_1.png": "516576d27a57f44dd6dc7aca0fe64b2d7a27647d438737f1a04f62b16e76b98e",
+      "lr_4/recog_2.png": "0387b5f006b878ea26c1e44d6ebb9153b6377ad4217782ff5019b05e76c85b80",
+      "lr_4/recog_3.png": "1186cb95738256a37aa4620d12714dfa4199e47e4cb92a8059b07a02870eacf6",
+      "lr_5/display_1.png": "6bb136722def68c89ee455ac585814523d723037a08317a10ba2b51224ef5dfc",
+      "lr_5/display_2.png": "56a6879d23d6a3420d555fd9b4b41f9e2b1bdc75333d9e46015b255457021b35",
+      "lr_5/display_3.png": "fa77186500c45d347019e975ed540f1c067bc96dec4b52f224218ab7c9d69fce",
+      "lr_5/recog_1.png": "58314df9f97c5bea69f94c5fcab91632e65d2b477c25e4782afd1f4e59acd222",
+      "lr_5/recog_2.png": "48ac041c6ac67ac712c4a2f5e8af002de545928a5075f007f93733fdc2074cdd",
+      "lr_5/recog_3.png": "0cd73696e2fc6f5b840b773d72777af7244913119fc7072fd926c1c936a52708",
+      "rf_1/display_1.png": "d304f1c08534b4f0f80bd5644e3fe31ca6931fbf03a3f37633fc052c5ac159a7",
+      "rf_1/display_2.png": "01118b15ff8f7f0d575cb8b5eea5563e5b37adb3e73afac2e26ebfb23426a62e",
+      "rf_1/display_3.png": "a939c167dad9813e5d42871e101d4315849b9fb1b4de092848219c4dcf904aed",
+      "rf_1/recog_1.png": "f1154a273c938056c1a3bcd7591332fb8a538fe1b3a6a9cc96168de70c86538e",
+      "rf_1/recog_2.png": "f0bdf88318c5d932a1f072c9541176f994f30029fdb48a4129808ff6a7619bcf",
+      "rf_1/recog_3.png": "703b97dd90a9d53cc3171bed60e186729e4000bd7f773ea0cc1e04e6026cbe9b",
+      "rf_2/display_1.png": "6551cdd0a519db9c69b06eb28947b559310fca29e67a620d0f1d11ef07d10feb",
+      "rf_2/display_2.png": "4ac2864615479f4816c2211996073605c013b81b8453916473a6dd7f70a41bbf",
+      "rf_2/display_3.png": "d4435e35d192c7fd967634a8ec89dc33a807c55f8057efb2463e623f9dc47ab4",
+      "rf_2/recog_1.png": "c587cc3fcb869912297ea9d2dcc4f9dfbad4c8ba8f0c226bcef0886eb1fcae09",
+      "rf_2/recog_2.png": "2f462317bb4ad53b2b99a4fee37d20a4af994273066b80c0fb340391d1d3c7b2",
+      "rf_2/recog_3.png": "35bf9d3881b3882aa63a636d19f65edf6283fda27349c4fa11a0db369dc98499",
+      "rf_3/display_1.png": "53e5feca2130ef526283fd2700e6c9c271229dc3de00b152681e480c5eb7ca51",
+      "rf_3/display_2.png": "42019e2062056750363f7ef7ac5233ac26e5ceb0be17578ae33b6455ffb62703",
+      "rf_3/display_3.png": "0008f0abd6ded64f8f916ffb602a079141fb3a0a53cca4cd18488b8ce2ea83e8",
+      "rf_3/recog_1.png": "a3a7c922abbec91d2fbfcb418efd1fed19df02d246499b5848f1eac7ee2f09b6",
+      "rf_3/recog_2.png": "812b468421763e7f311869e2d166a38a5d51458994d05c32af7117142e10ad2d",
+      "rf_3/recog_3.png": "18d9608ea1d843123aa685f3c50804632c880a32879c185d3b48978df44dc285",
+      "rf_4/display_1.png": "a64982636acf416ae70986b9f12ed02e8e77a58a3823f39d9911455e75e2c3a4",
+      "rf_4/display_2.png": "0cd859d77d7cecd1b34e19a3880413833ba72745097f8da21a682a91c149cfca",
+      "rf_4/display_3.png": "513207f3132a3df2239e0383a9ab9b5eabfe56f6ad74cd19d93fccf57a48af52",
+      "rf_4/recog_1.png": "c820ce72a73a9abfe1cf54f448bef2f1e8b1813ed04a8487892d49a842dcf243",
+      "rf_4/recog_2.png": "971d07fc074fbcc35d9cd536c2244b1255ecae0df340c1471e40a069c59aa03c",
+      "rf_4/recog_3.png": "6d509696ae0e6bd03edd878765dea9e6550ce315f78b4c3c046ca9be99311e5b",
+      "rf_5/display_1.png": "e74870cd6398dab447bf447204268d2f19a455e3e62730f015adae02c8ca3039",
+      "rf_5/display_2.png": "72ddbaf6ac1a1a8fa3fc69085fdfb82c39def1ab64b9f495f6c57d3c785e855e",
+      "rf_5/display_3.png": "820a3851347f808d33babd19c1fa34a23d32769415f826748402a46bfe2de146",
+      "rf_5/recog_1.png": "634c76f91280bd4d2efd2b0c651637c483e3d43172bcae217c3efdfe02734e3c",
+      "rf_5/recog_2.png": "c4ddbc8002447b85486528ca04197762cbaf2a5ca457a6d1536032b43a24a481",
+      "rf_5/recog_3.png": "dc51f334bb6ec23ad33b0c4102a6d09dba7225c0d0b7d8b631da2fb457c30766",
+      "rf_6/display_1.png": "b207f0cab64d3cc43518cdcfb70f5411a999a01a7a0f2715d4b1c2ff4646fae5",
+      "rf_6/display_2.png": "5c22aca8f49cf7e19f58ac707cc398fdc95a10b3251cd15e471f81040b574669",
+      "rf_6/display_3.png": "18926eafe88015c5ba901da256f5458cf9fc6fc4f1ee907b014fa774d361d9e7",
+      "rf_6/recog_1.png": "d1f959255797c39f5bf1677fc24007b1f3a487f62a033994a1569344d2215586",
+      "rf_6/recog_2.png": "914750e8f09b06c984da06ebf948a361a7b78280f6edcb15c455899b540d57c8",
+      "rf_6/recog_3.png": "13bae1ada1cec9d495e1877c584d94fbeade0b165f944f0a78ff100ee2e92bc7",
+      "triple_1/display_1.png": "19f1e781a983092aa465f19ec8f8e188c8d9d05b2985d08e3c7d0ab28ebff1a6",
+      "triple_1/display_2.png": "26889f26fb522b4d6d0e04b191e010c28cb6a446f58d95e0e126c0f96063c80b",
+      "triple_1/display_3.png": "bbebe8685c8cf6bea263e0c21fc3c6c028948a301c3ac79fc49ff487eb0baa22",
+      "triple_1/recog_1.png": "9ebd76ed18ad6100ad3809e3fd6df8524723cc435b7b4c49273c7fafe232b4fc",
+      "triple_1/recog_2.png": "2bac907594c65ae6bdd9cd7d2baafd8f77e2c694a7578bde5578047f1a9e2f87",
+      "triple_1/recog_3.png": "c0c587c27e3da89cd84a7f814585a5bc25f53ee5533072fab941c5d4d2f551b5",
+      "triple_2/display_1.png": "807d8f6f2263665529b52ab38955e5d67fa0b91984f3fb3da402d542fd807c15",
+      "triple_2/display_2.png": "99c4abcba975979c15cc6bf20ce55e4090ff6e8cdc7121d76ffbe1ce3ba8d73f",
+      "triple_2/display_3.png": "51bbbf2af76aa42412027b851c973433a6b7f51abe71d6345c02f7211841d92a",
+      "triple_2/recog_1.png": "885ff1b60241ba818386f766857fcb8981078087fbf11d6a7028540ad4bc99b0",
+      "triple_2/recog_2.png": "7e91417a14f1bf007699d36cdb1efcf73f78757764e97271c5024bdc2b435f01",
+      "triple_2/recog_3.png": "e9d1eb71573fdc859949421c1ae0b89a0a97020a9f94ee90a85bf833bb7240a7",
+      "triple_3/display_1.png": "74e99d27fa4243de60925fa1360df66bf857600921130625f5d7c6e230af11c1",
+      "triple_3/display_2.png": "d78ff1fb7d6c4a9929e2c0f930ae17c9eff1561f032ea0ade2f3566fd274731b",
+      "triple_3/display_3.png": "c0869b89c193c18c66a9f77b2e209acf0fadfc0ff5aeaa285f1c2f342a50cc44",
+      "triple_3/recog_1.png": "a702d0ece442538fa2db603cf7deb98771f36c7b669f2e3115784de6f243040f",
+      "triple_3/recog_2.png": "7c5c3718cd0f17a38a4e1fc657423517f8fe146d712b7805ddd34b81bab5fa3c",
+      "triple_3/recog_3.png": "c2d32c2220d6ac9daf44c722672b727fe2e358352ccb9260ef819a995dbda466",
+      "triple_4/display_1.png": "434c0ddeee58b28bdd5ac9be0f1f38ef1dc3077ed34abad75bcffe88320e7349",
+      "triple_4/display_2.png": "dfc337682c5a4096861738753a9f5dac5367c8e786b674abc05a6f0cf7df64ab",
+      "triple_4/display_3.png": "185693ac892ef087ab01101108b466c14711801e28b9acef14d1229708eb392b",
+      "triple_4/recog_1.png": "5d86f9eb93c909bfb44afaad19efadcd0fe4d67ba83f2a3b33032773e1f51ded",
+      "triple_4/recog_2.png": "ba265c5d12d9f9eff506e7414a0229c2dd9bd73a6a492693e0876f8d2b0dd52f",
+      "triple_4/recog_3.png": "9f600253ad45236d7dcdfbb72bf347d008eac050a64b14ee70f9ae8c2c92b866",
+      "triple_5/display_1.png": "c87ccc92bfd1d4167db73df951c71cbffe74188e2cea3c58cfd0909bed0e6f63",
+      "triple_5/display_2.png": "8240557309dc435158f8048d7f522c0cd63e5885d8d06c2ff9acc544ba883507",
+      "triple_5/display_3.png": "7114dd571c8cdf19bf9225088e882e4b18f615633dde9aab57e4c7694b7599fb",
+      "triple_5/recog_1.png": "1e03fcdd640f55b3c59e5969528f0aed9513bd16dbda77ee403432e9f2508107",
+      "triple_5/recog_2.png": "936a3b0873b54334ea056f0b3b7a1631e706c1db03d62ca5e8eb24d4bc7451be",
+      "triple_5/recog_3.png": "8b1ec9f753e67af048a776860bdfe57042f2c4c10f8ffbe66de0788add50b2c6",
+      "triple_6/display_1.png": "a25bcebf654ce50318e45e2cb7ea066644c7e31eec363beff32aad0610d1394a",
+      "triple_6/display_2.png": "dccb942b4f44daee46545e534e563d4968528dde6ebde17ceca2678920e42ff0",
+      "triple_6/display_3.png": "34ea7985b2a5df9fe9513bdbf480d0b6a619d90a7c4ab0c44cab3019f71d7e36",
+      "triple_6/recog_1.png": "9748b18049564226e35aadb3956fc1572605eb8b6f2120886d6779c5876d2348",
+      "triple_6/recog_2.png": "928dfe426daaa078e3f24d54d17218307181ab5f1542b5e253769ccbcb9728ed",
+      "triple_6/recog_3.png": "42082fd84d70f3305406a640ecb85158e49340d8c5d9b65024e62c2bf2ab5d79",
+      "triple_7/display_1.png": "5ea20a82b4d18653256b827fd97da9eaeacd2e7cc00714de9ebf9f9822eecb26",
+      "triple_7/display_2.png": "c1cc43f2872b3203387166da2010f51a1b92c097693d7dedb5137c3be19f5a97",
+      "triple_7/display_3.png": "497a7e2807181e86865f166d70b8fb36df039ac3090a8a638c4efac550685550",
+      "triple_7/recog_1.png": "c50df05b1ae3e315e6a919137668551defd32332f9eb4d2c2cfd91171518d234",
+      "triple_7/recog_2.png": "97ead34acc6cc5c8267acf83a25319d1cefe9ab5f28303f2be3b1b85cd5c564b",
+      "triple_7/recog_3.png": "74956721994d5f903ca68764b0ec5fda34dc75d77859ba7e3ea62ab6b7a86c63",
+      "triple_8/display_1.png": "066f6078878ccacacfa57ebe0dbef4845c269feef05a0928dbba88f530aa3b35",
+      "triple_8/display_2.png": "7a93b950cb7947cddf28bf6c5286799197f0a864f690b581cb09252006b37d02",
+      "triple_8/display_3.png": "fa5c2a1d72bd1b5c0dbf50cd1e7b610ff229c3d0e0c7d33bac8484e6d29afc39",
+      "triple_8/recog_1.png": "7284e8caaf6723f1b34214e990eed6d1cf1dd1d7363fdc95ed6d017751d1829c",
+      "triple_8/recog_2.png": "4e0394534c8d31793b6cd8a5e7a3a1feca224b324688248c0964e0a9b86ad398",
+      "triple_8/recog_3.png": "8b3a9fcbf5c57ca1d09b20d167fec822ba0152e36e43082bc9d8b514870b6da2"
+    }
+  },
+  {
+    "pack": {
+      "id": "s0_nightmare_triple_extra",
+      "name": "S0噩梦三开门新增图(识别层)",
+      "season_id": "s0",
+      "season_name": "S0 厄运之女",
+      "version": "1.0.0",
+      "difficulty": "nightmare",
+      "maps": [
+        {
+          "index": 9,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_9/recog_1.png",
+            "2": "triple_9/recog_2.png",
+            "b1f": "triple_9/recog_3.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 10,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_10/recog_1.png",
+            "2": "triple_10/recog_2.png",
+            "b1f": "triple_10/recog_3.png"
+          },
+          "display": {}
+        }
+      ]
+    },
+    "files": {
+      "triple_10/recog_1.png": "e78582d8fcf29f6ea9c8daac5884993985364b93f976cf133ffd923f47b770fa",
+      "triple_10/recog_2.png": "10fa242a7c215147453827a13d05441341cdeb10b0392cbeded68a9ea7a1939b",
+      "triple_10/recog_3.png": "81c80a2a3c736563486acfea8a73595bd2fe18cbd4bbd1dc71a535acf8415535",
+      "triple_9/recog_1.png": "47e60e2701181238158eae86e9b69c8b5c97f0f6d18307798b0e49bdde85ca68",
+      "triple_9/recog_2.png": "7cca28dd98340268b63f5e9cc869caeab302b3bd6d773bdb5600dbc506c53210",
+      "triple_9/recog_3.png": "aea682b24efdda5f505c03f8cb27ec47c92234b68e03bfed08937e826cf9f19a"
+    }
+  },
+  {
+    "pack": {
+      "id": "s0_nightmare_triple_extra_speedrun",
+      "name": "S0噩梦三开门新增图(速刷层)",
+      "season_id": "s0",
+      "season_name": "S0 厄运之女",
+      "version": "1.0.0",
+      "difficulty": "nightmare",
+      "maps": [
+        {
+          "index": 9,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_9/recog_1.png",
+            "2": "triple_9/recog_2.png",
+            "b1f": "triple_9/recog_3.png"
+          },
+          "display": {
+            "1": "triple_9/display_1.png",
+            "2": "triple_9/display_2.png",
+            "b1f": "triple_9/display_3.png"
+          }
+        },
+        {
+          "index": 10,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "1": "triple_10/recog_1.png",
+            "2": "triple_10/recog_2.png",
+            "b1f": "triple_10/recog_3.png"
+          },
+          "display": {
+            "1": "triple_10/display_1.png",
+            "2": "triple_10/display_2.png",
+            "b1f": "triple_10/display_3.png"
+          }
+        }
+      ]
+    },
+    "files": {
+      "triple_10/display_1.png": "dea5ed776db23964717ab0a783a6ad6e11d8bc124bbebb232637432d916fe2d0",
+      "triple_10/display_2.png": "dc74549a419f219992f3479faa42f5e8d863367f8eb924d1642181bcbf22e038",
+      "triple_10/display_3.png": "51efe325f1ba894b0ad89718fc7edab79f87f59767f39110640edd12b6ee8744",
+      "triple_10/recog_1.png": "e78582d8fcf29f6ea9c8daac5884993985364b93f976cf133ffd923f47b770fa",
+      "triple_10/recog_2.png": "10fa242a7c215147453827a13d05441341cdeb10b0392cbeded68a9ea7a1939b",
+      "triple_10/recog_3.png": "81c80a2a3c736563486acfea8a73595bd2fe18cbd4bbd1dc71a535acf8415535",
+      "triple_9/display_1.png": "99f3348a6a75d1f289df16923d4830ed05f829c202d0bf891f1870d706c2487e",
+      "triple_9/display_2.png": "afa6ad4de35c603e7ae68f41ef06cda2dedcefd1492f6e8453c163beb52f2498",
+      "triple_9/display_3.png": "f9f5d1eed5d99d58d7e001b2198dd1b486443f3f937d9c6fe49198fdf250b28b",
+      "triple_9/recog_1.png": "47e60e2701181238158eae86e9b69c8b5c97f0f6d18307798b0e49bdde85ca68",
+      "triple_9/recog_2.png": "7cca28dd98340268b63f5e9cc869caeab302b3bd6d773bdb5600dbc506c53210",
+      "triple_9/recog_3.png": "aea682b24efdda5f505c03f8cb27ec47c92234b68e03bfed08937e826cf9f19a"
+    }
+  },
+  {
+    "pack": {
+      "id": "s0_hard_maps",
+      "name": "s0困难地图",
+      "season_id": "s0",
+      "season_name": "S0 厄运之女",
+      "version": "1.0.0",
+      "difficulty": "hard",
+      "maps": [
+        {
+          "index": 1,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_1/recog_2.png",
+            "1": "triple_1/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 2,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_2/recog_2.png",
+            "1": "triple_2/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 3,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_3/recog_2.png",
+            "1": "triple_3/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 4,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_4/recog_2.png",
+            "1": "triple_4/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 5,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_5/recog_2.png",
+            "1": "triple_5/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 6,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_6/recog_2.png",
+            "1": "triple_6/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 7,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_7/recog_2.png",
+            "1": "triple_7/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 8,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_8/recog_2.png",
+            "1": "triple_8/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 9,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_9/recog_2.png",
+            "1": "triple_9/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 10,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_10/recog_2.png",
+            "1": "triple_10/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 11,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_11/recog_2.png",
+            "1": "triple_11/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 12,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_12/recog_2.png",
+            "1": "triple_12/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 13,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_13/recog_2.png",
+            "1": "triple_13/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 1,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_1/recog_2.png",
+            "1": "lf_1/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 2,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_2/recog_2.png",
+            "1": "lf_2/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 3,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_3/recog_2.png",
+            "1": "lf_3/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 4,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_4/recog_2.png",
+            "1": "lf_4/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 1,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_1/recog_2.png",
+            "1": "rf_1/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 2,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_2/recog_2.png",
+            "1": "rf_2/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 3,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_3/recog_2.png",
+            "1": "rf_3/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 4,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_4/recog_2.png",
+            "1": "rf_4/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 5,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_5/recog_2.png",
+            "1": "rf_5/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 6,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_6/recog_2.png",
+            "1": "rf_6/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 7,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_7/recog_2.png",
+            "1": "rf_7/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 8,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_8/recog_2.png",
+            "1": "rf_8/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 1,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_1/recog_2.png",
+            "1": "lr_1/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 2,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_2/recog_2.png",
+            "1": "lr_2/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 3,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_3/recog_2.png",
+            "1": "lr_3/recog_1.png"
+          },
+          "display": {}
+        },
+        {
+          "index": 4,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_4/recog_2.png",
+            "1": "lr_4/recog_1.png"
+          },
+          "display": {}
+        }
+      ]
+    },
+    "files": {
+      "lf_1/recog_1.png": "53c4004f85871376832fbe450d3c10c6b17fe724a4fc11f848feb202f3e1a414",
+      "lf_1/recog_2.png": "c541b0ae0907df54996107cd5984764910b1cd6ba36cd12b4703cbe4c7930fc3",
+      "lf_2/recog_1.png": "7af03d4f20e9c3c842f9f2a3e7db9a81feda7ad9dfcfe0b42cc7a74995fe8693",
+      "lf_2/recog_2.png": "45a2bc4e283703ba644542b8dd81569a2760c4f9e201ca0686db5bdb6c586cf5",
+      "lf_3/recog_1.png": "e6b0cb307596b7e49700895de0cd7433e1ed51bb2f5f932d26ff187393e7c938",
+      "lf_3/recog_2.png": "6dc53d5150f7d9580685ec71aaf14376fdaed80603faba775ab0006d6c170122",
+      "lf_4/recog_1.png": "63b1a737f027c61dcd7ff5aafeb0ed2071c1a09d7ccfab1339c09c7620e90d7f",
+      "lf_4/recog_2.png": "968080d006ce39ea0293bee827342eccc614ce22199a00993f31fcf24ef07c31",
+      "lr_1/recog_1.png": "b25b1f0dbc68d895dc7cda3da9303935ff2081245deb58b421ad264d3779e191",
+      "lr_1/recog_2.png": "9e3e36a1b5e6111eab6ac067ad53b3eff8ff33b81a1c14fc9db082c515248c54",
+      "lr_2/recog_1.png": "950483dd3a59d17feb7fb3b58bcde7173aa84f46f5b61ee08345ad62928f0582",
+      "lr_2/recog_2.png": "efc713438794b236199fe1ca5030f4cd8b2b49320647f73fb7bdbe3677e3ec25",
+      "lr_3/recog_1.png": "430e23a80e74cf5b385869227920633bcae3e1532154aed18f5b429077856a5e",
+      "lr_3/recog_2.png": "df302f5a72e5627e3b70de1f31a342e1695ca58a1b52a693f9d1fd9157e91653",
+      "lr_4/recog_1.png": "59734186b352bd36bca0da30cbdc11e7321f940eba1dc133545953afc3b4ddce",
+      "lr_4/recog_2.png": "7f30aa9df3f2c892ea3fb856664e250d350d786f6a8557a9d8d8a9ced63e9396",
+      "rf_1/recog_1.png": "daf70125b72e52b24989c152f6b9762bad652290ffde4cb89a616b94965703c3",
+      "rf_1/recog_2.png": "f9e51a67ce0e8ec16e129d48525e32346f66b30aea43941c8a4039faefd7e41f",
+      "rf_2/recog_1.png": "57c977e6e3c76f1185ae82a37012d44e3fe95fc91adb0959fb012d57d8295219",
+      "rf_2/recog_2.png": "1e92206d577ea3162c617ad6c30e7f5ed3a5b3f14e444c7eefe0332d6e3613a6",
+      "rf_3/recog_1.png": "e574aa70c60f1eee4c15c8780b08399737cd357d70623b713a0b7a9448315764",
+      "rf_3/recog_2.png": "76918cc340f5a9272972d7f1c8a573f59ae75a32582c6292c97d2dc944de5a5e",
+      "rf_4/recog_1.png": "8814ec84de3263c4dd39831723e063b298d519bdd31c0023d3f3b99e2e22622a",
+      "rf_4/recog_2.png": "b68dc8af6fbdd76c45018f8d0e238faeb635d13b77357a39aca8ed9bcf8aeb46",
+      "rf_5/recog_1.png": "b4bf0616ec73806d6e0d6b49f517e41046a7b34691d0a91b94a397290c085218",
+      "rf_5/recog_2.png": "4ac52edd288c31b15de79b5ac5f57c4f2f0e3e4c6eaceb7f1815e35938926361",
+      "rf_6/recog_1.png": "0065cb983968f567e5feaf496cd5ee9f78b430d80e020eb87aeea915e7ccc9e0",
+      "rf_6/recog_2.png": "66d365f73953af2650a72b295218d420e54a2be14185e12ef06a46df38c030d8",
+      "rf_7/recog_1.png": "4301fc334919c07f0b06a41364e6d79e9c4ddae113d39c26b333fd5d57f4b725",
+      "rf_7/recog_2.png": "eb45d8524e410a9d36d3bcc8a03f506c71a4032ac53f39bffab67963d662e669",
+      "rf_8/recog_1.png": "8ac2a14a344c54135beb18a952204fd004c19d5d5452c88a8aec65a24adcb8c3",
+      "rf_8/recog_2.png": "f9b8942e6c8e8ebf07a3e79d526e759da45387aa76d84edd5de746382eba60d6",
+      "triple_1/recog_1.png": "3cc0b1db39553e3daeed2db061b1943e518ec2c42457e0aa5a05fd66390e4a0e",
+      "triple_1/recog_2.png": "4a9263a471ac35db49b70d1b1520ae5b40e54da31e55a3de0d16d733624d13f9",
+      "triple_10/recog_1.png": "d24019db1a77012afbdb24206bf77b54d1f167cc358b28ace227c324a59b8c72",
+      "triple_10/recog_2.png": "1bcc4d1993b699613f3228b1e26768a31d022fd799e29d08bb2a86db65ef8b62",
+      "triple_11/recog_1.png": "01bbf76072d06b645bf6a878fb21c4e282c723d2d161708a502835740bbe5194",
+      "triple_11/recog_2.png": "61586a2ba5cff066496fba8e0c4ea1825ecb2aa8ff5892085f2c65db747a4b19",
+      "triple_12/recog_1.png": "d97c5190addcf509efee18e18f084db58931c72d1646ec6dc565924c430c1a60",
+      "triple_12/recog_2.png": "0d6acdd350d7d812bb8de13790023583ac08dba379c7272683a29704af019ec6",
+      "triple_13/recog_1.png": "4ebbcd1524d56e811805f8954f999ac81b70ace82a0cc57b375c573bd64feed6",
+      "triple_13/recog_2.png": "c6f5475965d3b191b5f1192e03dbc743ae901d5d1d6dc17e43d8d74f173afc97",
+      "triple_2/recog_1.png": "5291aa41041107cc60e2e6bd19e8decc1a0133983df5813bd651095d1bc77c27",
+      "triple_2/recog_2.png": "355dfa0faffec47c42e7cfb18d27ef65afd75d44940f7bd2d9f179b23ef1f683",
+      "triple_3/recog_1.png": "6be2f2663999410d83a9ac28cc5d351583bb7c073083be75f21f5a45dc9c5273",
+      "triple_3/recog_2.png": "b0f26860161a81ccf845420181c53341f44d12ac7904eceb395a968094488fa3",
+      "triple_4/recog_1.png": "f7a74fa69bb83e6616bc9f2e5d65364f80aeb07d0d392536591ef6aa82e6d2da",
+      "triple_4/recog_2.png": "05145dc423305540136bdc20ef80dbde5a98012bdff8e7eba2022252a1c0847b",
+      "triple_5/recog_1.png": "7be20d2c5fc5329ec7075f41f952507f1dc8090c4f2394f2865013263c45608f",
+      "triple_5/recog_2.png": "acbc0f0400e1555feb760085452f4b40dcf8b316fe72cd3e6b0c47025a35e8fb",
+      "triple_6/recog_1.png": "0433793acb94677fb37f27806d9ef0ceca7998458d3bdabc1decc565d58f9fc1",
+      "triple_6/recog_2.png": "05d3b916a6e4fea66c1254bdb391c96cd571ab48b78b0b26e83201148559c3af",
+      "triple_7/recog_1.png": "4143691a0f4434559d97dd8b1cdb45eeb6f6b4c845f7f38a9ad59d736112a27a",
+      "triple_7/recog_2.png": "a1217cc4699b6c690194995d5cc0bbf1a2d859e1ce573985982e35633355f2ab",
+      "triple_8/recog_1.png": "02da823b9b9f512b2080d3f452fa0c2467eb99537028c5d204382f4ea044d050",
+      "triple_8/recog_2.png": "8b45ae53b0f2beab508cdf380fdfaad1cbf82a41e34e78de6119bad82a8316ed",
+      "triple_9/recog_1.png": "f1a8d56b28ab78b2c5bc89496a5b7d5399195030f41fb84a30f47c5c6242185b",
+      "triple_9/recog_2.png": "22b51ea0e242d469c0a32e26e5f697a83636d690caa2448673b4586189cd51c9"
+    }
+  },
+  {
+    "pack": {
+      "id": "s0_hard_speedrun",
+      "name": "s0困难速刷图",
+      "season_id": "s0",
+      "season_name": "S0 厄运之女",
+      "version": "1.0.0",
+      "difficulty": "hard",
+      "maps": [
+        {
+          "index": 1,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_1/recog_2.png",
+            "1": "triple_1/recog_1.png"
+          },
+          "display": {
+            "2": "triple_1/display_2.png",
+            "1": "triple_1/display_1.png"
+          }
+        },
+        {
+          "index": 2,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_2/recog_2.png",
+            "1": "triple_2/recog_1.png"
+          },
+          "display": {
+            "2": "triple_2/display_2.png",
+            "1": "triple_2/display_1.png"
+          }
+        },
+        {
+          "index": 3,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_3/recog_2.png",
+            "1": "triple_3/recog_1.png"
+          },
+          "display": {
+            "2": "triple_3/display_2.png",
+            "1": "triple_3/display_1.png"
+          }
+        },
+        {
+          "index": 4,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_4/recog_2.png",
+            "1": "triple_4/recog_1.png"
+          },
+          "display": {
+            "2": "triple_4/display_2.png",
+            "1": "triple_4/display_1.png"
+          }
+        },
+        {
+          "index": 5,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_5/recog_2.png",
+            "1": "triple_5/recog_1.png"
+          },
+          "display": {
+            "2": "triple_5/display_2.png",
+            "1": "triple_5/display_1.png"
+          }
+        },
+        {
+          "index": 6,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_6/recog_2.png",
+            "1": "triple_6/recog_1.png"
+          },
+          "display": {
+            "2": "triple_6/display_2.png",
+            "1": "triple_6/display_1.png"
+          }
+        },
+        {
+          "index": 7,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_7/recog_2.png",
+            "1": "triple_7/recog_1.png"
+          },
+          "display": {
+            "2": "triple_7/display_2.png",
+            "1": "triple_7/display_1.png"
+          }
+        },
+        {
+          "index": 8,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_8/recog_2.png",
+            "1": "triple_8/recog_1.png"
+          },
+          "display": {
+            "2": "triple_8/display_2.png",
+            "1": "triple_8/display_1.png"
+          }
+        },
+        {
+          "index": 9,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_9/recog_2.png",
+            "1": "triple_9/recog_1.png"
+          },
+          "display": {
+            "2": "triple_9/display_2.png",
+            "1": "triple_9/display_1.png"
+          }
+        },
+        {
+          "index": 10,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_10/recog_2.png",
+            "1": "triple_10/recog_1.png"
+          },
+          "display": {
+            "2": "triple_10/display_2.png",
+            "1": "triple_10/display_1.png"
+          }
+        },
+        {
+          "index": 11,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_11/recog_2.png",
+            "1": "triple_11/recog_1.png"
+          },
+          "display": {
+            "2": "triple_11/display_2.png",
+            "1": "triple_11/display_1.png"
+          }
+        },
+        {
+          "index": 12,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_12/recog_2.png",
+            "1": "triple_12/recog_1.png"
+          },
+          "display": {
+            "2": "triple_12/display_2.png",
+            "1": "triple_12/display_1.png"
+          }
+        },
+        {
+          "index": 13,
+          "category": "triple",
+          "name": "",
+          "floors": {
+            "2": "triple_13/recog_2.png",
+            "1": "triple_13/recog_1.png"
+          },
+          "display": {
+            "2": "triple_13/display_2.png",
+            "1": "triple_13/display_1.png"
+          }
+        },
+        {
+          "index": 1,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_1/recog_2.png",
+            "1": "lf_1/recog_1.png"
+          },
+          "display": {
+            "2": "lf_1/display_2.png",
+            "1": "lf_1/display_1.png"
+          }
+        },
+        {
+          "index": 2,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_2/recog_2.png",
+            "1": "lf_2/recog_1.png"
+          },
+          "display": {
+            "2": "lf_2/display_2.png",
+            "1": "lf_2/display_1.png"
+          }
+        },
+        {
+          "index": 3,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_3/recog_2.png",
+            "1": "lf_3/recog_1.png"
+          },
+          "display": {
+            "2": "lf_3/display_2.png",
+            "1": "lf_3/display_1.png"
+          }
+        },
+        {
+          "index": 4,
+          "category": "lf",
+          "name": "",
+          "floors": {
+            "2": "lf_4/recog_2.png",
+            "1": "lf_4/recog_1.png"
+          },
+          "display": {
+            "2": "lf_4/display_2.png",
+            "1": "lf_4/display_1.png"
+          }
+        },
+        {
+          "index": 1,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_1/recog_2.png",
+            "1": "rf_1/recog_1.png"
+          },
+          "display": {
+            "2": "rf_1/display_2.png",
+            "1": "rf_1/display_1.png"
+          }
+        },
+        {
+          "index": 2,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_2/recog_2.png",
+            "1": "rf_2/recog_1.png"
+          },
+          "display": {
+            "2": "rf_2/display_2.png",
+            "1": "rf_2/display_1.png"
+          }
+        },
+        {
+          "index": 3,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_3/recog_2.png",
+            "1": "rf_3/recog_1.png"
+          },
+          "display": {
+            "2": "rf_3/display_2.png",
+            "1": "rf_3/display_1.png"
+          }
+        },
+        {
+          "index": 4,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_4/recog_2.png",
+            "1": "rf_4/recog_1.png"
+          },
+          "display": {
+            "2": "rf_4/display_2.png",
+            "1": "rf_4/display_1.png"
+          }
+        },
+        {
+          "index": 5,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_5/recog_2.png",
+            "1": "rf_5/recog_1.png"
+          },
+          "display": {
+            "2": "rf_5/display_2.png",
+            "1": "rf_5/display_1.png"
+          }
+        },
+        {
+          "index": 6,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_6/recog_2.png",
+            "1": "rf_6/recog_1.png"
+          },
+          "display": {
+            "2": "rf_6/display_2.png",
+            "1": "rf_6/display_1.png"
+          }
+        },
+        {
+          "index": 7,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_7/recog_2.png",
+            "1": "rf_7/recog_1.png"
+          },
+          "display": {
+            "2": "rf_7/display_2.png",
+            "1": "rf_7/display_1.png"
+          }
+        },
+        {
+          "index": 8,
+          "category": "rf",
+          "name": "",
+          "floors": {
+            "2": "rf_8/recog_2.png",
+            "1": "rf_8/recog_1.png"
+          },
+          "display": {
+            "2": "rf_8/display_2.png",
+            "1": "rf_8/display_1.png"
+          }
+        },
+        {
+          "index": 1,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_1/recog_2.png",
+            "1": "lr_1/recog_1.png"
+          },
+          "display": {
+            "2": "lr_1/display_2.png",
+            "1": "lr_1/display_1.png"
+          }
+        },
+        {
+          "index": 2,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_2/recog_2.png",
+            "1": "lr_2/recog_1.png"
+          },
+          "display": {
+            "2": "lr_2/display_2.png",
+            "1": "lr_2/display_1.png"
+          }
+        },
+        {
+          "index": 3,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_3/recog_2.png",
+            "1": "lr_3/recog_1.png"
+          },
+          "display": {
+            "2": "lr_3/display_2.png",
+            "1": "lr_3/display_1.png"
+          }
+        },
+        {
+          "index": 4,
+          "category": "lr",
+          "name": "",
+          "floors": {
+            "2": "lr_4/recog_2.png",
+            "1": "lr_4/recog_1.png"
+          },
+          "display": {
+            "2": "lr_4/display_2.png",
+            "1": "lr_4/display_1.png"
+          }
+        }
+      ]
+    },
+    "files": {
+      "lf_1/display_1.png": "bc80a69c10688c54a7af7442412fda16078e7c83f1dcdc2d62799c3992d40908",
+      "lf_1/display_2.png": "bc6e4eebedf471097506010cc0244a0660ba392938d68acee8fe257a3c4269cc",
+      "lf_1/recog_1.png": "bc80a69c10688c54a7af7442412fda16078e7c83f1dcdc2d62799c3992d40908",
+      "lf_1/recog_2.png": "bc6e4eebedf471097506010cc0244a0660ba392938d68acee8fe257a3c4269cc",
+      "lf_2/display_1.png": "98d1557e45792f40105a4f707df5298f2225e86d5e56bde1779ac9ea91496fc4",
+      "lf_2/display_2.png": "7533ca58c09f03416499ebe97c6d1a50e5595306d395a7cc80ce2195d56eaf09",
+      "lf_2/recog_1.png": "98d1557e45792f40105a4f707df5298f2225e86d5e56bde1779ac9ea91496fc4",
+      "lf_2/recog_2.png": "7533ca58c09f03416499ebe97c6d1a50e5595306d395a7cc80ce2195d56eaf09",
+      "lf_3/display_1.png": "3f46b96302e808f11ec332458fd7955089f014c4f7dc5f054691537ccfccff0f",
+      "lf_3/display_2.png": "ae657881eba30a7157b069a909bfeabd9ced770bb74d2c9a905698fefdf390bc",
+      "lf_3/recog_1.png": "3f46b96302e808f11ec332458fd7955089f014c4f7dc5f054691537ccfccff0f",
+      "lf_3/recog_2.png": "ae657881eba30a7157b069a909bfeabd9ced770bb74d2c9a905698fefdf390bc",
+      "lf_4/display_1.png": "674975118f4dd6763188f0c6cdf233289e9738b5277ce4724142b18618cb3927",
+      "lf_4/display_2.png": "36815f3050adfbe72b3ac0374b0cd6f5affbb7bebfb1a099970c735b33ac5b2c",
+      "lf_4/recog_1.png": "674975118f4dd6763188f0c6cdf233289e9738b5277ce4724142b18618cb3927",
+      "lf_4/recog_2.png": "36815f3050adfbe72b3ac0374b0cd6f5affbb7bebfb1a099970c735b33ac5b2c",
+      "lr_1/display_1.png": "63bc16a17805c03eb30e0ee656e5bc1e97da9ca83887bc5a37dec7d287650416",
+      "lr_1/display_2.png": "3c1c215364bd810372835d71e1ef07501f9982f2d57eca6ac91057b25d7a3aaf",
+      "lr_1/recog_1.png": "63bc16a17805c03eb30e0ee656e5bc1e97da9ca83887bc5a37dec7d287650416",
+      "lr_1/recog_2.png": "3c1c215364bd810372835d71e1ef07501f9982f2d57eca6ac91057b25d7a3aaf",
+      "lr_2/display_1.png": "f68d5b9d68f987424628ec650b3d79d1c0afdd0bd8219428e5c043b60ddb14b9",
+      "lr_2/display_2.png": "c3be7d1244df97cb7d24a40b0ff46a564f1345ff96593695792f5aa6b9ab06f7",
+      "lr_2/recog_1.png": "f68d5b9d68f987424628ec650b3d79d1c0afdd0bd8219428e5c043b60ddb14b9",
+      "lr_2/recog_2.png": "c3be7d1244df97cb7d24a40b0ff46a564f1345ff96593695792f5aa6b9ab06f7",
+      "lr_3/display_1.png": "3122ca6b0cb0ba252424f4bd1d505bbdc75f15b9a9fc1c8018dd41b243d14700",
+      "lr_3/display_2.png": "61bdabdf479878ba1349e120a9294db1fc1bfbab3c6a236a7aa84f928aefd160",
+      "lr_3/recog_1.png": "3122ca6b0cb0ba252424f4bd1d505bbdc75f15b9a9fc1c8018dd41b243d14700",
+      "lr_3/recog_2.png": "61bdabdf479878ba1349e120a9294db1fc1bfbab3c6a236a7aa84f928aefd160",
+      "lr_4/display_1.png": "8f8632b0f9ed3426049585bd81465c0b21dfced4424e006e3ddc9adfadfbc517",
+      "lr_4/display_2.png": "4800b47fce69c964f3a45d74ffa25caf485277f9ba78b7f3b95bc2acdde26c98",
+      "lr_4/recog_1.png": "8f8632b0f9ed3426049585bd81465c0b21dfced4424e006e3ddc9adfadfbc517",
+      "lr_4/recog_2.png": "4800b47fce69c964f3a45d74ffa25caf485277f9ba78b7f3b95bc2acdde26c98",
+      "rf_1/display_1.png": "2071695efe1792d7e0e9c2a0a23a7a501b51ea325ee85f99370212b074fc0d14",
+      "rf_1/display_2.png": "a3c106005b52155c0f27132047a2fd73a69d5d79e2cfa35cf6c5f785b5653fc4",
+      "rf_1/recog_1.png": "2071695efe1792d7e0e9c2a0a23a7a501b51ea325ee85f99370212b074fc0d14",
+      "rf_1/recog_2.png": "a3c106005b52155c0f27132047a2fd73a69d5d79e2cfa35cf6c5f785b5653fc4",
+      "rf_2/display_1.png": "5278c672e00e8daa1a518f98ada8c180ffac89062d093d4463489e4c723a7882",
+      "rf_2/display_2.png": "70666dfe6e036546eda63d0cfe72e948139aa32bc5e70c52160440a166400eb6",
+      "rf_2/recog_1.png": "5278c672e00e8daa1a518f98ada8c180ffac89062d093d4463489e4c723a7882",
+      "rf_2/recog_2.png": "70666dfe6e036546eda63d0cfe72e948139aa32bc5e70c52160440a166400eb6",
+      "rf_3/display_1.png": "a164e72a085d06148eafc74bc5226c30ff2a61debb9614cf7e75ebf4c31e066f",
+      "rf_3/display_2.png": "ff3d58238569d940bac691ebc7cef5998c39692a5a124de7b6e18d51a501ddf4",
+      "rf_3/recog_1.png": "a164e72a085d06148eafc74bc5226c30ff2a61debb9614cf7e75ebf4c31e066f",
+      "rf_3/recog_2.png": "ff3d58238569d940bac691ebc7cef5998c39692a5a124de7b6e18d51a501ddf4",
+      "rf_4/display_1.png": "3280f3af76ae235868d5c201d319fbafa0844660b576170a100d54f16ba4f2da",
+      "rf_4/display_2.png": "f48b0dad61dcb0ced5db41239bdb5702555db86840384a13739788bdae40a355",
+      "rf_4/recog_1.png": "3280f3af76ae235868d5c201d319fbafa0844660b576170a100d54f16ba4f2da",
+      "rf_4/recog_2.png": "f48b0dad61dcb0ced5db41239bdb5702555db86840384a13739788bdae40a355",
+      "rf_5/display_1.png": "d4d8c5496e8e2a2a1399ed1094569c56a2cc4559c219c9b9cc108f54e3bbdfec",
+      "rf_5/display_2.png": "a63a18e82829566aee0716f1df80a6b6bc128d9617b05643dc01c0614a01c4bf",
+      "rf_5/recog_1.png": "d4d8c5496e8e2a2a1399ed1094569c56a2cc4559c219c9b9cc108f54e3bbdfec",
+      "rf_5/recog_2.png": "a63a18e82829566aee0716f1df80a6b6bc128d9617b05643dc01c0614a01c4bf",
+      "rf_6/display_1.png": "53a8920b53698436ad9d4824d5354435f1a984469007c1c80845f6ee97959a2e",
+      "rf_6/display_2.png": "849e1ac2767d1a89f34f9313700aca968e244538f71dcbcf7ca31a917069da62",
+      "rf_6/recog_1.png": "53a8920b53698436ad9d4824d5354435f1a984469007c1c80845f6ee97959a2e",
+      "rf_6/recog_2.png": "849e1ac2767d1a89f34f9313700aca968e244538f71dcbcf7ca31a917069da62",
+      "rf_7/display_1.png": "aa288580e2ed46443ebfd6a719ea3136e24f6aaf1a5d94b069d8da06c301cde3",
+      "rf_7/display_2.png": "e87378ea645446d5480c021fdb5409a00f391a1dd423237431f5d7ef40ee4037",
+      "rf_7/recog_1.png": "aa288580e2ed46443ebfd6a719ea3136e24f6aaf1a5d94b069d8da06c301cde3",
+      "rf_7/recog_2.png": "e87378ea645446d5480c021fdb5409a00f391a1dd423237431f5d7ef40ee4037",
+      "rf_8/display_1.png": "8b4e028eb509c8f990fab086af91eb2aa1b53cc5d402fd145f959589e64446b7",
+      "rf_8/display_2.png": "29e1bc453bb17add20ab3efda823f5d0bcc7b7428d5cf8560f8e7b5e2aa6cd6f",
+      "rf_8/recog_1.png": "8b4e028eb509c8f990fab086af91eb2aa1b53cc5d402fd145f959589e64446b7",
+      "rf_8/recog_2.png": "29e1bc453bb17add20ab3efda823f5d0bcc7b7428d5cf8560f8e7b5e2aa6cd6f",
+      "triple_1/display_1.png": "d91dcda8d256b5bcc00aae026da38c3d337c6f4366bb6769a8f5976cf3256a85",
+      "triple_1/display_2.png": "7ff54f3cd0aac01679ff6ba5033fe846036b854450611507cac02a71eabff3c1",
+      "triple_1/recog_1.png": "d91dcda8d256b5bcc00aae026da38c3d337c6f4366bb6769a8f5976cf3256a85",
+      "triple_1/recog_2.png": "7ff54f3cd0aac01679ff6ba5033fe846036b854450611507cac02a71eabff3c1",
+      "triple_10/display_1.png": "d8ea07efee6f84d1bee437124808dfd4208f0d5a69e0c1013182262577a12299",
+      "triple_10/display_2.png": "cae87d78e2ff6a6ffde71acf3208c426d013873c7e4ddff63013138e922883bd",
+      "triple_10/recog_1.png": "d8ea07efee6f84d1bee437124808dfd4208f0d5a69e0c1013182262577a12299",
+      "triple_10/recog_2.png": "cae87d78e2ff6a6ffde71acf3208c426d013873c7e4ddff63013138e922883bd",
+      "triple_11/display_1.png": "63ab6234ef7c34a8fced9eee9d35a3e99aeff664a53f236e4797ce3939360277",
+      "triple_11/display_2.png": "95bafc9a8bd85214dff8c87004fa4741d742ca9b7cdfde211a529f808bf9895d",
+      "triple_11/recog_1.png": "63ab6234ef7c34a8fced9eee9d35a3e99aeff664a53f236e4797ce3939360277",
+      "triple_11/recog_2.png": "95bafc9a8bd85214dff8c87004fa4741d742ca9b7cdfde211a529f808bf9895d",
+      "triple_12/display_1.png": "651f50935a02dabdf5fb2f481ca4be627a5f85480b68f6d0e4326eabfef739fa",
+      "triple_12/display_2.png": "d15b57aff7f16ec1e6e125a489aad7549c0d0fae57c2f1bbce3e67fcee835c34",
+      "triple_12/recog_1.png": "651f50935a02dabdf5fb2f481ca4be627a5f85480b68f6d0e4326eabfef739fa",
+      "triple_12/recog_2.png": "d15b57aff7f16ec1e6e125a489aad7549c0d0fae57c2f1bbce3e67fcee835c34",
+      "triple_13/display_1.png": "b9797063f39649f7c12114372afc8fb35676e024b113af132ae954a645f1364d",
+      "triple_13/display_2.png": "8891f31857e5d9e16b2e9b3873015d8de7d55f1e1f94acde55c3b38f7f00cee5",
+      "triple_13/recog_1.png": "b9797063f39649f7c12114372afc8fb35676e024b113af132ae954a645f1364d",
+      "triple_13/recog_2.png": "8891f31857e5d9e16b2e9b3873015d8de7d55f1e1f94acde55c3b38f7f00cee5",
+      "triple_2/display_1.png": "113e616650be203e7919f5929cbc5a48d9562858a931ffb51002bf3abe66a200",
+      "triple_2/display_2.png": "60cc3d67f2333da312eb9f005149f1ae7eaad6ec756cdf5eb547a385721d92f8",
+      "triple_2/recog_1.png": "113e616650be203e7919f5929cbc5a48d9562858a931ffb51002bf3abe66a200",
+      "triple_2/recog_2.png": "60cc3d67f2333da312eb9f005149f1ae7eaad6ec756cdf5eb547a385721d92f8",
+      "triple_3/display_1.png": "64f6e1b01877d7c6e84f9164d673b03694a6a48af41f22257c5af9b9f0d6e498",
+      "triple_3/display_2.png": "b82f3d0c8a82fa6fa7effa8711a6989cd127182ac44918af08d3a9b4ef6adf4e",
+      "triple_3/recog_1.png": "64f6e1b01877d7c6e84f9164d673b03694a6a48af41f22257c5af9b9f0d6e498",
+      "triple_3/recog_2.png": "b82f3d0c8a82fa6fa7effa8711a6989cd127182ac44918af08d3a9b4ef6adf4e",
+      "triple_4/display_1.png": "a9adf70d11015b938ddf4fb40d6ffb14d3d7a30712b2e0974c8c47ee655cd3d9",
+      "triple_4/display_2.png": "e04638e642820b74d6364915fe0cb5c36807e2b523ec0c67d9e116abdec99424",
+      "triple_4/recog_1.png": "a9adf70d11015b938ddf4fb40d6ffb14d3d7a30712b2e0974c8c47ee655cd3d9",
+      "triple_4/recog_2.png": "e04638e642820b74d6364915fe0cb5c36807e2b523ec0c67d9e116abdec99424",
+      "triple_5/display_1.png": "bbffe62c2bcc3430224b627d32b8732ca05237ef1ef565d912eee3c2e3bfede4",
+      "triple_5/display_2.png": "e8c298e2f34dc5cd6ecee382c493a408646b6b6cc9510f7f940007cedf6b7541",
+      "triple_5/recog_1.png": "bbffe62c2bcc3430224b627d32b8732ca05237ef1ef565d912eee3c2e3bfede4",
+      "triple_5/recog_2.png": "e8c298e2f34dc5cd6ecee382c493a408646b6b6cc9510f7f940007cedf6b7541",
+      "triple_6/display_1.png": "7300cf3d7b8f491ad06a22a66bf07498be64a4858f742e4cf3ba4b4f22699d58",
+      "triple_6/display_2.png": "f096b33fb1d0a873a2acad9a874812dc854fe0f99969b14e8d4b4290b9cf6400",
+      "triple_6/recog_1.png": "7300cf3d7b8f491ad06a22a66bf07498be64a4858f742e4cf3ba4b4f22699d58",
+      "triple_6/recog_2.png": "f096b33fb1d0a873a2acad9a874812dc854fe0f99969b14e8d4b4290b9cf6400",
+      "triple_7/display_1.png": "7a0cff688842f8c2aefc40924c8736156843b915620c97b8805361097607b491",
+      "triple_7/display_2.png": "3045c6239513080da2fc45d364e9d08686acf0050c4c3f6cb562358f8486f708",
+      "triple_7/recog_1.png": "7a0cff688842f8c2aefc40924c8736156843b915620c97b8805361097607b491",
+      "triple_7/recog_2.png": "3045c6239513080da2fc45d364e9d08686acf0050c4c3f6cb562358f8486f708",
+      "triple_8/display_1.png": "1c30445c2a97295991ab8b450ec7da8a057ddcab0f3b5dacb388eb5b113806d5",
+      "triple_8/display_2.png": "43e33b361c2a8a039777997a0dcbfb9d601367b9f087a4ffb2f4b794e2b30f73",
+      "triple_8/recog_1.png": "1c30445c2a97295991ab8b450ec7da8a057ddcab0f3b5dacb388eb5b113806d5",
+      "triple_8/recog_2.png": "43e33b361c2a8a039777997a0dcbfb9d601367b9f087a4ffb2f4b794e2b30f73",
+      "triple_9/display_1.png": "ddb676cdf8d6c4c1fdb3c342dd16a156e5ad68e952c6e694c1a3604a5a99ac0b",
+      "triple_9/display_2.png": "07999c2467ed3677d10d99b1a6d9bcb6f565f6963092ad84b7cc3f4a6cfd708c",
+      "triple_9/recog_1.png": "ddb676cdf8d6c4c1fdb3c342dd16a156e5ad68e952c6e694c1a3604a5a99ac0b",
+      "triple_9/recog_2.png": "07999c2467ed3677d10d99b1a6d9bcb6f565f6963092ad84b7cc3f4a6cfd708c"
+    }
+  }
+]

@@ -1,3 +1,4 @@
+import { messageLanguage } from "./messageLanguage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isTauri } from "@tauri-apps/api/core";
@@ -147,7 +148,7 @@ export default function UpdatePanel({ settings, loaded, expanded, onSettingsChan
       <div><dt>{t.channel}</dt><dd>{checkedPrereleases ? t.preview : t.stable}</dd></div>
     </dl>
     {status.info && <section className="update-dialog-notes" aria-label={t.notes}><h3>{t.notes}</h3><ReleaseNotes language={settings.app.language}>{status.info.notes || t.empty}</ReleaseNotes></section>}
-    {status.phase === "error" && <details className="update-error"><summary>{settings.app.language === "zh-CN" ? "错误详情" : "Error details"}</summary><p role="alert">{status.error}</p></details>}
+    {status.phase === "error" && <details className="update-error"><summary>{settings.app.language === "zh-CN" ? "错误详情" : "Error details"}</summary><p role="alert">{messageLanguage(status.error ?? "", settings.app.language)}</p></details>}
     {status.phase === "downloading" && <DownloadProgress downloaded={status.downloaded} total={status.total} language={settings.app.language} />}
     {status.phase === "ready" && <><p className="update-verified">✓ {t.verified}</p><p>{t.installHint}</p></>}
     {status.info && <label className="check-label update-skip"><input type="checkbox" checked={skipVersion} onChange={(event) => savePromptPreference(event.target.checked)} />{t.skip}</label>}

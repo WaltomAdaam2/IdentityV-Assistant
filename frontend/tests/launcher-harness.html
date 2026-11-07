@@ -65,7 +65,7 @@ mockIPC((command, args) => {
     window.__launcherTest.recognitionRequest = args;
     return new Promise((resolve, reject) => { window.__launcherTest.finishRecognition = resolve; window.__launcherTest.failRecognition = reject; });
   }
-  if (command === "journal_cancel_recognition") return null;
+  if (command === "journal_cancel_recognition") { if (window.__launcherTest.cancelRecognitionImmediately) window.__launcherTest.failRecognition?.("Recognition cancelled"); return null; }
   if (command === "journal_read_image") return window.__launcherTest.mapImage || "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="tan"/></svg>');
   if (command === "journal_choose_pack_source") return window.__launcherTest.importSources ?? null;
   if (command === "journal_import_pack") {
@@ -76,9 +76,26 @@ mockIPC((command, args) => {
     return finish();
   }
   if (command === "get_launcher_status") return window.__launcherTest.launcherStatus;
-  if (command === "check_login_updates") return {current_version: "v6.3.2-stable", version: "v6.3.2-stable", notes: "", release_url: null, hotfixes: window.__launcherTest.hasHotfix ? [{target_module: "fixture", target_commit: window.__launcherTest.hotfixCommit || "abcdef1234567", note: "测试热更新"}] : []};
-  if (command === "apply_login_hotfixes") { window.__launcherTest.hasHotfix = false; return window.__launcherTest.deferHotfix ? new Promise(resolve => { window.__launcherTest.finishHotfix = resolve; }) : null; }
-  if (command === "cancel_game_launch") { window.__launcherTest.finishLaunch?.("操作已取消"); return null; }
+  if (command === "check_login_updates") {
+    const info = {current_version: window.__launcherTest.hasComponentUpdate ? "v6.2.0" : "v6.3.2-stable", version: window.__launcherTest.componentVersion || "v6.3.2-stable", notes: "测试完整组件更新", available: !!window.__launcherTest.hasComponentUpdate};
+    if (window.__launcherTest.checkFailure) return Promise.reject(window.__launcherTest.checkFailure);
+    if (window.__launcherTest.deferComponentCheck) return new Promise((resolve, reject) => {
+      window.__launcherTest.finishComponentCheck = () => resolve(info);
+      window.__launcherTest.failComponentCheck = reject;
+    });
+    return info;
+  }
+  if (command === "install_login_update") {
+    window.__launcherTest.hasComponentUpdate = false;
+    return window.__launcherTest.deferComponentUpdate ? new Promise((resolve, reject) => {
+      window.__launcherTest.finishComponentUpdate = resolve; window.__launcherTest.failComponentUpdate = reject;
+    }) : null;
+  }
+  if (command === "cancel_game_launch") {
+    window.__launcherTest.finishLaunch?.("操作已取消");
+    window.__launcherTest.failComponentUpdate?.("操作已取消");
+    return null;
+  }
   if (command === "configure_login_component") {
     if (!args.download && window.__launcherTest.scanMissing) return Promise.reject("未找到官方组件，请点击“官方下载”自动下载并配置");
     window.__launcherTest.launcherStatus.component_path = args.download ? "C:\\Assistant\\components\\idv-login\\v6.3.2-stable" : "D:\\idv-login";

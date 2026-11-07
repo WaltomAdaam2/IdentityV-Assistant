@@ -4,6 +4,22 @@ import { appendLogBatch, appendNormalLogBatch, filterLogs, isWindowDiagnostic, l
 
 const entry = (id, patch = {}) => ({ id, at: "12:00:00", level: "info", message: "准备匹配", source: "hide_seek", important: true, ...patch });
 
+test("normal logs summarize recognition without deleting details or hiding failures", () => {
+  const records = [
+    entry(1, {source: "journal.recognition", message: "识图开始"}),
+    entry(2, {source: "journal.recognition", details: {details: {stage: "matching"}}}),
+    entry(3, {source: "journal.shortcut"}),
+    entry(4, {source: "settings", message: "设置已保存 / Settings saved"}),
+    entry(5, {source: "journal.recognition", message: "识图完成"}),
+    entry(6, {source: "journal.recognition", message: "识图取消"}),
+    entry(7, {source: "journal.shortcut", level: "error"}),
+    entry(8, {source: "journal.recognition", level: "warning", details: {stage: "matching"}}),
+  ];
+  assert.deepEqual(filterLogs(records, "all", "", false).map(record => record.id), [1, 5, 6, 7, 8]);
+  assert.strictEqual(filterLogs(records, "all", "", true), records);
+  assert.deepEqual(appendNormalLogBatch([], records), filterLogs(appendLogBatch([], records), "all", "", false));
+});
+
 test("developer records keep searchable request and geometry fields while normal summaries stay concise", () => {
   const details = logDetails({type:"log",message:"识图完成",source:"journal.recognition",details:{request_id:"request-42",keys:["rf:5"],region:{x:666,y:363,width:391,height:317}}});
   assert.equal(details.message, "识图完成");
@@ -25,7 +41,7 @@ test("normal launcher logs keep the outcome and actionable issues while detailed
     "登入账号且已经··进入游戏··后，您可以关闭本工具。",
   ];
   const entries = messages.map((message, i) => entry(i, { source: "idv-login", message }));
-  entries.push(entry(20, { source: "idv-login", level: "warning", message: "如果您在之前已经打开了游戏，请关闭游戏后重新打开，否则工具不会生效！" }));
+  entries.push(entry(20, { source: "idv-login", level: "warning", message: "如果您在之前已经打开了游戏，请关闭游戏后重新打开，否则工具不会生效！\n" }));
   entries.push(entry(21, { source: "launcher", message: "登录代理检查通过，已启动游戏（耗时 8.7 秒）" }));
   entries.push(entry(22, { source: "idv-login", level: "error", message: "证书已存在但无法读取" }));
   entries.push(entry(23, { source: "idv-login", level: "warning", message: "登录凭证已过期，请重新登录" }));

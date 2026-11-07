@@ -1,3 +1,4 @@
+import { messageLanguage } from "./messageLanguage";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
@@ -18,7 +19,7 @@ const fieldNames: Record<string, [string, string]> = {
   "app.launch_engine_on_start": ["启动应用时启动自动化服务", "Start automation on app launch"],
   "app.launch_on_login": ["开机启动助手", "Launch at sign-in"], "app.minimize_to_tray": ["关闭到托盘", "Close to tray"],
   "app.ui_scale_percent": ["界面缩放（%）", "Interface scale (%)"], "app.engine_hotkey": ["引擎快捷键", "Engine shortcut"],
-  "app.recognition_hotkey": ["识别一楼地图快捷键", "Recognize first-floor map shortcut"],
+  "app.recognition_hotkey": ["地图识别快捷键", "Map recognition shortcut"],
   "app.diagnostic_images": ["诊断包包含截图", "Include screenshots in diagnostics"],
   "app.developer_mode": ["开发者模式", "Developer mode"], "app.prevent_system_sleep": ["禁止电脑自动休眠", "Prevent system sleep"],
   "app.prevent_display_sleep": ["禁止自动熄屏和闲置锁屏", "Prevent display sleep and idle lock"],
@@ -46,6 +47,8 @@ const fieldNames: Record<string, [string, string]> = {
   "debug.save_debug_screenshots": ["保存调试截图", "Save debug screenshots"],
   "debug.save_failure_screenshots": ["任务失败时保存游戏画面", "Save failure screenshots"], "debug.verbose_logs": ["详细日志", "Verbose logs"],
   "journal.season": ["地图赛季", "Map season"], "journal.difficulty": ["地图难度", "Map difficulty"],
+  "journal.auto_difficulty": ["S0 自动判断难度", "S0 automatic difficulty"],
+  "journal.s1_display": ["S1 地图显示模式", "S1 map display"],
   "journal.door": ["地图门型", "Map door layout"], "journal.floor": ["地图楼层", "Map floor"],
   "journal.display": ["地图显示模式", "Map display"], "journal.collapsed": ["收起地图筛选", "Collapse map filters"],
   "journal.auto_enter": ["自动进入最匹配地图", "Automatically open the best match"],
@@ -137,7 +140,7 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
       {!!sessions.warnings?.length && <p className="support-hint">{zh ? `${sessions.warnings.length} 份报告不可读或无法确定所属会话，将在预览中列为缺失。` : `${sessions.warnings.length} reports are unreadable or lack session information. They will be listed as missing in the preview.`}</p>}
     </>}
     {restore && <>
-      {restore.warnings.map((warning, index) => <p className="support-hint" key={index}>{warning}</p>)}
+      {restore.warnings.map((warning, index) => <p className="support-hint" key={index}>{messageLanguage(warning, language)}</p>)}
       {restore.changes.length ? <>
         <div className="support-table" tabIndex={0} aria-label={zh ? "设置变化" : "Settings changes"}><table><thead><tr><th scope="col">{zh ? "设置" : "Setting"}</th><th scope="col">{zh ? "当前" : "Current"}</th><th scope="col">{zh ? "应用后" : "After apply"}</th></tr></thead><tbody>{restore.changes.map(change => <tr key={change.field}><th scope="row">{fieldNames[change.field.replace(/^settings\./, "")]?.[zh ? 0 : 1] ?? change.field}</th><td>{formatValue(change.before, change.field)}</td><td>{formatValue(change.after, change.field)}</td></tr>)}</tbody></table></div>
         <p className="support-hint">{taskActive ? (zh ? "请先停止任务，再应用设置。" : "Stop active tasks before applying settings.") : (zh ? "应用时会停止空闲的自动化服务，下次启动使用新设置。" : "Applying stops an idle automation service. The next start uses the new settings.")}</p>
@@ -151,7 +154,7 @@ export default function SupportPanel({language, taskActive, withSettings, onRest
       {!!bundle.omissions?.length && <details className="support-hint"><summary>{zh ? `未包含的记录（${bundle.omissions.length} 组）` : `Omitted records (${bundle.omissions.length} groups)`}</summary><ul>{bundle.omissions.map((item, index) => <li key={index}>{item.group} · {item.reason === "size_limit" ? (zh ? "达到 100 MB 上限" : "100 MB limit reached") : item.reason === "images_expired" ? (zh ? "图片已超过三天保留期" : "Images exceeded the 3-day retention period") : item.reason === "unreadable_report" ? (zh ? "报告不可读或会话归属不明，未猜测关联图片" : "Unreadable report or unknown session; no images associated by guesswork") : (zh ? "文件缺失、不可读或无效" : "Missing, unreadable or invalid file")}</li>)}</ul></details>}
       <p className="support-hint">{zh ? "环境与脱敏设置为本次预览时的状态；历史会话保留其当时的日志和识图报告。" : "Environment and redacted settings reflect this preview. Historical sessions retain their original logs and recognition reports."}</p>
     </>}
-    {diagnosticError && <p className="support-error" role="alert">{zh ? "未能完成，请重试或返回调整会话范围。" : "Could not finish. Retry or adjust the selected sessions."}<br />{diagnosticError}</p>}
+    {diagnosticError && <p className="support-error" role="alert">{zh ? "未能完成，请重试或返回调整会话范围。" : "Could not finish. Retry or adjust the selected sessions."}<br />{messageLanguage(diagnosticError, language)}</p>}
     <footer className="update-actions">
       {bundle && <button disabled={busy} onClick={() => void run(async () => {await discard(bundle.id); setBundle(null); setDiagnosticError("");})}>{zh ? "返回选择" : "Back to selection"}</button>}
       <button autoFocus disabled={busy} onClick={closePreview}>{restore && !restore.changes.length ? (zh ? "关闭" : "Close") : (zh ? "取消" : "Cancel")}</button>

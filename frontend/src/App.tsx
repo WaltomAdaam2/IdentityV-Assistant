@@ -1,3 +1,4 @@
+import { messageLanguage } from "./messageLanguage";
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isTauri } from "@tauri-apps/api/core";
@@ -26,6 +27,8 @@ import type {
 } from "./types";
 
 const appIcon = new URL("../../src-tauri/icons/128x128@2x.png", import.meta.url).href;
+const feedbackGroup = "1131511789";
+const feedbackGroupUrl = "https://qun.qq.com/universal-share/share?ac=1&authKey=A5oqnLSwmKWjwpkhqBu2xhRE0uCQmSJnmCdoVujD0gy3KTqn1shZ94%2BXPahd85g7&busi_data=eyJncm91cENvZGUiOiIxMTMxNTExNzg5IiwidG9rZW4iOiJaQk5oVmR2dGIxOXJxVnVUR0NSRnM4YzdVL3JwN1NUNkhNWVZVUmRYUUg2Q3Z3dGd5VmRvVEppMzZ6VlMvaTI3IiwidWluIjoiMjczMzc0MTU4MSJ9&data=GawayX1cxudBlw4ewysTk07hQVFVWc7eAh1mw13f_U6l9ZT2c3V6NJa4uotAZMnglCMuwXerPYrKVkRZDuJAfg&svctype=4&tempid=h5_group_info";
 
 type Page =
   | "dashboard"
@@ -752,6 +755,7 @@ function WindowTitleBar({ language }: { language: Language }) {
       <div className="window-title" data-tauri-drag-region>
         <img className="window-title-mark" src={appIcon} alt="" draggable={false} data-tauri-drag-region />
         <span data-tauri-drag-region>Identity V Assistant</span>
+        <span className="window-feedback-group" data-tauri-drag-region>{language === "zh-CN" ? "QQ 反馈群" : "QQ group"} · {feedbackGroup}</span>
       </div>
       <div className="window-drag-space" data-tauri-drag-region />
       <div className="window-controls">
@@ -1520,7 +1524,9 @@ export default function App() {
       pendingPageRef.current = "journal";
       setPage("journal"); setPagePhase("idle");
       return true;
-    }, message => setNotice(message, true));
+    }, message => setNotice(message, true), difficulty => {
+      setSettings(current => ({ ...current, journal: { ...defaultJournalSettings, ...current.journal, difficulty } }));
+    });
   const content = {
     dashboard: (
       <Dashboard
@@ -1679,7 +1685,7 @@ export default function App() {
               onMouseLeave={() => setNoticeHovered(false)}
               onFocusCapture={() => { if (dismissedNotice.current !== visibleNotice) { setNoticeFocused(true); setCurrentNotice(visibleNotice); } }}
               onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setNoticeFocused(false); }}>
-              <div className="notice-copy"><span>{visibleNotice.message}</span>{visibleNotice.details && <details><summary>{language === "zh-CN" ? "查看详情" : "View details"}</summary><p>{visibleNotice.details}</p></details>}</div>
+              <div className="notice-copy"><span>{messageLanguage(visibleNotice.message, language)}</span>{visibleNotice.details && <details><summary>{language === "zh-CN" ? "查看详情" : "View details"}</summary><p>{messageLanguage(visibleNotice.details, language)}</p></details>}</div>
               <button aria-label={t.closeNotice} onClick={() => { dismissedNotice.current = visibleNotice; setNotice(null); setNoticeHovered(false); setNoticeFocused(false); }}>
                 ×
               </button>
@@ -1688,8 +1694,8 @@ export default function App() {
           )}
           <div className={`page-content page-${page} page-${pagePhase}`} ref={element => { if (element) element.inert = pagePhase === "leave"; }} style={{ "--page-direction": pageDirection } as CSSProperties}
             onAnimationEnd={(event) => { if (event.target === event.currentTarget && event.animationName === "page-in") setPagePhase("idle"); }}>
-            {(eventError || snapshotError) && <div className="persistent-feedback" role="alert"><div><strong>{language === "zh-CN" ? "状态连接失败，显示内容可能已过时" : "Status connection failed; displayed information may be outdated"}</strong><details><summary>{language === "zh-CN" ? "错误详情" : "Error details"}</summary><p>{eventError || snapshotError}</p></details></div><button onClick={() => setConnectionAttempt(value => value + 1)}>{language === "zh-CN" ? "重新连接" : "Reconnect"}</button></div>}
-            {page === "settings" && settingsSaveError && <div className="persistent-feedback settings-save-error" role="alert"><div><strong>{settingsSaveError.saved ? (language === "zh-CN" ? "设置已保存，但引擎尚未应用" : "Settings saved, but not applied by the engine") : (language === "zh-CN" ? "尚未保存" : "Settings not saved")}</strong><p>{settingsSaveError.message}</p></div><button onClick={() => setSupportRevision(value => value + 1)}>{language === "zh-CN" ? "重试保存" : "Retry save"}</button></div>}
+            {(eventError || snapshotError) && <div className="persistent-feedback" role="alert"><div><strong>{language === "zh-CN" ? "状态连接失败，显示内容可能已过时" : "Status connection failed; displayed information may be outdated"}</strong><details><summary>{language === "zh-CN" ? "错误详情" : "Error details"}</summary><p>{messageLanguage(eventError || snapshotError, language)}</p></details></div><button onClick={() => setConnectionAttempt(value => value + 1)}>{language === "zh-CN" ? "重新连接" : "Reconnect"}</button></div>}
+            {page === "settings" && settingsSaveError && <div className="persistent-feedback settings-save-error" role="alert"><div><strong>{settingsSaveError.saved ? (language === "zh-CN" ? "设置已保存，但引擎尚未应用" : "Settings saved, but not applied by the engine") : (language === "zh-CN" ? "尚未保存" : "Settings not saved")}</strong><p>{messageLanguage(settingsSaveError.message, language)}</p></div><button onClick={() => setSupportRevision(value => value + 1)}>{language === "zh-CN" ? "重试保存" : "Retry save"}</button></div>}
             <UpdatePanel settings={settings} loaded={settingsLoaded} expanded={page === "settings" && settingsLoaded}
               onSettingsChange={(app) => setSettings((previous) => ({ ...previous, app }))}
               onOpen={() => navigate("settings")} />
@@ -2160,7 +2166,7 @@ function Debug({
       {diagnosticError && (
         <section className="diagnostic-error" role="alert">
           <strong>{t.errorTitle}</strong>
-          <span>{diagnosticError.message ?? diagnosticError.code}</span>
+          <span>{messageLanguage(diagnosticError.message ?? diagnosticError.code ?? "", language)}</span>
           {diagnosticError.request_id && (
             <small>
               {t.requestId}: {diagnosticError.request_id}
@@ -2437,7 +2443,7 @@ const Logs = memo(function Logs({
                 </b>
               </span>
               <span>{entry.source}</span>
-              <span>{entry.message}{verbose && entry.details && <details className="log-details"><summary>{language === "zh-CN" ? "详细记录" : "Full record"}</summary><pre>{JSON.stringify(entry.details, null, 2)}</pre></details>}</span>
+              <span>{messageLanguage(entry.message, language)}{verbose && entry.details && <details className="log-details"><summary>{language === "zh-CN" ? "详细记录" : "Full record"}</summary><pre>{JSON.stringify(entry.details, null, 2)}</pre></details>}</span>
             </div>
           ))
         ) : (
@@ -2531,9 +2537,6 @@ function SettingsPage({
         <SettingRow icon="power" title={language === "zh-CN" ? "开机启动助手" : "Launch at sign-in"} description={language === "zh-CN" ? "登录 Windows 后自动启动助手" : "Start the assistant when you sign in to Windows."} language={language}>
           <input type="checkbox" role="switch" checked={settings.app.launch_on_login} onChange={(event) => updateApp({ launch_on_login: event.target.checked })} />
         </SettingRow>
-        <SettingRow icon="tray" title={language === "zh-CN" ? "关闭到托盘" : "Close to system tray"} description={language === "zh-CN" ? "点击右上角 × 隐藏到托盘；最小化保留在任务栏。完全退出请使用托盘菜单。" : "The title-bar × hides to the tray; minimize stays on the taskbar. Use the tray menu to quit."} language={language}>
-          <input type="checkbox" role="switch" checked={settings.app.minimize_to_tray} onChange={(event) => updateApp({ minimize_to_tray: event.target.checked })} />
-        </SettingRow>
         <SettingRow icon="scale" title={language === "zh-CN" ? "界面缩放" : "Interface scale"} description={language === "zh-CN" ? "调整文字与控件的显示大小" : "Adjust the size of text and controls."} language={language}>
           <select value={settings.app.ui_scale_percent} onChange={(event) => updateApp({ ui_scale_percent: Number(event.target.value) })}>{[75, 90, 100, 110, 125, 150].map((scale) => <option key={scale} value={scale}>{scale}%</option>)}</select>
         </SettingRow>
@@ -2543,7 +2546,7 @@ function SettingsPage({
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
           <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select>
         </SettingRow>
-        <SettingRow icon="keyboard" title={language === "zh-CN" ? "识别一楼地图快捷键" : "Recognize first-floor map shortcut"} description={language === "zh-CN" ? "仅在游戏前台响应，保留原按键，不切走游戏焦点。先在手记中选择赛季、难度与显示方式。" : "Works only while the game is foreground; preserves game input and focus. Select the season, difficulty and display in Journal first."} language={language}>
+        <SettingRow icon="keyboard" title={language === "zh-CN" ? "地图识别快捷键" : "Map recognition shortcut"} description={language === "zh-CN" ? "仅在游戏前台响应，保留原按键，不切走游戏焦点。先在手记中选择赛季、难度与显示方式。" : "Works only while the game is foreground; preserves game input and focus. Select the season, difficulty and display in Journal first."} language={language}>
           <select value={settings.app.recognition_hotkey} onChange={event => updateApp({ recognition_hotkey: event.target.value })}>{[..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map(key => <option key={key} disabled={key === settings.app.engine_hotkey}>{key}</option>)}</select>
         </SettingRow>
         <SettingRow icon="play" title={t.launch} description={language === "zh-CN" ? "打开助手时自动启动自动化引擎" : "Start the automation engine when the assistant opens."} language={language}>
@@ -2697,21 +2700,32 @@ function About({ language }: { language: Language }) {
           <strong>React · TypeScript · Tauri</strong>
         </div>
       </div>
-      <a
-        className="repository-link"
-        href="https://github.com/WaltomAdaam2/IdentityV-Assistant"
-        target="_blank"
-        rel="noreferrer"
-        onClick={(event) => {
-          if (!isTauri()) return;
-          event.preventDefault();
-          setLinkError("");
-          void bridge.openRepository().catch((error) => setLinkError(String(error)));
-        }}
-      >
-        GitHub · WaltomAdaam2/IdentityV-Assistant{" "}
-        <span aria-hidden="true">↗</span>
-      </a>
+      <div className="about-links">
+        <a
+          className="repository-link"
+          href="https://github.com/WaltomAdaam2/IdentityV-Assistant"
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            if (!isTauri()) return;
+            event.preventDefault();
+            setLinkError("");
+            void bridge.openRepository().catch((error) => setLinkError(String(error)));
+          }}
+        >
+          GitHub · WaltomAdaam2/IdentityV-Assistant{" "}
+          <span aria-hidden="true">↗</span>
+        </a>
+        <a className="repository-link" href={feedbackGroupUrl} target="_blank" rel="noreferrer"
+          onClick={event => {
+            if (!isTauri()) return;
+            event.preventDefault();
+            setLinkError("");
+            void bridge.openReleaseLink(feedbackGroupUrl).catch(error => setLinkError(String(error)));
+          }}>
+          {language === "zh-CN" ? "QQ 反馈群" : "QQ feedback group"} · {feedbackGroup} <span aria-hidden="true">↗</span>
+        </a>
+      </div>
       {linkError && <p className="form-error" role="alert">{language === "zh-CN" ? "无法打开浏览器：" : "Could not open browser: "}{linkError}</p>}
     </section>
   );

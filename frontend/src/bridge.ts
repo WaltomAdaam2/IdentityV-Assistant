@@ -26,25 +26,23 @@ export interface ComponentUpdateInfo {
   current_version: string;
   version: string;
   notes: string;
-  release_url: string | null;
-  hotfixes: { target_module: string; target_commit: string; note: string }[];
+  available: boolean;
 }
 
 export interface ComponentUpdateProgress {
-  phase: "preparing" | "downloading" | "applying" | "restoring";
+  phase: "preparing" | "downloading" | "extracting" | "verifying" | "applying" | "restoring";
   downloaded: number;
   total: number | null;
-  module: string;
-  commit: string;
+  file?: string;
+  cancellable: boolean;
 }
 
 export const bridge = {
   minimizeToTaskbar: () => invoke<void>("minimize_to_taskbar"),
   checkLoginUpdates: (source: Settings["app"]["update_source"]) => invoke<ComponentUpdateInfo>("check_login_updates", {source}),
-  applyLoginHotfixes: (source: Settings["app"]["update_source"]) => invoke<void>("apply_login_hotfixes", {source}),
+  installLoginUpdate: (source: Settings["app"]["update_source"]) => invoke<void>("install_login_update", {source}),
   onComponentUpdateProgress: (handler: (progress: ComponentUpdateProgress) => void): Promise<UnlistenFn> =>
     listen<ComponentUpdateProgress>("component-update-progress", ({ payload }) => handler(payload)),
-  openLoginUpdate: (source: Settings["app"]["update_source"]) => invoke<void>("open_login_update", {source}),
   resetWindowSize: () => invoke<void>("reset_window_size"),
   chooseGameExecutable: () => invoke<string | null>("choose_game_executable"),
   chooseLoginComponent: () => invoke<string | null>("choose_login_component"),

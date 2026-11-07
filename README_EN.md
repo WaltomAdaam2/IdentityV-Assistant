@@ -29,6 +29,10 @@
 
 <p align="center"><a href="README.md">中文</a> · <strong>English</strong></p>
 
+> **Community and feedback — QQ group: 1131511789**
+>
+> Include your assistant version, reproduction steps and diagnostic bundle when reporting an issue. Check screenshots for nicknames and chat content before sharing.
+
 ---
 
 <p align="center">
@@ -39,9 +43,9 @@
 
 - **Game launcher:** locate the official `dwrg.exe` client and coordinate direct launch with the independent [idv-login](https://github.com/KKeygen/idv-login) component, including setup, downloads, update confirmation and proxy status.
 - **Visual tasks:** lobby login, Blackjack, hunter match, hunter rank and Hide and Seek, with ordered execution, pause, resume, stop and optional match loops.
-- **Journal maps:** import multiple ZIP packs and filter by season, difficulty, doors, floor and base/route view. Use the recognition button or **P** while the game is foreground to match first-floor maps in the existing grid, then open details or an in-window preview.
+- **Journal maps:** bundled S0 and S1 hard/nightmare maps, multi-ZIP imports and base/route views. Use the button or **P** in the game: S0 matches 1F with automatic or manual difficulty; S1 uses manual difficulty and detects B1–B3. View up to four candidates, drag and remember map placement, and press **L** to change floors inside the full-window map preview.
 - **Window and input control:** capture the game window and send foreground-checked Windows input. Explicit engine startup applies window settings; shutdown attempts to restore the original window.
-- **Desktop controls:** global engine shortcut, close to tray, capture diagnostics, searchable logs and optional sleep/display controls.
+- **Desktop controls:** global engine shortcut, single-instance window (close exits; relaunch restores it), capture diagnostics, searchable logs and optional sleep/display controls.
 - **Task feedback and recovery:** preflight checks, stage timing and pause guidance, bounded local failure screenshots (on by default), settings backup/restore previews and diagnostic ZIP exports with screenshots separately selected.
 - **Updates:** GitHub direct by default with three manual proxies, download speed/time estimates and Markdown notes, with confirmation and signature, version, SHA-256 and size verification.
 

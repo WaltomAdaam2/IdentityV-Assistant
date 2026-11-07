@@ -22,6 +22,98 @@ function setup() {
   click("加页手记");
   wait("!!document.querySelector('.journal') && !document.querySelector('.journal-viewer[aria-busy=true]')");
 }
+
+test("S0 Auto and manual choices reach recognition without changing the other mode", () => {
+  try {
+    setup();
+    assert.equal(evaluate("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='自动').getAttribute('aria-pressed')"), "true");
+    for (const [label, difficulty] of [["自动", "auto"], ["困难", "hard"], ["噩梦", "nightmare"], ["自动", "auto"]]) {
+      click(label); click("识别一楼地图");
+      wait(`window.__launcherTest.recognitionRequest?.difficulty==='${difficulty}'`);
+      evaluate(`window.__launcherTest.finishRecognition({difficulty:'${difficulty === "auto" ? "nightmare" : difficulty}',keys:[],preview:null,warnings:[]})`);
+      wait("!document.querySelector('.journal-viewer[aria-busy=true]')");
+      assert.equal(evaluate(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='${label}').getAttribute('aria-pressed')`), "true");
+    }
+  } finally { browser("close"); }
+});
+
+test("S1 preserves S0 view preferences, uses selected difficulty, and cycles B1 through B3", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html?desktop`);
+    evaluate(`window.__launcherTest.packs=[
+      {id:'s0',season_id:'s0',season_name:'S0 厄运之女',difficulty:'hard',maps:[{index:1,category:'lf',floors:{1:'s0.png'},display:{1:'route.png'}}]},
+      ...['hard','nightmare'].map(difficulty=>({id:'s1_'+difficulty,season_id:'s1',season_name:'S1 磷光症',difficulty,maps:[{index:1,category:'td',floors:{1:'b1.png',2:'b2.png',3:'b3.png'},display:{}}]}))]`);
+    click("加页手记"); wait("!!document.querySelector('.journal') && !document.querySelector('.journal-viewer[aria-busy=true]')");
+    click("速刷"); wait("window.__launcherTest.savedSettings?.journal.display==='route'");
+    browser("select", ".journal-season select", "s1");
+    wait("!!Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='识别当前楼层地图')");
+    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.journal-filters legend'),e=>e.textContent)"), ["难度","楼层","显示"]);
+    assert.equal(evaluate("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷').disabled"), true);
+    assert.equal(evaluate("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='纯净').getAttribute('aria-pressed')"), "true");
+    click("纯净");
+    assert.equal(evaluate("window.__launcherTest.savedSettings.journal.display"), "route");
+    click("噩梦"); click("识别当前楼层地图"); wait("!!window.__launcherTest.finishRecognition");
+    assert.deepEqual(evaluate("(({season,difficulty,display})=>({season,difficulty,display}))(window.__launcherTest.recognitionRequest)"), {season:"s1",difficulty:"nightmare",display:"pure"});
+    evaluate("window.__launcherTest.emitRecognitionProgress({request_id:window.__launcherTest.recognitionRequest.requestId,stage:'floor',completed:0,total:0})");
+    browser("wait", "--text", "正在判断地图楼层…");
+    evaluate("window.__launcherTest.finishRecognition({keys:['td:1'],difficulty:'nightmare',floor:'2',preview:null,warnings:[]})");
+    wait("document.querySelectorAll('.journal-map').length===1");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b2.png'");
+    browser("wait", "--text", "地下2层识图结果");
+    assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"), "地图 1");
+    browser("press", "l");
+    assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path"), "b2.png");
+    click("查看地图 1"); wait("!!document.querySelector('.journal-detail img')");
+    browser("press", "l");
+    assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path"), "b2.png");
+    click("进入地图");
+    wait("!!document.querySelector('.journal-full-preview:modal img')");
+    for (const [key,label] of [["3","地下3层"],["1","地下1层"],["2","地下2层"]]) {
+      browser("press", "l");
+      wait(`document.querySelector('.journal-preview-floors button[aria-pressed=true]')?.textContent==='${label}'`);
+      wait(`window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b${key}.png'`);
+    }
+    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.journal-preview-floors button'),e=>e.textContent)"), ["地下1层","地下2层","地下3层"]);
+    click("退出全窗口预览"); wait("!document.querySelector('.journal-full-preview')");
+    browser("find", "role", "switch", "check", "--name", "自动进入最匹配地图", "--exact");
+    click("识别当前楼层地图");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length===2");
+    evaluate("window.__launcherTest.finishRecognition({keys:['td:1'],difficulty:'nightmare',floor:'3',preview:null,warnings:[]})");
+    wait("document.querySelector('.journal-full-preview:modal .journal-preview-floors button[aria-pressed=true]')?.textContent==='地下3层'");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b3.png'");
+    click("退出全窗口预览"); wait("!document.querySelector('.journal-full-preview')");
+    browser("select", ".journal-season select", "s0");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.getAttribute('aria-pressed')==='true'");
+    assert.equal(evaluate("window.__launcherTest.savedSettings.journal.display"), "route");
+    assert.equal(evaluate("window.__launcherTest.savedSettings.journal.door"), "lf");
+  } finally { browser("close"); }
+});
+test("imported S1 route images enable route view and preserve separate season preferences", () => {
+  try {
+    setup();
+    evaluate("window.__launcherTest.packs=[...window.__launcherTest.packs,{id:'s1_base',season_id:'s1',difficulty:'hard',maps:[{index:1,category:'td',floors:{1:'base.png'},display:{}}]}]");
+    click("刷新地图");
+    wait("!!document.querySelector('.journal-season option[value=s1]')");
+    browser("select", ".journal-season select", "s1");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.disabled");
+    browser("wait", "--text", "导入此难度的速刷地图包后可用。");
+    evaluate("window.__launcherTest.packs=[...window.__launcherTest.packs,{id:'s1_route',season_id:'s1',difficulty:'hard',maps:[{index:1,category:'td',floors:{1:'base.png'},display:{1:'route.png'}}]}]");
+    click("刷新地图");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.disabled===false");
+    click("速刷");
+    wait("window.__launcherTest.savedSettings?.journal.s1_display==='route'");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='route.png'");
+    click("识别当前楼层地图");
+    wait("window.__launcherTest.recognitionRequest?.display==='route'");
+    evaluate("window.__launcherTest.finishRecognition({difficulty:'hard',floor:'1',keys:['td:1'],preview:null,warnings:[]})");
+    wait("!document.querySelector('.journal-viewer[aria-busy=true]')");
+    browser("select", ".journal-season select", "s0");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='纯净')?.getAttribute('aria-pressed')==='true'");
+    browser("select", ".journal-season select", "s1");
+    wait("Array.from(document.querySelectorAll('button')).find(e=>e.textContent==='速刷')?.getAttribute('aria-pressed')==='true'");
+  } finally { browser("close"); }
+});
+
 test("recognition updates existing grid, keeps same-number doors distinct, and opens only on click", () => {
   try {
     setup(); click("识别一楼地图");
@@ -220,5 +312,40 @@ test("map dragging remembers position, clamps edges, and keeps position presets 
     const reopened = bounds();
     assert.ok(Math.abs((reopened.x + reopened.right) / 2 - reopened.width / 2) < 1);
     assert.ok(Math.abs((reopened.y + reopened.bottom) / 2 / reopened.height - restoredPosition.y) < 0.002);
+  } finally { browser("close"); }
+});
+
+test("repeated P cancels the helper, waits for release, and only starts the latest request", () => {
+  try {
+    setup(); click("识别一楼地图"); wait("!!window.__launcherTest.finishRecognition");
+    evaluate("window.__finishOld=window.__launcherTest.finishRecognition; window.__launcherTest.recognitionShortcut(); window.__launcherTest.recognitionShortcut()");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_cancel_recognition').length>=1");
+    assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length"),1);
+    evaluate("window.__finishOld({keys:['lf:1'],preview:null,warnings:[]})");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length===2");
+    assert.equal(evaluate("document.querySelectorAll('.journal-map').length"),0);
+    evaluate("window.__launcherTest.finishRecognition({difficulty:'hard',keys:['rf:1'],preview:null,warnings:[]})");
+    wait("document.querySelectorAll('.journal-map').length===1");
+    assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"),"右前 · 地图 1");
+    click("查看右前 · 地图 1"); browser("press","l");
+    wait("window.__launcherTest.calls.some(c=>c.command==='journal_read_image' && c.args.path==='right-upper.png')");
+    browser("press","l");
+    wait("document.querySelector('.journal-floor-switch button[aria-pressed=true]').textContent==='1F'");
+  } finally { browser("close"); }
+});
+
+test("detected difficulty persists without cancelling results or automatic entry", () => {
+  try {
+    browser("open", `${origin}/tests/launcher-harness.html?desktop`);
+    evaluate("window.__launcherTest.packs=[{id:'nightmare',season_id:'s0',difficulty:'nightmare',maps:[{index:1,category:'lf',name:'',floors:{1:'n1.png',2:'n2.png',b1f:'nb.png'},display:{}}]}]");
+    click("加页手记"); wait("!!document.querySelector('.journal') && !document.querySelector('.journal-viewer[aria-busy=true]')");
+    browser("find","role","switch","check","--name","自动进入最匹配地图","--exact");
+    click("识别一楼地图"); wait("!!window.__launcherTest.finishRecognition");
+    evaluate("window.__launcherTest.finishRecognition({difficulty:'nightmare',keys:['lf:1'],preview:null,warnings:[]})");
+    wait("!!document.querySelector('.journal-full-preview:modal')");
+    wait("window.__launcherTest.savedSettings?.journal.difficulty==='nightmare'");
+    browser("press","l"); wait("window.__launcherTest.calls.at(-1).command!=='unused' && [...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='2F'");
+    browser("press","l"); wait("[...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='地下室'");
+    assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition')"),false);
   } finally { browser("close"); }
 });

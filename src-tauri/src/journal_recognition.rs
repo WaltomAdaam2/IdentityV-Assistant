@@ -106,10 +106,7 @@ impl RecognitionState {
                     .and_then(Value::as_array)
                     .is_some_and(|keys| keys.iter().any(|v| v == key))
             {
-                return Err(
-                    "请选择本次识图的一楼地图 / Choose a first-floor map from this recognition"
-                        .into(),
-                );
+                return Err("请选择本次识图的地图 / Choose a map from this recognition".into());
             }
         }
         let feedback =
@@ -139,6 +136,12 @@ impl RecognitionState {
         else {
             return;
         };
+        if step["stage"] == "difficulty_detected" {
+            latest.report["filters"]["difficulty"] = step["difficulty"].clone();
+        }
+        if step["stage"] == "floor_detected" {
+            latest.report["filters"]["floor"] = step["floor"].clone();
+        }
         step["timestamp"] = json!(chrono::Utc::now());
         step["started_at"] = step["timestamp"].clone();
         step["started_elapsed_ms"] = step["elapsed_ms"].clone();
@@ -250,7 +253,9 @@ pub fn journal_cancel_recognition(
 ) {
     if uuid::Uuid::parse_str(&request_id).is_ok() {
         let reason = match reason.as_deref() {
-            Some("filters_changed" | "page_left" | "view_disposed") => reason.as_deref().unwrap(),
+            Some("filters_changed" | "page_left" | "view_disposed" | "restarted") => {
+                reason.as_deref().unwrap()
+            }
             _ => "user_cancelled",
         };
         state.cancel(&request_id, reason);
@@ -300,7 +305,11 @@ pub async fn journal_recognize(
         &app,
         "info",
         "journal.recognition",
-        "开始识别一楼地图 / Starting first-floor recognition",
+        if season == "s1" {
+            "开始识别 S1 当前楼层地图 / Starting S1 current-floor recognition"
+        } else {
+            "开始识别一楼地图 / Starting first-floor recognition"
+        },
         json!({"request_id":request_id,"season":season,"difficulty":difficulty,"display":display,
             "trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
     );
@@ -321,14 +330,18 @@ pub async fn journal_recognize(
         );
         state.start_diagnostics(
             &request_id,
-            json!({"season":season,"difficulty":difficulty,"display":display,
-        "floor":1,"trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
+            json!({"season":season,"difficulty":difficulty,"requested_difficulty":difficulty,"display":display,
+        "floor":if season == "s1" {json!("auto")} else {json!(1)},"trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
             &root,
         )
     });
     diagnostic_warning(&app, &request_id, evidence);
     let work = async {
-        let _automation_guard = supervisor.begin_recognition().await?;
+        let _automation_guard = tokio::select! {
+            biased;
+            _ = cancelled.changed() => return Err("识图已取消 / Recognition cancelled".into()),
+            guard = supervisor.begin_recognition() => guard?,
+        };
         recognize(
             &app,
             &state,
@@ -337,15 +350,11 @@ pub async fn journal_recognize(
             difficulty,
             display,
             window_handle,
+            cancelled.clone(),
         )
         .await
     };
-    let outcome = tokio::select! {
-        biased;
-        _ = cancelled.changed() => Err("识图已取消 / Recognition cancelled".into()),
-        result = tokio::time::timeout(Duration::from_secs(120), work) =>
-            result.unwrap_or_else(|_| Err("识图超时，请缩小地图包分类后重试 / Recognition timed out".to_string())),
-    };
+    let outcome = work.await;
     let elapsed = started.elapsed().as_millis();
     let status = if outcome.is_ok() {
         "completed"
@@ -414,28 +423,48 @@ async fn recognize(
     difficulty: String,
     display: String,
     window_handle: Option<isize>,
+    mut cancelled: watch::Receiver<bool>,
 ) -> Result<Value, String> {
+    let maps_app = app.clone();
+    let request_season = season.clone();
+    let request_difficulty = difficulty.clone();
     let templates = tauri::async_runtime::spawn_blocking(move || {
-        crate::journal::recognition_templates(&season, &difficulty, &display)
+        crate::journal::ensure_builtins(&maps_app)?;
+        if !["hard", "nightmare"].contains(&difficulty.as_str())
+            && !(season == "s0" && difficulty == "auto")
+        {
+            return Err("无效地图难度 / Invalid map difficulty".to_string());
+        }
+        // Manual mode indexes only its selected pool; S0 Auto needs both.
+        let hard = if difficulty == "auto" || difficulty == "hard" {
+            crate::journal::recognition_templates(&season, "hard", &display)?
+        } else {
+            json!([])
+        };
+        let nightmare = if difficulty == "auto" || difficulty == "nightmare" {
+            crate::journal::recognition_templates(&season, "nightmare", &display)?
+        } else {
+            json!([])
+        };
+        Ok::<_, String>(json!({"hard":hard,"nightmare":nightmare}))
     })
     .await
     .map_err(|error| error.to_string())??;
-    state.record(
-        id,
-        json!({"stage":"indexed","template_count":templates.as_array().map(Vec::len).unwrap_or(0),"template_keys":templates.as_array().map(|items|items.iter().map(|item|item["key"].clone()).collect::<Vec<_>>())}),
-    );
     crate::logs::record(
         app,
         "debug",
         "journal.recognition",
-        "地图模板索引就绪 / Map templates indexed",
-        json!({"request_id":id,"template_count":templates.as_array().map(Vec::len).unwrap_or(0)}),
+        "地图模板索引就绪 / Map template pools indexed",
+        json!({"request_id":id,"hard":templates["hard"].as_array().map(Vec::len),"nightmare":templates["nightmare"].as_array().map(Vec::len)}),
     );
     let path = crate::engine::locate_engine(
         &app.path()
             .resource_dir()
             .map_err(|error| error.to_string())?,
     )?;
+    if *cancelled.borrow() {
+        return Err("识图已取消 / Recognition cancelled".into());
+    }
     let mut child = crate::engine::engine_command(&path)
         .arg("--config")
         .arg(crate::config::active_path()?)
@@ -455,114 +484,137 @@ async fn recognize(
         "独立识图进程已启动 / Recognition helper started",
         json!({"request_id":id,"pid":child.id(),"automation_started":false}),
     );
-    let stderr = child.stderr.take().ok_or("Missing recognition stderr")?;
-    let stderr_app = app.clone();
-    let stderr_id = id.to_string();
-    let stderr_reader = tauri::async_runtime::spawn(async move {
-        let mut errors = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = errors.next_line().await {
-            let mut record = crate::logs::stderr_record(&line, "journal.stderr");
-            record["request_id"] = json!(stderr_id);
-            crate::logs::emit(&stderr_app, record);
-        }
-    });
-    let mut input = child.stdin.take().ok_or("Missing recognition input")?;
-    let request = json!({"request_id": id, "templates": templates, "window_handle": window_handle});
-    input
-        .write_all(format!("{request}\n").as_bytes())
-        .await
-        .map_err(|error| error.to_string())?;
-    drop(input);
-    let mut output = BufReader::new(child.stdout.take().ok_or("Missing recognition output")?);
-    let mut result = None;
-    loop {
-        let mut line = String::new();
-        let read = (&mut output)
-            .take(96 * 1024 * 1024)
-            .read_line(&mut line)
+    let work = async {
+        let stderr = child.stderr.take().ok_or("Missing recognition stderr")?;
+        let stderr_app = app.clone();
+        let stderr_id = id.to_string();
+        let stderr_reader = tauri::async_runtime::spawn(async move {
+            let mut errors = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = errors.next_line().await {
+                let mut record = crate::logs::stderr_record(&line, "journal.stderr");
+                record["request_id"] = json!(stderr_id);
+                crate::logs::emit(&stderr_app, record);
+            }
+        });
+        let mut input = child.stdin.take().ok_or("Missing recognition input")?;
+        let request = json!({"request_id": id, "season":request_season, "difficulty":request_difficulty,
+            "templates_by_difficulty": templates, "window_handle": window_handle});
+        input
+            .write_all(format!("{request}\n").as_bytes())
             .await
             .map_err(|error| error.to_string())?;
-        if read == 0 {
-            break;
-        }
-        if read >= 96 * 1024 * 1024 {
-            return Err("Recognition response exceeds limit".into());
-        }
-        let message: Value = serde_json::from_str(&line)
-            .map_err(|error| format!("Invalid recognition response: {error}"))?;
-        if message["request_id"] != id {
-            return Err("Recognition request ID mismatch".into());
-        }
-        match message["type"].as_str() {
-            Some("journal_recognition_progress") => {
-                let stage = message["stage"].as_str().unwrap_or("unknown");
-                let label = match stage {
-                    "capturing" => "正在截图 / Capturing game window",
-                    "locating" => "正在定位地图 / Locating map region",
-                    "matching" => "正在匹配地图 / Matching maps",
-                    _ => "识图进度 / Recognition progress",
-                };
-                crate::logs::record(
-                    app,
-                    if stage == "matching" && message["completed"].as_u64().unwrap_or(0) > 0 {
-                        "debug"
-                    } else {
-                        "info"
-                    },
-                    "journal.recognition",
-                    label,
-                    json!({"request_id":id,"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}),
-                );
-                state.record(id, json!({"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}));
-                let _ = app.emit("journal-recognition-progress", &message);
+        drop(input);
+        let mut output = BufReader::new(child.stdout.take().ok_or("Missing recognition output")?);
+        let mut result = None;
+        loop {
+            let mut line = String::new();
+            let read = (&mut output)
+                .take(96 * 1024 * 1024)
+                .read_line(&mut line)
+                .await
+                .map_err(|error| error.to_string())?;
+            if read == 0 {
+                break;
             }
-            Some("journal_recognition_image") => {
-                diagnostic_warning(app, id, state.retain_image(id, &message));
-                let metadata = json!({"request_id":id,"stage":format!("{}_image",message["image_kind"].as_str().unwrap_or("")),
-                    "width":message["width"],"height":message["height"],"elapsed_ms":message["elapsed_ms"]});
-                state.record(id, metadata.clone());
-                crate::logs::record(
-                    app,
-                    "debug",
-                    "journal.recognition",
-                    "收到识图截图 / Recognition image received",
-                    metadata,
-                );
+            if read >= 96 * 1024 * 1024 {
+                return Err("Recognition response exceeds limit".into());
             }
-            Some("journal_recognition_diagnostic") => {
-                state.record(id, message.clone());
-                crate::logs::record(
-                    app,
-                    "debug",
-                    "journal.recognition",
-                    "识图分析详情 / Recognition analysis",
-                    message,
-                );
+            let message: Value = serde_json::from_str(&line)
+                .map_err(|error| format!("Invalid recognition response: {error}"))?;
+            if message["request_id"] != id {
+                return Err("Recognition request ID mismatch".into());
             }
-            Some("journal_recognition_preview") => {
-                let preview = message["preview"].as_str().unwrap_or("");
-                if preview.len() > 1024 * 1024 || !preview.starts_with("data:image/jpeg;base64,") {
-                    return Err("Invalid recognition preview".into());
+            match message["type"].as_str() {
+                Some("journal_recognition_progress") => {
+                    let stage = message["stage"].as_str().unwrap_or("unknown");
+                    let label = match stage {
+                        "capturing" => "正在截图 / Capturing game window",
+                        "difficulty" => "正在判断地图难度 / Detecting map difficulty",
+                        "floor" => "正在判断地图楼层 / Detecting map floor",
+                        "locating" => "正在定位地图 / Locating map region",
+                        "matching" => "正在匹配地图 / Matching maps",
+                        _ => "识图进度 / Recognition progress",
+                    };
+                    crate::logs::record(
+                        app,
+                        if stage == "matching" && message["completed"].as_u64().unwrap_or(0) > 0 {
+                            "debug"
+                        } else {
+                            "info"
+                        },
+                        "journal.recognition",
+                        label,
+                        json!({"request_id":id,"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}),
+                    );
+                    state.record(id, json!({"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}));
+                    let _ = app.emit("journal-recognition-progress", &message);
                 }
-                let _ = app.emit("journal-recognition-preview", &message);
+                Some("journal_recognition_image") => {
+                    diagnostic_warning(app, id, state.retain_image(id, &message));
+                    let metadata = json!({"request_id":id,"stage":format!("{}_image",message["image_kind"].as_str().unwrap_or("")),
+                    "width":message["width"],"height":message["height"],"elapsed_ms":message["elapsed_ms"]});
+                    state.record(id, metadata.clone());
+                    crate::logs::record(
+                        app,
+                        "debug",
+                        "journal.recognition",
+                        "收到识图截图 / Recognition image received",
+                        metadata,
+                    );
+                }
+                Some("journal_recognition_diagnostic") => {
+                    state.record(id, message.clone());
+                    crate::logs::record(
+                        app,
+                        "debug",
+                        "journal.recognition",
+                        "识图分析详情 / Recognition analysis",
+                        message,
+                    );
+                }
+                Some("journal_recognition_preview") => {
+                    let preview = message["preview"].as_str().unwrap_or("");
+                    if preview.len() > 1024 * 1024
+                        || !preview.starts_with("data:image/jpeg;base64,")
+                    {
+                        return Err("Invalid recognition preview".into());
+                    }
+                    let _ = app.emit("journal-recognition-preview", &message);
+                }
+                Some("log") => crate::logs::emit(app, message),
+                Some("journal_recognition_result") => result = Some(message),
+                Some("error") => {
+                    return Err(message["message"]
+                        .as_str()
+                        .unwrap_or("Recognition failed")
+                        .to_string())
+                }
+                _ => return Err("Unexpected recognition response".into()),
             }
-            Some("log") => crate::logs::emit(app, message),
-            Some("journal_recognition_result") => result = Some(message),
-            Some("error") => {
-                return Err(message["message"]
-                    .as_str()
-                    .unwrap_or("Recognition failed")
-                    .to_string())
-            }
-            _ => return Err("Unexpected recognition response".into()),
         }
+        let status = child.wait().await.map_err(|error| error.to_string())?;
+        let _ = stderr_reader.await;
+        if !status.success() {
+            return Err("识图进程异常退出 / Recognition process exited unexpectedly".into());
+        }
+        result.ok_or_else(|| "识图未返回结果 / Recognition returned no result".into())
+    };
+    let outcome = tokio::select! {
+        biased;
+        _ = cancelled.changed() => Err("识图已取消 / Recognition cancelled".into()),
+        result = tokio::time::timeout(Duration::from_secs(120), work) =>
+            result.unwrap_or_else(|_| Err("识图超时，请重试 / Recognition timed out".to_string())),
+    };
+    // Do not release the request/automation guards until the helper has actually exited.
+    // This makes P restarts safe even while the old helper is doing CPU-bound matching.
+    if child.try_wait().map_err(|e| e.to_string())?.is_none() {
+        child
+            .kill()
+            .await
+            .map_err(|e| format!("停止识图进程失败 / Could not stop recognition helper: {e}"))?;
+        child.wait().await.map_err(|e| e.to_string())?;
     }
-    let status = child.wait().await.map_err(|error| error.to_string())?;
-    let _ = stderr_reader.await;
-    if !status.success() {
-        return Err("识图进程异常退出 / Recognition process exited unexpectedly".into());
-    }
-    result.ok_or_else(|| "识图未返回结果 / Recognition returned no result".into())
+    outcome
 }
 
 #[cfg(test)]
@@ -653,8 +705,18 @@ mod tests {
         assert!(!flow.to_string().contains(image["png"].as_str().unwrap()));
         let second = uuid::Uuid::new_v4().to_string();
         state
-            .start_diagnostics(&second, json!({}), root.path())
+            .start_diagnostics(&second, json!({"season":"s1","floor":"auto"}), root.path())
             .unwrap();
+        state.record(
+            &second,
+            json!({"stage":"floor_detected","floor":"2","slot_count":4}),
+        );
+        state.save_diagnostics().unwrap();
+        assert_eq!(
+            crate::diagnostic_files::read_report(&root.path().join("recognition").join(&second))
+                .unwrap()["filters"]["floor"],
+            "2"
+        );
         state.retain_image(&first, &image).unwrap();
         assert!(first_dir.join("full.png").exists());
         assert!(!root

@@ -1,3 +1,4 @@
+import { messageLanguage } from "./messageLanguage";
 import { useEffect, useRef, useState } from "react";
 import { bridge, type Announcement, type LauncherStatus, type ComponentUpdateInfo, type ComponentUpdateProgress } from "./bridge";
 import ComponentUpdateDialog from "./ComponentUpdateDialog";
@@ -7,8 +8,7 @@ import "./launcher.css";
 
 const skippedUpdatesKey = "idv-assistant:skipped-component-updates";
 const updateIds = (info: ComponentUpdateInfo) => [
-  ...(info.release_url ? [`release:${info.version}`] : []),
-  ...info.hotfixes.map(item => `hotfix:${info.current_version}|${item.target_module}@${item.target_commit}`),
+  ...(info.available ? [`release:${info.version}`] : []),
 ];
 const readSkippedUpdates = (): string[] => {
   try {
@@ -16,6 +16,43 @@ const readSkippedUpdates = (): string[] => {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
   } catch { return []; }
 };
+
+function LauncherNotice({message, language}: {message: string; language: Settings["app"]["language"]}) {
+  const [visible, setVisible] = useState<{message: string} | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const dismissed = useRef(false);
+  const held = hovered || focused;
+  useEffect(() => {
+    if (!message) return;
+    dismissed.current = false;
+    setVisible({message}); setLeaving(false);
+  }, [message]);
+  useEffect(() => {
+    if (!visible || held || leaving) return;
+    const timer = window.setTimeout(() => setLeaving(true), 2000);
+    return () => clearTimeout(timer);
+  }, [visible, held, leaving]);
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(() => setVisible(null), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 500);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+  if (!visible) return null;
+  return <div className={`launcher-notice-slot${leaving ? " is-leaving" : ""}`}>
+    <div className="notice-clip"><div className="launcher-game-error" role="alert"
+      onMouseEnter={() => { if (!dismissed.current) { setHovered(true); setLeaving(false); } }}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => { if (!dismissed.current) { setFocused(true); setLeaving(false); } }}
+      onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
+      <span>{messageLanguage(visible.message, language)}</span><button aria-label={language === "zh-CN" ? "关闭启动提示" : "Dismiss launch notice"} onClick={event => {
+        dismissed.current = true; setHovered(false); setFocused(false); setLeaving(true);
+        event.currentTarget.closest(".launcher-actions")?.querySelector<HTMLButtonElement>(".launcher-start")?.focus();
+      }}>×</button>
+    </div></div>
+  </div>;
+}
 
 export default function GameLauncher({ language, appSettings, onAppSettingsChange, executablePath, onExecutableChange, onLog }: {
   language: Settings["app"]["language"];
@@ -37,6 +74,7 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   const [status, setStatus] = useState<LauncherStatus | null>(null);
   const [statusError, setStatusError] = useState("");
   const [launchError, setLaunchError] = useState("");
+  const [checkWarning, setCheckWarning] = useState("");
   const [launching, setLaunching] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -71,6 +109,13 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   const [preferenceError, setPreferenceError] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<ComponentUpdateProgress | null>(null);
   const continueAfterUpdate = useRef(false);
+  const checkPending = useRef<{cancelled: boolean} | null>(null);
+  useEffect(() => () => {
+    if (checkPending.current) {
+      checkPending.current.cancelled = true;
+      void bridge.cancelGameLaunch().catch(() => {});
+    }
+  }, []);
   const starting = launching || (updatePhase === "checking" && continueAfterUpdate.current) || status?.phase === "starting";
   const installing = configuring || status?.phase === "configuring";
   const busy = starting || installing || updatePhase !== "idle" || status?.phase === "stopping";
@@ -106,6 +151,8 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   }, []);
   const launch = async () => {
     if (starting || installing) {
+      if (checkPending.current) checkPending.current.cancelled = true;
+      continueAfterUpdate.current = false;
       setCancelling(true);
       try { await bridge.cancelGameLaunch(); }
       catch (error) { setLaunchError(String(error)); }
@@ -126,26 +173,40 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
     try { setStatus(await bridge.getLauncherStatus()); }
     catch (error) { setStatusError(String(error)); }
     setLaunchError(message);
+    setCheckWarning("");
     setLaunching(false);
   };
   const checkUpdates = async (forLaunch: boolean) => {
+    if (checkPending.current) return;
+    const request = {cancelled: false};
+    checkPending.current = request;
     if (forLaunch) onLog(zh ? "正在检查登录组件更新…" : "Checking login component updates…");
     continueAfterUpdate.current = forLaunch;
-    setUpdatePhase("checking"); setUpdateError(""); setUpdateInfo(null); setLaunchError(""); setPreferenceError(false);
+    setUpdatePhase("checking"); setUpdateError(""); setUpdateInfo(null); setLaunchError(""); setCheckWarning(""); setPreferenceError(false);
     if (!forLaunch) setUpdateOpen(true);
     try {
       const info = await bridge.checkLoginUpdates(appSettings.update_source);
+      if (request.cancelled) return;
       setUpdateInfo(info);
       const ids = updateIds(info);
       const ignored = readSkippedUpdates();
       const skipped = ids.length > 0 && ids.every(id => ignored.includes(id));
       setSkipUpdates(skipped);
       if (!forLaunch || updateOpen || (ids.length > 0 && !skipped)) setUpdateOpen(true);
-      else { setUpdatePhase("idle"); continueAfterUpdate.current = false; await startGame(); }
+      else { checkPending.current = null; setUpdatePhase("idle"); continueAfterUpdate.current = false; await startGame(); }
     } catch (error) {
+      if (request.cancelled) return;
       if (String(error).includes("取消")) { continueAfterUpdate.current = false; setLaunchError(String(error)); }
+      else if (forLaunch && status?.component_path) {
+        const warning = zh ? "更新检查失败，继续使用已安装组件。" : "Update check failed. Continuing with the installed component.";
+        onLog(`${warning} ${String(error)}`);
+        checkPending.current = null; setCheckWarning(warning); setUpdatePhase("idle"); continueAfterUpdate.current = false;
+        await startGame();
+      }
       else { setUpdateError(String(error)); setUpdateOpen(true); }
-    } finally { setUpdatePhase("idle"); }
+    } finally {
+      if (checkPending.current === request) { checkPending.current = null; setUpdatePhase("idle"); }
+    }
   };
   const saveUpdatePreference = (checked: boolean) => {
     if (!updateInfo) return;
@@ -156,31 +217,43 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
     } catch { setPreferenceError(true); }
   };
   const closeUpdate = (resume = false) => {
+    if (updatePhase === "applying") return;
     setUpdateOpen(false);
+    if (checkPending.current) {
+      checkPending.current.cancelled = true;
+      void bridge.cancelGameLaunch().catch(error => setLaunchError(String(error)));
+      continueAfterUpdate.current = false;
+      return;
+    }
     const pending = continueAfterUpdate.current;
     continueAfterUpdate.current = false;
     if (pending && resume) void startGame();
   };
-  const applyHotfixes = async () => {
+  const installUpdate = async () => {
     setUpdatePhase("applying"); setUpdateError(""); setUpdateProgress(null);
     let unlisten: (() => void) | undefined;
     try {
       unlisten = await bridge.onComponentUpdateProgress(setUpdateProgress);
-      await bridge.applyLoginHotfixes(appSettings.update_source);
-      setUpdateInfo((info) => info && {...info, hotfixes: []});
-      if (continueAfterUpdate.current) closeUpdate(true);
+      await bridge.installLoginUpdate(appSettings.update_source);
+      setUpdateInfo((info) => info && {...info, current_version: info.version, available: false});
+      // Keep the completion visible; the user can continue launching explicitly.
     } catch (error) { setUpdateInfo(null); setUpdateError(String(error)); }
-    finally { unlisten?.(); setUpdatePhase("idle"); setUpdateProgress(null); }
+    finally { unlisten?.(); setUpdatePhase("idle"); setUpdateProgress(null); setCancelling(false); }
   };
   const configureComponent = async (download: boolean) => {
     setConfiguring(true);
     setLaunchError("");
-    try { await bridge.configureLoginComponent(download); }
-    catch (error) { setLaunchError(String(error)); }
+    setUpdateOpen(true); setUpdatePhase("applying"); setUpdateError(""); setUpdateInfo(null); setUpdateProgress(null);
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = await bridge.onComponentUpdateProgress(setUpdateProgress);
+      await bridge.configureLoginComponent(download);
+    }
+    catch (error) { setLaunchError(String(error)); setUpdateError(String(error)); }
     finally {
       try { setStatus(await bridge.getLauncherStatus()); }
       catch (error) { setStatusError(String(error)); }
-      setConfiguring(false);
+      setConfiguring(false); unlisten?.(); setUpdatePhase("idle"); setUpdateProgress(null); setCancelling(false);
     }
   };
   const chooseComponent = async () => {
@@ -235,10 +308,14 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
   return <section className="game-launcher" aria-label={zh ? "游戏启动" : "Game launch"}>
     {updateOpen && <ComponentUpdateDialog info={updateInfo} error={updateError} phase={updatePhase} progress={updateProgress} source={appSettings.update_source} language={language} continuing={continueAfterUpdate.current}
       skipUpdates={skipUpdates} preferenceError={preferenceError} onSkipUpdates={saveUpdatePreference}
-      onSource={(source) => onAppSettingsChange({...appSettings, update_source: source})} onClose={() => closeUpdate()} onContinue={() => closeUpdate(true)} onCheck={() => void checkUpdates(continueAfterUpdate.current)} onApply={() => void applyHotfixes()}
-      onDownload={() => void bridge.openLoginUpdate(appSettings.update_source).catch((error) => setUpdateError(String(error)))} />}
+      onSource={(source) => onAppSettingsChange({...appSettings, update_source: source})} onClose={() => closeUpdate()} onContinue={() => closeUpdate(true)} onCheck={() => void checkUpdates(continueAfterUpdate.current)} onInstall={() => void installUpdate()}
+      cancelling={cancelling} onCancel={() => {
+        if (cancelling) return;
+        setCancelling(true);
+        void bridge.cancelGameLaunch().catch(error => { setUpdateError(String(error)); setCancelling(false); });
+      }} />}
     <img className="launcher-logo" src="/launcher/logo.png" alt={zh ? "第五人格" : "Identity V"} draggable={false} />
-    <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message || undefined}>
+    <div className="engine-status launcher-proxy-status launcher-status" role="status" aria-live="polite" title={status?.message ? messageLanguage(status.message, language) : undefined}>
       <span className={`dot ${proxyDot}`} aria-hidden="true" /><span className="launcher-proxy-label" key={proxyPhase}>{proxyLabel}</span>
     </div>
     <div className="launcher-bottom">
@@ -261,15 +338,14 @@ export default function GameLauncher({ language, appSettings, onAppSettingsChang
           <p>{zh ? "第五人格游戏程序" : "Identity V executable"}</p>
           <div className="launcher-setup-path" title={gamePath}>{gamePath || (zh ? "未找到游戏" : "Game not found")}</div>
           <button disabled={choosing || locating || busy} onClick={() => void chooseGame()}>{zh ? "选择游戏程序" : "Choose game executable"}</button>
-          <p>{zh ? "官方登录组件 · v6.3.2-stable" : "Official login component · v6.3.2-stable"}</p>
+          <p>{zh ? "官方登录组件" : "Official login component"}</p>
           <div className="launcher-setup-path" title={status?.component_path || undefined}>{status?.component_path || (zh ? "尚未设置" : "Not configured")}</div>
           <div className="launcher-setup-buttons"><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void chooseComponent()}>{zh ? "选择登录组件" : "Choose component"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(true)}>{zh ? "官方下载" : "Official download"}</button><button disabled={choosing || busy || status?.phase === "ready"} onClick={() => void configureComponent(false)}>{zh ? "自动配置" : "Auto configure"}</button></div>
           <p className="launcher-setup-note" title={zh ? "自动配置扫描已有组件；官方下载按所选源安装到助手目录。也可选择包含“点我启动工具.bat”的文件夹。退出助手仅关闭自有代理，保留游戏。" : "Scan an existing component or download to the assistant directory using the selected source. You can also select its startup BAT folder. Quitting closes only the owned proxy and keeps the game open."}>{zh ? "自动扫描或按所选源下载配置。组件需安装证书，首次使用需本人登录。" : "Scan or download using your selected source. Certificate installation and first sign-in are required."}</p>
           <button disabled={busy || !status?.component_path} onClick={() => void checkUpdates(false)}>{zh ? "检查组件更新" : "Check component updates"}</button>
         </section>}
         <p className="launcher-game-path" title={gamePath} role="status">{locating ? (zh ? "正在定位游戏…" : "Locating game…") : gamePath || (zh ? "请选择游戏程序" : "Choose the game executable")}</p>
-        {gameError && <p className="launcher-game-error" role="alert">{gameError}</p>}
-        {(launchError || statusError || (!busy && status?.message)) && <p className="launcher-game-error" role="alert">{launchError || statusError || status?.message}</p>}
+        <LauncherNotice message={gameError || launchError || statusError || checkWarning || (!busy && status?.message) || ""} language={language} />
         <div className="launcher-launch-controls">
           <button className="launcher-start" disabled={cancelling || status?.phase === "stopping" || (!starting && !installing && (choosing || locating || !gamePath || !status || !!statusError))} onClick={() => void launch()}>{cancelling ? (zh ? "正在取消…" : "Cancelling…") : installing ? (zh ? "取消配置" : "Cancel setup") : starting ? (zh ? "取消启动" : "Cancel launch") : (zh ? "启动游戏" : "Launch game")}</button>
           <button ref={setupTrigger} className="launcher-choose" onClick={() => setSetup((open) => !open)} aria-expanded={setup} aria-label={zh ? "启动设置" : "Launch settings"} title={zh ? "启动设置" : "Launch settings"}><Icon name="settings" /></button>

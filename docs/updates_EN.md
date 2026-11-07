@@ -25,14 +25,9 @@ Downloads must pass repository/version URL validation, release-signature verific
 
 The assistant download shows a five-second rolling speed and estimated remaining time beside the progress bar. The estimate is unknown at startup, for unknown sizes, or during a stall; it excludes verification and installation time. Release notes render Markdown headings, lists, emphasis, code and HTTP/HTTPS links without executing HTML/scripts or loading embedded images. Source choices also apply to the separate login component, whose updates have their own lifecycle.
 
-From 0.1.9, login-component hotfixes also report actual per-module downloaded bytes, reliable totals and speed, using B/KB for small files. Unknown totals do not produce fabricated percentages. Preparation, file application and proxy restoration have separate phases. Official validation, backup and rollback records remain in use.
+From 0.2.0 all module hotfixes are skipped. Full updates install the latest official release, verified against its published size and SHA-256, without a compatibility allowlist or external manual installation. Downloads, extraction, verification and configuration run inside the assistant with real transfer progress. Downloads can be cancelled; configuration and proxy recovery cannot. Closing or navigating away is blocked until completion/cancellation. Account data and external installations are preserved; failed configuration changes attempt rollback.
 
-The component update dialog can suppress reminders for the current batch. Only
-the same version, module and commit IDs are ignored at game launch; new versions
-or commits prompt again, and manual checks remain available. Applying hotfixes
-first verifies configuration writes and then reads persisted update records back
-from disk. Missing records are reported as failure; finishing a download alone
-does not establish a successful update.
+Reminder suppression applies only to the offered full release version. New versions prompt again; manual checks remain available.
 
 ## Building
 

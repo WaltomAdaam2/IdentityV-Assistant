@@ -1,4 +1,4 @@
-//! Observe one configured key without consuming it or activating the assistant.
+//! Observe map shortcuts without consuming it or activating the assistant.
 use serde_json::Value;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -30,10 +30,23 @@ pub(crate) fn validate(settings: &Value) -> Result<u32, String> {
     } else {
         return Err("识图快捷键需为 A–Z 或 F1–F12 / Choose A–Z or F1–F12".into());
     };
+    if vk == b'L' as u32 {
+        return Err("L 已用于切换地图楼层 / L is reserved for map floors".into());
+    }
     let engine = settings["app"]["engine_hotkey"].as_str().unwrap_or("F3");
     let recognition = key
         .parse::<tauri_plugin_global_shortcut::Shortcut>()
         .map_err(|e| e.to_string())?;
+    if engine
+        .parse::<tauri_plugin_global_shortcut::Shortcut>()
+        .is_ok_and(|key| {
+            key == "L"
+                .parse::<tauri_plugin_global_shortcut::Shortcut>()
+                .unwrap()
+        })
+    {
+        return Err("L 已用于切换地图楼层 / L is reserved for map floors".into());
+    }
     if engine
         .parse::<tauri_plugin_global_shortcut::Shortcut>()
         .is_ok_and(|key| key == recognition)
@@ -97,8 +110,9 @@ mod native {
         },
     };
 
-    static EVENTS: OnceLock<SyncSender<isize>> = OnceLock::new();
+    static EVENTS: OnceLock<SyncSender<(isize, u32)>> = OnceLock::new();
     static DOWN: AtomicU32 = AtomicU32::new(0);
+    static FLOOR_DOWN: AtomicU32 = AtomicU32::new(0);
 
     unsafe extern "system" fn keyboard(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 {
@@ -107,9 +121,11 @@ mod native {
                 match wparam.0 as u32 {
                     WM_KEYUP | WM_SYSKEYUP => {
                         observe_key(&DOWN, KEY.load(Ordering::Relaxed), event.vkCode, false);
+                        observe_key(&FLOOR_DOWN, b'L' as u32, event.vkCode, false);
                     }
                     WM_KEYDOWN | WM_SYSKEYDOWN
-                        if observe_key(&DOWN, KEY.load(Ordering::Relaxed), event.vkCode, true) =>
+                        if observe_key(&DOWN, KEY.load(Ordering::Relaxed), event.vkCode, true)
+                            || observe_key(&FLOOR_DOWN, b'L' as u32, event.vkCode, true) =>
                     {
                         // Key-only shortcut; modified key combinations retain their own meaning.
                         if [0x10, 0x11, 0x12, 0x5b, 0x5c]
@@ -117,7 +133,8 @@ mod native {
                             .all(|key| GetAsyncKeyState(*key) >= 0)
                         {
                             if let Some(events) = EVENTS.get() {
-                                let _ = events.try_send(GetForegroundWindow().0 as isize);
+                                let _ = events
+                                    .try_send((GetForegroundWindow().0 as isize, event.vkCode));
                             }
                         }
                     }
@@ -200,7 +217,7 @@ mod native {
             .map_err(|e| e.to_string())??;
         std::thread::spawn(move || {
             while THREAD.load(Ordering::Acquire) != 0 {
-                let Ok(hwnd) = receiver.recv_timeout(Duration::from_millis(250)) else {
+                let Ok((hwnd, key)) = receiver.recv_timeout(Duration::from_millis(250)) else {
                     continue;
                 };
                 if let Ok(settings) = crate::config::load() {
@@ -209,11 +226,15 @@ mod native {
                             &app,
                             "debug",
                             "journal.shortcut",
-                            "收到游戏前台识图快捷键 / Recognition shortcut received",
-                            serde_json::json!({"hwnd":hwnd}),
+                            "收到游戏前台地图快捷键 / Journal shortcut received",
+                            serde_json::json!({"hwnd":hwnd,"key":key}),
                         );
                         let _ = app.emit(
-                            "journal-recognition-shortcut",
+                            if key == b'L' as u32 {
+                                "journal-floor-shortcut"
+                            } else {
+                                "journal-recognition-shortcut"
+                            },
                             serde_json::json!({"hwnd": hwnd}),
                         );
                     }

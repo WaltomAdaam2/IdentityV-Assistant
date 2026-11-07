@@ -9,6 +9,12 @@ use std::{
     sync::Mutex,
 };
 
+mod builtin;
+
+pub(crate) fn ensure_builtins(app: &tauri::AppHandle) -> Result<(), String> {
+    builtin::ensure(app)
+}
+
 static PACK_WRITE: Mutex<()> = Mutex::new(());
 const MAX_IMAGE: u64 = 20 * 1024 * 1024;
 const MAX_PACK: u64 = 512 * 1024 * 1024;
@@ -166,6 +172,18 @@ fn read_bounded(reader: impl Read, limit: u64) -> Result<Vec<u8>, String> {
     }
     Ok(bytes)
 }
+fn normalize_floor_aliases(season: &str, layers: &mut BTreeMap<String, String>) {
+    // Earlier imports mistakenly stored S1 B3 under S0's basement alias.
+    let (old, current) = if season == "s1" {
+        ("b1f", "3")
+    } else {
+        ("3", "b1f")
+    };
+    if let Some(path) = layers.remove(old) {
+        layers.entry(current.into()).or_insert(path);
+    }
+}
+
 fn parse_pack(
     bytes: &[u8],
     mut image_size: impl FnMut(&str) -> Result<u64, String>,
@@ -200,11 +218,14 @@ fn parse_pack(
             return Err("地图缺少 floors 识别层".into());
         }
         for layers in [&mut map.floors, &mut map.display] {
-            if let Some(path) = layers.remove("3") {
-                layers.entry("b1f".into()).or_insert(path);
-            }
+            normalize_floor_aliases(&pack.season_id, layers);
             for (floor, path) in layers {
-                if !["1", "2", "b1f"].contains(&floor.as_str()) {
+                let allowed = if pack.season_id == "s1" {
+                    &["1", "2", "3"][..]
+                } else {
+                    &["1", "2", "b1f"][..]
+                };
+                if !allowed.contains(&floor.as_str()) {
                     return Err(format!("不支持楼层 {floor}"));
                 }
                 if files.insert(path.clone()) {
@@ -248,7 +269,16 @@ fn list(root: &Path) -> Result<JournalLibrary, String> {
                 .push(format!("{}：{e}", entry.file_name().to_string_lossy())),
         }
     }
-    library.packs.sort_by(|a, b| a.id.cmp(&b.id));
+    // Custom packs retain priority when they intentionally override a bundled map.
+    library.packs.sort_by_key(|pack| {
+        (
+            matches!(
+                pack.id.as_str(),
+                "s0_hard_11-05" | "s0_nightmare_11-05" | "s1_hard" | "s1_nightmare"
+            ),
+            pack.id.clone(),
+        )
+    });
     Ok(library)
 }
 
@@ -284,23 +314,30 @@ fn recognition_templates_at(
     let mut sources = BTreeMap::new();
     for pack in packs {
         for map in &pack.maps {
-            let key = format!("{}:{}", map.category, map.index);
             let layers = if display == "route" {
                 &map.display
             } else {
                 &map.floors
             };
-            if layers.contains_key("1") {
-                eligible.insert(key.clone());
-            }
-            if let Some(path) = map.floors.get("1") {
-                // Prefer an unannotated base pack for geometry, even in route view.
-                let annotated = !map.display.is_empty();
-                let replace = sources
-                    .get(&key)
-                    .is_none_or(|(old, _, _)| *old && !annotated);
-                if replace {
-                    sources.insert(key, (annotated, pack.id.clone(), path.clone()));
+            let floors: &[&str] = if season == "s1" {
+                &["1", "2", "3"]
+            } else {
+                &["1"]
+            };
+            for floor in floors {
+                let key = (format!("{}:{}", map.category, map.index), *floor);
+                if layers.contains_key(*floor) {
+                    eligible.insert(key.clone());
+                }
+                if let Some(path) = map.floors.get(*floor) {
+                    // Prefer an unannotated base pack for geometry, even in route view.
+                    let annotated = !map.display.is_empty();
+                    let replace = sources
+                        .get(&key)
+                        .is_none_or(|(old, _, _)| *old && !annotated);
+                    if replace {
+                        sources.insert(key, (annotated, pack.id.clone(), path.clone()));
+                    }
                 }
             }
         }
@@ -310,11 +347,8 @@ fn recognition_templates_at(
         if let Some((_, pack_id, path)) = sources.get(&key) {
             let pack_root = inside(&root, pack_id)?;
             let (path, _) = image_file(&pack_root, path)?;
-            templates.push(serde_json::json!({"key": key, "path": path}));
+            templates.push(serde_json::json!({"key": key.0, "floor":key.1, "path": path}));
         }
-    }
-    if templates.is_empty() {
-        return Err("当前分类缺少一楼地图，请导入对应地图包 / Import first-floor maps for the selected category".into());
     }
     Ok(serde_json::Value::Array(templates))
 }
@@ -423,8 +457,13 @@ fn import_zip(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
     if fs::metadata(source).map_err(io)?.len() > MAX_PACK {
         return Err("ZIP 文件超过 512 MiB".into());
     }
-    let mut archive = zip::ZipArchive::new(fs::File::open(source).map_err(io)?)
-        .map_err(|e| format!("无法读取 ZIP：{e}"))?;
+    import_archive(root, fs::File::open(source).map_err(io)?)
+}
+fn import_archive(
+    root: &Path,
+    source: impl Read + std::io::Seek,
+) -> Result<JournalLibrary, String> {
+    let mut archive = zip::ZipArchive::new(source).map_err(|e| format!("无法读取 ZIP：{e}"))?;
     if archive.len() > MAX_ENTRIES {
         return Err("ZIP 条目超过 20000".into());
     }
@@ -507,10 +546,13 @@ fn import_zip(root: &Path, source: &Path) -> Result<JournalLibrary, String> {
     finish_import(root, &staging, &pack)
 }
 #[tauri::command]
-pub async fn journal_list_packs() -> Result<JournalLibrary, String> {
-    tauri::async_runtime::spawn_blocking(|| list(&packs_root()?))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn journal_list_packs(app: tauri::AppHandle) -> Result<JournalLibrary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        builtin::ensure(&app)?;
+        list(&packs_root()?)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 fn validate_zip_source(source: &Path) -> Result<(), String> {
     if source.is_file()
@@ -664,7 +706,57 @@ mod tests {
             Path::new(route[0]["path"].as_str().unwrap()),
             root.path().join("base/map.png").canonicalize().unwrap()
         );
-        assert!(recognition_templates_at(root.path(), "s1", "hard", "route").is_err());
+        assert_eq!(
+            recognition_templates_at(root.path(), "s1", "hard", "route").unwrap(),
+            serde_json::json!([])
+        );
+    }
+
+    #[test]
+    fn s1_retains_third_underground_floor_and_indexes_supported_layers_separately() {
+        let root = tempfile::tempdir().unwrap();
+        let pack = root.path().join("s1_test");
+        fs::create_dir(&pack).unwrap();
+        for floor in ["1", "2", "3"] {
+            fs::write(pack.join(format!("{floor}.png")), b"fixture").unwrap();
+        }
+        let mut descriptor = serde_json::json!({"id":"s1_test","name":"S1","season_id":"s1","difficulty":"hard","maps":[
+            {"index":1,"category":"td","floors":{"1":"1.png","2":"2.png","3":"3.png"}},
+            {"index":2,"category":"td","floors":{"3":"3.png"}}
+        ]});
+        fs::write(pack.join("pack.json"), descriptor.to_string()).unwrap();
+        let loaded = load_pack(&pack).unwrap();
+        assert!(loaded.maps[0].floors.contains_key("3"));
+        assert!(!loaded.maps[0].floors.contains_key("b1f"));
+        let templates = recognition_templates_at(root.path(), "s1", "hard", "pure").unwrap();
+        assert_eq!(templates.as_array().unwrap().len(), 4);
+        assert_eq!(templates[0]["key"], "td:1");
+        assert_eq!(templates[0]["floor"], "1");
+        assert_eq!(templates[1]["floor"], "2");
+        assert_eq!(templates[2]["floor"], "3");
+        assert_eq!(templates[3]["key"], "td:2");
+        assert_eq!(templates[3]["floor"], "3");
+        assert_eq!(
+            Path::new(templates[0]["path"].as_str().unwrap()),
+            pack.join("1.png").canonicalize().unwrap()
+        );
+        let b3 = descriptor["maps"][0]["floors"]
+            .as_object_mut()
+            .unwrap()
+            .remove("3")
+            .unwrap();
+        descriptor["maps"][0]["floors"]["b1f"] = b3;
+        fs::write(pack.join("pack.json"), descriptor.to_string()).unwrap();
+        assert_eq!(load_pack(&pack).unwrap().maps[0].floors["3"], "3.png");
+        for unsupported in ["4"] {
+            descriptor["maps"][0]["floors"][unsupported] = serde_json::json!("1.png");
+            fs::write(pack.join("pack.json"), descriptor.to_string()).unwrap();
+            assert!(load_pack(&pack).is_err());
+            descriptor["maps"][0]["floors"]
+                .as_object_mut()
+                .unwrap()
+                .remove(unsupported);
+        }
     }
 
     #[test]

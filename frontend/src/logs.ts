@@ -34,13 +34,23 @@ export function filterLogs(entries: LogEntry[], level: "all" | LogLevel, query: 
   const search = query.toLocaleLowerCase();
   if (verbose && level === "all" && !search) return entries;
   return entries.filter((entry) => {
+    const message = entry.message.trim();
+    const details = entry.details?.details as Record<string, unknown> | undefined;
+    const stage = details?.stage ?? entry.details?.stage;
+    const routine = entry.level !== "warning" && entry.level !== "error" && (
+      entry.source === "journal.shortcut" ||
+      (entry.source === "settings" && /^(设置已保存|Settings saved)/.test(message)) ||
+      (entry.source === "journal.recognition" && (
+        ["capturing", "difficulty", "floor", "locating", "matching"].includes(String(stage)) ||
+        /^(地图楼层切换：|Map floor changed:)/.test(message)))
+    );
     // The launcher outcome summarizes these upstream startup instructions.
     // Keep unknown messages (including sign-in prompts) and real failures visible.
     const componentDetail = entry.source === "idv-login" && (
       (entry.level === "info" && /^(正在初始化官方登录组件|本地配置已是最新|云端配置未变化|初始化内置浏览器|证书已存在且有效|由助手托管：跳过桌面快捷方式|mitmproxy .*模式已(?:启动|就绪)|已注册 idvlogin:\/\/ URI Scheme|当前使用进程代理模式，请通过桌面快捷方式启动游戏|如需设置全局代理，可在管理页面切换|拦截成功，您现在可以打开游戏了|登入账号且已经··进入游戏··后)/.test(entry.message)) ||
-      (entry.level === "warning" && entry.message === "如果您在之前已经打开了游戏，请关闭游戏后重新打开，否则工具不会生效！")
+      (entry.level === "warning" && message === "如果您在之前已经打开了游戏，请关闭游戏后重新打开，否则工具不会生效！")
     );
-    return (verbose || (!componentDetail && !entry.detailedOnly && (entry.important || entry.level === "warning" || entry.level === "error"))) &&
+    return (verbose || (!routine && !componentDetail && !entry.detailedOnly && (entry.important || entry.level === "warning" || entry.level === "error"))) &&
     (level === "all" || entry.level === level) &&
     (!search || entry.message.toLocaleLowerCase().includes(search) ||
       (verbose && JSON.stringify(entry.details ?? {}).toLocaleLowerCase().includes(search)));
