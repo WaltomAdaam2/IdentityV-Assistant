@@ -103,10 +103,13 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
   useEffect(() => {
     if (busy || recognition.status !== "done" || !recognition.result || handledResult.current === recognition.result) return;
     handledResult.current = recognition.result;
+    const detectedFloor = isS1 ? recognition.result.floor : "1";
+    if (!detectedFloor) return;
+    setFloor(detectedFloor);
     if (!settings.auto_enter || document.querySelector("dialog:modal:not(.journal-full-preview)")) return;
-    const first = matchingMaps(library.packs, { ...settings, floor: "1" }, recognition.result.keys)[0];
+    const first = matchingMaps(library.packs, { ...settings, floor: detectedFloor }, recognition.result.keys)[0];
     if (first) {
-      setFloor("1"); setSelectedKey(first.key); setPreview("open");
+      setSelectedKey(first.key); setPreview("open");
       onLog(zh ? `识图完成，自动进入第一候选：${first.key}` : `Recognition complete; automatically opened first candidate: ${first.key}`);
     }
   }, [busy, recognition.status, recognition.result, library.packs, settings]);
@@ -226,7 +229,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
             {isS1 && group.key === "display" && <p className="journal-recognition-hint">{zh ? "此赛季暂无速刷图" : "No route maps for this season."}</p>}
           </fieldset>)}
           <div className="journal-options journal-tools">
-            <button type="button" className="primary" disabled={busy || recognizing} onClick={onRecognize}>{isS1 ? (zh ? "识别地下1层地图" : "Recognize B1 map") : (zh ? "识别一楼地图" : "Recognize 1F map")}</button>
+            <button type="button" className="primary" disabled={busy || recognizing} onClick={onRecognize}>{isS1 ? (zh ? "识别当前楼层地图" : "Recognize current floor") : (zh ? "识别一楼地图" : "Recognize 1F map")}</button>
             {recognizing && <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>}
           </div>
           <label className="journal-auto-enter setting-toggle">
@@ -234,7 +237,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
             <input type="checkbox" role="switch" checked={settings.auto_enter} onChange={event => onSettingsChange({ ...savedSettings, auto_enter: event.target.checked })} />
           </label>
           <p className="journal-recognition-hint">{isS1
-            ? (zh ? `请先选择困难／噩梦，仅识别地下1层。游戏前台按 ${shortcut} 识别或重新截图，不切走游戏焦点。L 循环切换助手地图的地下1至3层。` : `Select Hard or Nightmare first; recognition uses B1 only. Press ${shortcut} in the game to recognize or restart without losing focus. L cycles the assistant map through B1–B3.`)
+            ? (zh ? `请先选择困难／噩梦；识别时自动判断地下1至3层，并显示对应层地图。游戏前台按 ${shortcut} 识别或重新截图，不切走游戏焦点。L 循环切换助手地图楼层。` : `Select Hard or Nightmare first. Recognition detects B1–B3 and shows that floor. Press ${shortcut} in the game to recognize or restart without losing focus. L cycles the assistant map floors.`)
             : (zh ? `游戏前台按 ${shortcut} 也可识别，不切走游戏焦点。自动判断困难／噩梦，仅识别当前赛季一楼；再次按键重新截图。L 切换助手地图楼层。` : `Press ${shortcut} in the game without losing focus. Detects difficulty automatically; matches 1F in this season. Press again to restart. L changes the assistant map floor.`)}</p>
           <div className="journal-options journal-tools">
             <button type="button" disabled={busy} onClick={() => void importPack()}>{zh ? "导入地图包" : "Import map packs"}</button>
@@ -246,18 +249,18 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
       </aside>
       <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy || recognizing}>
         {recognition.status !== "idle" && <div className="journal-recognition">
-          <div className="journal-recognition-heading"><h2>{isS1 ? (zh ? "地下1层识图结果" : "B1 matches") : (zh ? "一楼识图结果" : "First-floor matches")}</h2>
+          <div className="journal-recognition-heading"><h2>{isS1 ? (recognition.result?.floor ? (zh ? `地下${recognition.result.floor}层识图结果` : `B${recognition.result.floor} matches`) : (zh ? "当前楼层识图结果" : "Current-floor matches")) : (zh ? "一楼识图结果" : "First-floor matches")}</h2>
             <div className="journal-options">{recognizing
               ? <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>
               : <><button type="button" onClick={onRecognize}>{zh ? "重新识别" : "Recognize again"}</button><button type="button" onClick={() => { setSelectedKey(null); onCancelRecognition(); }}>{zh ? "返回全部地图" : "Show all maps"}</button></>}
             </div>
           </div>
           <p role="status">{recognizing
-            ? ({ capturing: zh ? "正在截图…" : "Capturing…", difficulty: zh ? "正在判断地图难度…" : "Detecting difficulty…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
+            ? ({ capturing: zh ? "正在截图…" : "Capturing…", difficulty: zh ? "正在判断地图难度…" : "Detecting difficulty…", floor: zh ? "正在判断地图楼层…" : "Detecting floor…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
               + (recognition.progress?.total ? ` ${recognition.progress.completed} / ${recognition.progress.total}` : "")
             : recognition.error || (recognition.result?.keys.length
               ? (recognition.result.keys.length > 1 ? (zh ? "按匹配顺序最多显示 4 张候选，请核对；也可继续探索后重新识别。" : "Up to 4 candidates in matching order. Check a map, or explore further and recognize again.") : (zh ? "点击候选查看地图；楼层按钮只切换看图。" : "Choose the candidate to view it; floor buttons only change the view."))
-              : (isS1 ? (zh ? "未找到匹配地图，请确认难度并在地下1层打开地图后重试。" : "No matching map. Check the difficulty and open the B1 map before retrying.") : (zh ? "未找到匹配地图，请在一楼打开地图后重试。" : "No matching map. Open the first-floor map in the game and try again.")))}</p>
+              : (isS1 ? (zh ? "未找到匹配地图，请确认难度并在地下1至3层打开完整地图后重试。" : "No matching map. Check the difficulty and open the full B1, B2 or B3 map before retrying.") : (zh ? "未找到匹配地图，请在一楼打开地图后重试。" : "No matching map. Open the first-floor map in the game and try again.")))}</p>
           {!!recognition.result?.warnings.length && <details><summary>{zh ? "部分识别图片不可用" : "Some recognition images are unavailable"}</summary>{recognition.result.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</details>}
           {recognition.result?.preview && <details className="journal-region-preview"><summary>{zh ? "查看识别区域" : "View recognized region"}</summary><img src={recognition.result.preview} alt={zh ? "本次识别使用的游戏地图区域" : "Game map region used for this recognition"} /></details>}
         </div>}

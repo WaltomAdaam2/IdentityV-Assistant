@@ -35,7 +35,7 @@ A user-saved ZIP containing a frozen snapshot of redacted diagnostics. It includ
 A map's season, difficulty, door category and number. Different floor views and base/route illustrations can belong to the same map.
 
 **Recognition candidate**:
-A journal map whose recognition-floor geometry plausibly matches the visible game map: 1F for S0, B1 for S1. S0 detects difficulty from the captured floor labels; S1 uses the selected difficulty because its difficulties share underground floors. The interface shows up to four in match order. Optional automatic entry opens the first candidate; this is not a confirmed identification or an accuracy percentage.
+A journal map whose recognition-floor geometry plausibly matches the visible game map: 1F for S0, the detected B1/B2/B3 for S1. S0 detects difficulty from the captured floor labels; S1 uses the selected difficulty because its difficulties share underground floors. Unclear or unsupported floor selections stop recognition. Candidates and automatic entry display the detected floor. The interface shows up to four in match order. Optional automatic entry opens the first candidate; this is not a confirmed identification or an accuracy percentage.
 
 **Recognition evidence**:
 The captured frame, localized and processed regions, exact prepared templates and per-map analysis for one request. Images expire after three days, reports after seven; diagnostic exports select the current app session and any explicitly added historical sessions.

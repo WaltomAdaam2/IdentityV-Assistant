@@ -106,10 +106,7 @@ impl RecognitionState {
                     .and_then(Value::as_array)
                     .is_some_and(|keys| keys.iter().any(|v| v == key))
             {
-                return Err(
-                    "请选择本次识图的一楼地图 / Choose a first-floor map from this recognition"
-                        .into(),
-                );
+                return Err("请选择本次识图的地图 / Choose a map from this recognition".into());
             }
         }
         let feedback =
@@ -141,6 +138,9 @@ impl RecognitionState {
         };
         if step["stage"] == "difficulty_detected" {
             latest.report["filters"]["difficulty"] = step["difficulty"].clone();
+        }
+        if step["stage"] == "floor_detected" {
+            latest.report["filters"]["floor"] = step["floor"].clone();
         }
         step["timestamp"] = json!(chrono::Utc::now());
         step["started_at"] = step["timestamp"].clone();
@@ -306,7 +306,7 @@ pub async fn journal_recognize(
         "info",
         "journal.recognition",
         if season == "s1" {
-            "开始识别地下1层地图 / Starting B1 map recognition"
+            "开始识别 S1 当前楼层地图 / Starting S1 current-floor recognition"
         } else {
             "开始识别一楼地图 / Starting first-floor recognition"
         },
@@ -331,7 +331,7 @@ pub async fn journal_recognize(
         state.start_diagnostics(
             &request_id,
             json!({"season":season,"difficulty":if season == "s1" {difficulty.as_str()} else {"auto"},"requested_difficulty":difficulty,"display":display,
-        "floor":1,"trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
+        "floor":if season == "s1" {json!("auto")} else {json!(1)},"trigger":if window_handle.is_some() {"shortcut"} else {"button"}}),
             &root,
         )
     });
@@ -702,8 +702,18 @@ mod tests {
         assert!(!flow.to_string().contains(image["png"].as_str().unwrap()));
         let second = uuid::Uuid::new_v4().to_string();
         state
-            .start_diagnostics(&second, json!({}), root.path())
+            .start_diagnostics(&second, json!({"season":"s1","floor":"auto"}), root.path())
             .unwrap();
+        state.record(
+            &second,
+            json!({"stage":"floor_detected","floor":"2","slot_count":4}),
+        );
+        state.save_diagnostics().unwrap();
+        assert_eq!(
+            crate::diagnostic_files::read_report(&root.path().join("recognition").join(&second))
+                .unwrap()["filters"]["floor"],
+            "2"
+        );
         state.retain_image(&first, &image).unwrap();
         assert!(first_dir.join("full.png").exists());
         assert!(!root

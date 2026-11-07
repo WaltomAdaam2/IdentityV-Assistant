@@ -17,8 +17,9 @@ The S1 collection supplied on 2026-11-06 contains `s1_hard` (14 maps) and
 `s1_nightmare` (15 maps), both named **S1 磷光症**. The two bundled ZIPs preserve
 their original descriptors and all 87 images byte for byte. Floor keys `1`, `2`
 and `3` mean B1, B2 and B3 in S1; they must not use the S0 `3` → `b1f` alias.
-There are no route images. S1 recognition uses the selected difficulty's B1
-artwork; it does not infer difficulty from S0 floor-selector references.
+There are no route images. S1 recognition detects the selected B1/B2/B3 and
+loads only that floor's artwork from the manually selected difficulty. Unclear
+floor labels or B4 stop recognition; S0 difficulty rules do not apply to S1.
 
 Rebuild the separate S1 archives from the supplied combined ZIP:
 

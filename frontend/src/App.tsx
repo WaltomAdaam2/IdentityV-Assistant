@@ -2542,7 +2542,7 @@ function SettingsPage({
         <SettingRow icon="keyboard" title={language === "zh-CN" ? "启动 / 停止引擎快捷键" : "Start / stop engine shortcut"} description={language === "zh-CN" ? "在任何窗口中使用此快捷键切换引擎状态" : "Toggle the engine from any window."} language={language}>
           <select value={settings.app.engine_hotkey} onChange={(event) => updateApp({ engine_hotkey: event.target.value })}>{Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => <option key={key}>{key}</option>)}</select>
         </SettingRow>
-        <SettingRow icon="keyboard" title={language === "zh-CN" ? "识别一楼地图快捷键" : "Recognize first-floor map shortcut"} description={language === "zh-CN" ? "仅在游戏前台响应，保留原按键，不切走游戏焦点。先在手记中选择赛季、难度与显示方式。" : "Works only while the game is foreground; preserves game input and focus. Select the season, difficulty and display in Journal first."} language={language}>
+        <SettingRow icon="keyboard" title={language === "zh-CN" ? "地图识别快捷键" : "Map recognition shortcut"} description={language === "zh-CN" ? "仅在游戏前台响应，保留原按键，不切走游戏焦点。先在手记中选择赛季、难度与显示方式。" : "Works only while the game is foreground; preserves game input and focus. Select the season, difficulty and display in Journal first."} language={language}>
           <select value={settings.app.recognition_hotkey} onChange={event => updateApp({ recognition_hotkey: event.target.value })}>{[..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map(key => <option key={key} disabled={key === settings.app.engine_hotkey}>{key}</option>)}</select>
         </SettingRow>
         <SettingRow icon="play" title={t.launch} description={language === "zh-CN" ? "打开助手时自动启动自动化引擎" : "Start the automation engine when the assistant opens."} language={language}>

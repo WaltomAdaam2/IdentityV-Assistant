@@ -18,7 +18,7 @@ import numpy as np
 from capture.wgc_capture import WindowsGraphicsCapture
 from config.schema import EngineConfig
 from ipc.messages import event
-from vision.journal_difficulty import detect_difficulty
+from vision.journal_difficulty import detect_difficulty, detect_s1_floor
 from vision.journal_matcher import MAX_PIXELS, prepare_template, recognize
 from window.windows import WindowsWindowManager
 
@@ -69,20 +69,26 @@ def run_recognition(request: dict, config: EngineConfig,
     frame = capture(config, request.get("window_handle"))
     diagnostic_image("full", frame)
     difficulty = None
+    floor = "1"
     if "templates_by_difficulty" in request:
         if request.get("season") == "s1":
             difficulty = request.get("difficulty")
             if difficulty not in ("hard", "nightmare"):
                 raise ValueError("请选择 S1 地图难度 / Select the S1 map difficulty")
             diagnostic({"stage": "difficulty_selected", "difficulty": difficulty, "mode": "manual", "season": "s1"})
+            progress("floor", 0, 0)
+            floor, evidence = detect_s1_floor(frame)
+            diagnostic({"stage": "floor_detected", **evidence, "floor": floor})
         else:
             progress("difficulty", 0, 0)
             difficulty, evidence = detect_difficulty(frame)
             diagnostic({"stage": "difficulty_detected", "difficulty": difficulty, **evidence})
         items = request["templates_by_difficulty"].get(difficulty, [])
+        if request.get("season") == "s1":
+            items = [item for item in items if item.get("floor") == floor]
         if not items:
-            raise ValueError("所选难度缺少地下1层地图，请导入对应地图包 / No B1 maps for the selected difficulty" if request.get("season") == "s1" else "检测到的难度缺少一楼地图，请导入对应地图包 / No first-floor maps for the detected difficulty")
-    diagnostic({"stage": "indexed", "difficulty": difficulty, "template_count": len(items),
+            raise ValueError(f"所选难度缺少地下{floor}层地图，请导入对应地图包 / No B{floor} maps for the selected difficulty" if request.get("season") == "s1" else "检测到的难度缺少一楼地图，请导入对应地图包 / No first-floor maps for the detected difficulty")
+    diagnostic({"stage": "indexed", "difficulty": difficulty, "floor":floor, "template_count": len(items),
                 "template_keys": [item["key"] for item in items]})
     warnings: list[str] = []
 
@@ -115,7 +121,7 @@ def run_recognition(request: dict, config: EngineConfig,
         crop = matches[0].region.crop(frame)
         diagnostic_image("region", crop)
         preview = make_preview(crop)
-    return {"difficulty": difficulty, "keys": [match.key for match in matches], "preview": preview, "warnings": warnings,
+    return {"difficulty": difficulty, "floor": floor, "keys": [match.key for match in matches], "preview": preview, "warnings": warnings,
             "elapsed_ms": round((perf_counter() - started) * 1000),
             "matches": [{"key": match.key, "region": vars(match.region), "geometry_cost": match.score,
                          "coverage": match.coverage, "unexplained": match.unexplained}

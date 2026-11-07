@@ -314,23 +314,30 @@ fn recognition_templates_at(
     let mut sources = BTreeMap::new();
     for pack in packs {
         for map in &pack.maps {
-            let key = format!("{}:{}", map.category, map.index);
             let layers = if display == "route" {
                 &map.display
             } else {
                 &map.floors
             };
-            if layers.contains_key("1") {
-                eligible.insert(key.clone());
-            }
-            if let Some(path) = map.floors.get("1") {
-                // Prefer an unannotated base pack for geometry, even in route view.
-                let annotated = !map.display.is_empty();
-                let replace = sources
-                    .get(&key)
-                    .is_none_or(|(old, _, _)| *old && !annotated);
-                if replace {
-                    sources.insert(key, (annotated, pack.id.clone(), path.clone()));
+            let floors: &[&str] = if season == "s1" {
+                &["1", "2", "3"]
+            } else {
+                &["1"]
+            };
+            for floor in floors {
+                let key = (format!("{}:{}", map.category, map.index), *floor);
+                if layers.contains_key(*floor) {
+                    eligible.insert(key.clone());
+                }
+                if let Some(path) = map.floors.get(*floor) {
+                    // Prefer an unannotated base pack for geometry, even in route view.
+                    let annotated = !map.display.is_empty();
+                    let replace = sources
+                        .get(&key)
+                        .is_none_or(|(old, _, _)| *old && !annotated);
+                    if replace {
+                        sources.insert(key, (annotated, pack.id.clone(), path.clone()));
+                    }
                 }
             }
         }
@@ -340,7 +347,7 @@ fn recognition_templates_at(
         if let Some((_, pack_id, path)) = sources.get(&key) {
             let pack_root = inside(&root, pack_id)?;
             let (path, _) = image_file(&pack_root, path)?;
-            templates.push(serde_json::json!({"key": key, "path": path}));
+            templates.push(serde_json::json!({"key": key.0, "floor":key.1, "path": path}));
         }
     }
     Ok(serde_json::Value::Array(templates))
@@ -706,7 +713,7 @@ mod tests {
     }
 
     #[test]
-    fn s1_retains_third_underground_floor_and_indexes_only_b1() {
+    fn s1_retains_third_underground_floor_and_indexes_supported_layers_separately() {
         let root = tempfile::tempdir().unwrap();
         let pack = root.path().join("s1_test");
         fs::create_dir(&pack).unwrap();
@@ -722,8 +729,13 @@ mod tests {
         assert!(loaded.maps[0].floors.contains_key("3"));
         assert!(!loaded.maps[0].floors.contains_key("b1f"));
         let templates = recognition_templates_at(root.path(), "s1", "hard", "pure").unwrap();
-        assert_eq!(templates.as_array().unwrap().len(), 1);
+        assert_eq!(templates.as_array().unwrap().len(), 4);
         assert_eq!(templates[0]["key"], "td:1");
+        assert_eq!(templates[0]["floor"], "1");
+        assert_eq!(templates[1]["floor"], "2");
+        assert_eq!(templates[2]["floor"], "3");
+        assert_eq!(templates[3]["key"], "td:2");
+        assert_eq!(templates[3]["floor"], "3");
         assert_eq!(
             Path::new(templates[0]["path"].as_str().unwrap()),
             pack.join("1.png").canonicalize().unwrap()
