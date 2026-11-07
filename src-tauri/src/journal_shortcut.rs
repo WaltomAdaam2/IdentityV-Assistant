@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 static KEY: AtomicU32 = AtomicU32::new(b'P' as u32);
-static FLOOR_KEY: AtomicU32 = AtomicU32::new(b'L' as u32);
+static FLOOR_KEY: AtomicU32 = AtomicU32::new(0x75);
 static THREAD: AtomicU32 = AtomicU32::new(0);
 
 fn observe_key(held: &AtomicU32, configured: u32, key: u32, down: bool) -> bool {
@@ -38,7 +38,7 @@ pub(crate) fn validate(settings: &Value) -> Result<(u32, u32), String> {
         .to_ascii_uppercase();
     let floor = settings["app"]["floor_hotkey"]
         .as_str()
-        .unwrap_or("L")
+        .unwrap_or("F6")
         .to_ascii_uppercase();
     let keys = (parse_key(&recognition)?, parse_key(&floor)?);
     let engine = settings["app"]["engine_hotkey"].as_str().unwrap_or("F3");
@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn configured_game_process_is_required_and_shortcuts_must_differ() {
         let settings = json!({"game_window":{"process_names":["dwrg.exe"],"title_contains":["Identity V"]},"app":{"engine_hotkey":"F3","recognition_hotkey":"P"}});
-        assert_eq!(validate(&settings).unwrap(), (b'P' as u32, b'L' as u32));
+        assert_eq!(validate(&settings).unwrap(), (b'P' as u32, 0x75));
         assert!(matches_game(&settings, "DWRG.EXE", "", ""));
         assert!(!matches_game(&settings, "notepad.exe", "Identity V", ""));
         assert!(
@@ -315,7 +315,7 @@ mod tests {
             json!({"floor_hotkey":"Ctrl+L"}),
             json!({"floor_hotkey":"F03"}),
             json!({"recognition_hotkey":"F03"}),
-            json!({"recognition_hotkey":"L"}),
+            json!({"recognition_hotkey":"F6"}),
         ] {
             assert!(validate(&json!({"app":app})).is_err());
         }

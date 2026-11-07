@@ -62,15 +62,15 @@ test("S1 preserves S0 view preferences, uses selected difficulty, and cycles B1 
     wait("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b2.png'");
     browser("wait", "--text", "地下2层识图结果");
     assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"), "地图 1");
-    browser("press", "l");
+    browser("press", "F6");
     assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path"), "b2.png");
     click("查看地图 1"); wait("!!document.querySelector('.journal-detail img')");
-    browser("press", "l");
+    browser("press", "F6");
     assert.equal(evaluate("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path"), "b2.png");
     click("进入地图");
     wait("!!document.querySelector('.journal-full-preview:modal img')");
     for (const [key,label] of [["3","地下3层"],["1","地下1层"],["2","地下2层"]]) {
-      browser("press", "l");
+      browser("press", "F6");
       wait(`document.querySelector('.journal-preview-floors button[aria-pressed=true]')?.textContent==='${label}'`);
       wait(`window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b${key}.png'`);
     }
@@ -328,9 +328,9 @@ test("repeated P cancels the helper, waits for release, and only starts the late
     evaluate("window.__launcherTest.finishRecognition({difficulty:'hard',keys:['rf:1'],preview:null,warnings:[]})");
     wait("document.querySelectorAll('.journal-map').length===1");
     assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"),"右前 · 地图 1");
-    click("查看右前 · 地图 1"); browser("press","l");
+    click("查看右前 · 地图 1"); browser("press","F6");
     wait("window.__launcherTest.calls.some(c=>c.command==='journal_read_image' && c.args.path==='right-upper.png')");
-    browser("press","l");
+    browser("press","F6");
     wait("document.querySelector('.journal-floor-switch button[aria-pressed=true]').textContent==='1F'");
   } finally { browser("close"); }
 });
@@ -345,8 +345,8 @@ test("detected difficulty persists without cancelling results or automatic entry
     evaluate("window.__launcherTest.finishRecognition({difficulty:'nightmare',keys:['lf:1'],preview:null,warnings:[]})");
     wait("!!document.querySelector('.journal-full-preview:modal')");
     wait("window.__launcherTest.savedSettings?.journal.difficulty==='nightmare'");
-    browser("press","l"); wait("window.__launcherTest.calls.at(-1).command!=='unused' && [...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='2F'");
-    browser("press","l"); wait("[...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='地下室'");
+    browser("press","F6"); wait("window.__launcherTest.calls.at(-1).command!=='unused' && [...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='2F'");
+    browser("press","F6"); wait("[...document.querySelectorAll('.journal-full-preview .journal-floor-switch button')].find(b=>b.getAttribute('aria-pressed')==='true').textContent==='地下室'");
     assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition')"),false);
   } finally { browser("close"); }
 });
@@ -355,7 +355,7 @@ test("detected difficulty persists without cancelling results or automatic entry
 test("floor shortcut settings persist, exclude conflicts and only cycle inside preview", () => {
   try {
     setup(); click("设置"); wait("!!document.querySelector('.settings-form')");
-    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.setting-row')).filter(e=>/快捷键/.test(e.textContent)).map(e=>e.querySelector('select').value)"), ["F3","P","L"]);
+    assert.deepEqual(evaluate("Array.from(document.querySelectorAll('.setting-row')).filter(e=>/快捷键/.test(e.textContent)).map(e=>e.querySelector('select').value)"), ["F3","P","F6"]);
     evaluate("window.__floorSelect=Array.from(document.querySelectorAll('.setting-row')).find(e=>e.textContent.includes('楼层切换快捷键')).querySelector('select'); window.__floorSelect.id='test-floor-key'");
     assert.deepEqual(evaluate("Array.from(window.__floorSelect.options).filter(e=>e.disabled).map(e=>e.value)"), ["P","F3"]);
     browser("select", "#test-floor-key", "K");
@@ -371,7 +371,7 @@ test("floor shortcut settings persist, exclude conflicts and only cycle inside p
     browser("press", "k");
     assert.equal(evaluate("document.querySelector('.journal-floor-switch button[aria-pressed=true]').textContent"), "1F");
     click("进入地图"); wait("!!document.querySelector('.journal-full-preview:modal img')");
-    browser("press", "l");
+    browser("press", "F6");
     assert.equal(evaluate("document.querySelector('.journal-preview-floors button[aria-pressed=true]').textContent"), "1F");
     browser("press", "k"); wait("document.querySelector('.journal-preview-floors button[aria-pressed=true]').textContent==='2F'");
     browser("press", "Control+k");

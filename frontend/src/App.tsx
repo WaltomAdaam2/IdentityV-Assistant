@@ -679,7 +679,7 @@ const defaults: Settings = {
     ui_scale_percent: 100,
     engine_hotkey: "F3",
     recognition_hotkey: "P",
-    floor_hotkey: "L",
+    floor_hotkey: "F6",
     diagnostic_images: false,
     update_prereleases: false,
     developer_mode: false,
