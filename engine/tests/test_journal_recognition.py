@@ -31,6 +31,10 @@ def test_s0_difficulty_mode_selects_only_its_pool(monkeypatch, mode, expected):
     indexed = next(data for kind, data in events if data.get("stage") == "indexed")
     assert indexed["template_keys"] == (["lf:1"] if expected == "hard" else ["rf:2"])
     assert result["floor"] == "1"
+    updates = [data for kind, data in events if kind == "journal_recognition_progress"]
+    assert updates[-1]["difficulty"] == expected
+    assert updates[-1]["floor"] == "1"
+    assert updates[0]["difficulty"] == (None if mode == "auto" else expected)
 
 
 def test_window_capture_uses_only_wgc_and_preserves_layout(monkeypatch):
@@ -72,8 +76,11 @@ def test_one_shot_returns_candidates_and_memory_preview_without_capture_files(tm
     assert any(name.startswith("mask_") for name in images)
     assert "template_0" in images
     preview_at = next(i for i, (kind, _) in enumerate(events) if kind == "journal_recognition_preview")
+    full_image_at = next(i for i, (kind, _) in enumerate(events) if kind == "journal_recognition_image")
+    crop_at = next(i for i, (kind, data) in enumerate(events) if kind == "journal_recognition_preview" and data["preview_kind"] == "region")
     matching_at = next(i for i, (kind, data) in enumerate(events) if kind == "journal_recognition_progress" and data["stage"] == "matching")
-    assert preview_at < matching_at
+    assert events[preview_at][1]["preview_kind"] == "full"
+    assert preview_at < full_image_at < crop_at < matching_at
     audits = [data for kind, data in events if kind == "journal_recognition_diagnostic"]
     assert any(data["stage"] == "region_check" for data in audits)
     assert any(data["stage"] == "template_region" and data["attempts"] > 0 and data["closest"] for data in audits)

@@ -184,7 +184,17 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
     const timer = window.setTimeout(() => setPreview("closed"), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
     return () => window.clearTimeout(timer);
   }, [preview]);
-  const summary = [seasons.find(([id]) => id === settings.season)?.[1], ...filterGroups.filter(group => !recognizedKeys || group.key !== "door").map((group) => group.options.find(([value]) => value === settings[group.key])?.[zh ? 1 : 2])].join(" · ");
+  const liveContext = recognizing || recognition.status === "error" || (recognition.status === "done" && !recognition.result?.keys.length) ? recognition.context : null;
+  const unknown = recognizing ? (zh ? "识别中" : "Detecting") : (zh ? "未确定" : "Unknown");
+  const summary = liveContext ? [
+    seasons.find(([id]) => id === liveContext.season)?.[1] ?? liveContext.season,
+    groups[0].options.find(([value]) => value === liveContext.difficulty)?.[zh ? 1 : 2] ?? (zh ? `难度${unknown}` : `Difficulty: ${unknown}`),
+    (liveContext.season === "s1" ? s1Floors : groups[2].options).find(([value]) => value === liveContext.floor)?.[zh ? 1 : 2] ?? (zh ? `楼层${unknown}` : `Floor: ${unknown}`),
+    groups[3].options.find(([value]) => value === settings.display)?.[zh ? 1 : 2],
+  ].join(" · ") : [seasons.find(([id]) => id === settings.season)?.[1], ...filterGroups.filter(group => !recognizedKeys || group.key !== "door").map((group) => group.options.find(([value]) => value === settings[group.key])?.[zh ? 1 : 2])].join(" · ");
+  const previewCaption = recognition.previewKind === "full"
+    ? (recognizing ? (zh ? "已截图，正在分析…" : "Captured; analyzing…") : (zh ? "本次完整截图" : "Captured game window"))
+    : (recognizing ? (zh ? "正在核对地图区域" : "Checking the map region") : (zh ? "本次地图区域" : "Captured map region"));
   const change = (patch: Partial<JournalSettings>) => {
     if (recognizing || Object.keys(patch).some(key => key !== "floor")) onCancelRecognition("filters_changed");
     if (patch.season || patch.difficulty || patch.door) setSelectedKey(null);
@@ -260,7 +270,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
       </aside>
       <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy || recognizing}>
         {recognition.status !== "idle" && <div className="journal-recognition">
-          <div className="journal-recognition-heading"><h2>{isS1 ? (recognition.result?.floor ? (zh ? `地下${recognition.result.floor}层识图结果` : `B${recognition.result.floor} matches`) : (zh ? "当前楼层识图结果" : "Current-floor matches")) : (zh ? "一楼识图结果" : "First-floor matches")}</h2>
+          <div className="journal-recognition-heading"><h2>{isS1 ? (recognition.context?.floor ? (zh ? `地下${recognition.context.floor}层识图结果` : `B${recognition.context.floor} matches`) : (zh ? "当前楼层识图结果" : "Current-floor matches")) : (zh ? "一楼识图结果" : "First-floor matches")}</h2>
             <div className="journal-options">{recognizing
               ? <button type="button" onClick={() => onCancelRecognition()}>{zh ? "取消识别" : "Cancel recognition"}</button>
               : <><button type="button" onClick={onRecognize}>{zh ? "重新识别" : "Recognize again"}</button><button type="button" onClick={() => { setSelectedKey(null); onCancelRecognition(); }}>{zh ? "返回全部地图" : "Show all maps"}</button></>}
@@ -276,7 +286,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           {recognition.result?.preview && <details className="journal-region-preview"><summary>{zh ? "查看识别区域" : "View recognized region"}</summary><img src={recognition.result.preview} alt={zh ? "本次识别使用的游戏地图区域" : "Game map region used for this recognition"} /></details>}
         </div>}
         {busy ? <div className="empty journal-empty">{zh ? "正在读取地图包…" : "Loading map packs…"}</div>
-          : recognizing && recognition.preview ? <figure className="journal-matching-preview"><img src={recognition.preview} alt={zh ? "正在核对的游戏地图区域" : "Game map region being checked"} /><figcaption>{zh ? "正在核对地图区域" : "Checking the map region"}</figcaption></figure>
+          : liveContext && recognition.preview ? <figure className="journal-matching-preview"><img src={recognition.preview} alt={recognition.previewKind === "full" ? (zh ? "本次捕获的完整游戏画面" : "Full game window captured for this recognition") : (zh ? "本次识别使用的游戏地图区域" : "Game map region used for this recognition")} /><figcaption>{previewCaption}</figcaption></figure>
           : selectedKey !== null ? <div className="journal-detail" key={`detail:${selectedKey}`}>
             <button ref={backButton} type="button" className="journal-back" onClick={() => setSelectedKey(null)}>{zh ? "‹ 返回列表" : "‹ Back to list"}</button>
             {!selectedMap ? <p>{zh ? "当前楼层或显示模式暂无此地图。" : "This map is unavailable for the selected floor or display mode."}</p>

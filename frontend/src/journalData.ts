@@ -54,7 +54,8 @@ export function previewPlacement(view: { width: number; height: number }, aspect
   return { width, height, x: coordinate(position.x, view.width, width), y: coordinate(position.y, view.height, height) };
 }
 export interface RecognitionResult { difficulty?: "hard" | "nightmare"; floor?: "1" | "2" | "3"; request_id: string; keys: string[]; preview: string | null; warnings: string[] }
-export interface RecognitionProgress { request_id: string; stage: "capturing" | "difficulty" | "floor" | "locating" | "matching"; completed: number; total: number }
+export interface RecognitionContext { season: string; difficulty: string | null; floor: string | null }
+export interface RecognitionProgress extends Partial<RecognitionContext> { request_id: string; stage: "capturing" | "difficulty" | "floor" | "locating" | "matching"; completed: number; total: number }
 export const journalApi = {
   list: () => invoke<JournalLibrary>("journal_list_packs"),
   choose: () => invoke<string[] | null>("journal_choose_pack_source"),

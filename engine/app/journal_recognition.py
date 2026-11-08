@@ -40,10 +40,13 @@ def capture_window(config: EngineConfig, window_handle: int | None = None) -> np
 def run_recognition(request: dict, config: EngineConfig,
                     emit: Callable[..., None], capture=capture_window) -> dict:
     started = perf_counter()
+    context = {"season": request.get("season", "s0"),
+               "difficulty": request.get("difficulty") if request.get("difficulty") in ("hard", "nightmare") else None,
+               "floor": "1" if request.get("season", "s0") == "s0" and request.get("difficulty") != "auto" else None}
 
     def progress(stage, completed, total):
         emit("journal_recognition_progress", stage=stage, completed=completed, total=total,
-             elapsed_ms=round((perf_counter() - started) * 1000))
+             elapsed_ms=round((perf_counter() - started) * 1000), **context)
 
     def diagnostic_image(kind, image):
         # Dedicated image messages are persisted separately, never as text logs.
@@ -60,13 +63,16 @@ def run_recognition(request: dict, config: EngineConfig,
     def preview_region(region):
         value = make_preview(region.crop(frame))
         if value:
-            emit("journal_recognition_preview", preview=value, region=vars(region))
+            emit("journal_recognition_preview", preview=value, preview_kind="region", region=vars(region))
 
     items = request.get("templates")
     if "templates_by_difficulty" not in request and (not isinstance(items, list) or not items):
         raise ValueError("当前分类没有可识别的一楼地图 / No eligible first-floor maps in this category")
     progress("capturing", 0, 0)
     frame = capture(config, request.get("window_handle"))
+    preview = make_preview(frame)
+    if preview:
+        emit("journal_recognition_preview", preview=preview, preview_kind="full")
     diagnostic_image("full", frame)
     difficulty = None
     floor = "1"
@@ -79,10 +85,14 @@ def run_recognition(request: dict, config: EngineConfig,
             progress("floor", 0, 0)
             floor, evidence = detect_s1_floor(frame)
             diagnostic({"stage": "floor_detected", **evidence, "floor": floor})
+            context["floor"] = floor
+            progress("floor", 0, 0)
         elif request.get("difficulty", "auto") == "auto":
             progress("difficulty", 0, 0)
             difficulty, evidence = detect_difficulty(frame)
             diagnostic({"stage": "difficulty_detected", "difficulty": difficulty, **evidence})
+            context.update(difficulty=difficulty, floor=floor)
+            progress("difficulty", 0, 0)
         else:
             difficulty = request.get("difficulty")
             if difficulty not in ("hard", "nightmare"):

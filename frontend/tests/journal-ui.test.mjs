@@ -23,6 +23,37 @@ function setup() {
   wait("!!document.querySelector('.journal') && !document.querySelector('.journal-viewer[aria-busy=true]')");
 }
 
+test("live recognition shows full capture, resolved metadata and crop, retaining evidence on failure", () => {
+  try {
+    setup();
+    click("识别一楼地图");
+    wait("!!window.__launcherTest.recognitionRequest");
+    const id = evaluate("window.__launcherTest.recognitionRequest.requestId");
+    assert.match(evaluate("document.querySelector('.journal-footer small').textContent"), /难度识别中.*楼层识别中/);
+    const full = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450"><rect width="800" height="450" fill="tan"/></svg>');
+    evaluate(`window.__launcherTest.emitRecognitionPreview(${JSON.stringify({request_id:id,preview:full,preview_kind:"full"})})`);
+    wait("document.querySelector('.journal-matching-preview figcaption')?.textContent==='已截图，正在分析…'");
+    evaluate(`window.__launcherTest.emitRecognitionProgress(${JSON.stringify({request_id:id,stage:"locating",completed:0,total:0,season:"s0",difficulty:"nightmare",floor:"1"})})`);
+    wait("document.querySelector('.journal-footer small').textContent.includes('噩梦 · 一楼')");
+    assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition')"), false);
+    evaluate(`window.__launcherTest.emitRecognitionPreview(${JSON.stringify({request_id:id,preview:full,preview_kind:"region"})})`);
+    wait("document.querySelector('.journal-matching-preview figcaption')?.textContent==='正在核对地图区域'");
+    evaluate("window.__launcherTest.failRecognition('无法定位地图 / Could not locate map')");
+    wait("document.querySelector('.journal-recognition [role=status]').textContent.includes('无法定位地图')");
+    assert.equal(evaluate("!!document.querySelector('.journal-matching-preview img')"), true);
+    assert.match(evaluate("document.querySelector('.journal-footer small').textContent"), /噩梦 · 一楼/);
+    click("重新识别");
+    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length===2");
+    assert.equal(evaluate("!!document.querySelector('.journal-matching-preview img')"), false);
+    evaluate(`window.__launcherTest.emitRecognitionPreview(${JSON.stringify({request_id:id,preview:full,preview_kind:"region"})})`);
+    assert.equal(evaluate("!!document.querySelector('.journal-matching-preview img')"), false);
+    evaluate(`window.__launcherTest.emitRecognitionPreview({request_id:window.__launcherTest.recognitionRequest.requestId,preview:${JSON.stringify(full)},preview_kind:'full'})`);
+    evaluate("window.__launcherTest.finishRecognition({keys:[],difficulty:'nightmare',floor:'1',preview:null,warnings:[]})");
+    wait("document.querySelector('.journal-recognition [role=status]').textContent.includes('未找到匹配地图')");
+    assert.equal(evaluate("!!document.querySelector('.journal-matching-preview img')"), true);
+  } finally { browser("close"); }
+});
+
 test("S0 Auto and manual choices reach recognition without changing the other mode", () => {
   try {
     setup();
