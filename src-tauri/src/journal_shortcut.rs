@@ -2,8 +2,8 @@
 use serde_json::Value;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-static KEY: AtomicU32 = AtomicU32::new(b'P' as u32);
-static FLOOR_KEY: AtomicU32 = AtomicU32::new(0x75);
+static KEY: AtomicU32 = AtomicU32::new(0);
+static FLOOR_KEY: AtomicU32 = AtomicU32::new(0);
 static THREAD: AtomicU32 = AtomicU32::new(0);
 
 fn observe_key(held: &AtomicU32, configured: u32, key: u32, down: bool) -> bool {
@@ -66,6 +66,24 @@ pub(crate) fn configure(settings: &Value) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn migrate(settings: &mut Value) {
+    if settings["app"].get("floor_hotkey").is_some() {
+        return;
+    }
+    let mut candidate = settings.clone();
+    if !candidate["app"].is_object() {
+        return;
+    }
+    // Preserve existing keys; only fill the field introduced in 0.2.1.
+    for key in ["F6", "L", "F7"] {
+        candidate["app"]["floor_hotkey"] = Value::from(key);
+        if validate(&candidate).is_ok() {
+            settings["app"]["floor_hotkey"] = Value::from(key);
+            return;
+        }
+    }
+}
+
 fn matches_game(settings: &Value, process: &str, title: &str, class: &str) -> bool {
     let window = &settings["game_window"];
     let names = window["process_names"].as_array();
@@ -93,12 +111,11 @@ mod native {
     use super::*;
     use std::{
         sync::{
-            mpsc::{sync_channel, SyncSender},
-            OnceLock,
+            mpsc::{sync_channel, RecvTimeoutError, SyncSender},
+            Mutex,
         },
         time::Duration,
     };
-    use tauri::Emitter;
     use windows::{
         core::PWSTR,
         Win32::{
@@ -114,7 +131,8 @@ mod native {
         },
     };
 
-    static EVENTS: OnceLock<SyncSender<(isize, u32)>> = OnceLock::new();
+    static EVENTS: Mutex<Option<SyncSender<(isize, u32)>>> = Mutex::new(None);
+    static START: Mutex<()> = Mutex::new(());
     static DOWN: AtomicU32 = AtomicU32::new(0);
     static FLOOR_DOWN: AtomicU32 = AtomicU32::new(0);
 
@@ -146,9 +164,11 @@ mod native {
                             .iter()
                             .all(|key| GetAsyncKeyState(*key) >= 0)
                         {
-                            if let Some(events) = EVENTS.get() {
-                                let _ = events
-                                    .try_send((GetForegroundWindow().0 as isize, event.vkCode));
+                            if let Ok(events) = EVENTS.try_lock() {
+                                if let Some(events) = events.as_ref() {
+                                    let _ = events
+                                        .try_send((GetForegroundWindow().0 as isize, event.vkCode));
+                                }
                             }
                         }
                     }
@@ -199,11 +219,12 @@ mod native {
         )
     }
 
-    pub(super) fn start(app: tauri::AppHandle) -> Result<(), String> {
+    pub(super) fn start(on_shortcut: impl Fn(isize, u32) + Send + 'static) -> Result<(), String> {
+        let _starting = START.lock().map_err(|e| e.to_string())?;
+        if THREAD.load(Ordering::Acquire) != 0 {
+            return Ok(());
+        }
         let (events, receiver) = sync_channel(1);
-        EVENTS
-            .set(events)
-            .map_err(|_| "Recognition shortcut already initialized")?;
         let (ready, started) = sync_channel(1);
         std::thread::spawn(move || unsafe {
             let module = GetModuleHandleW(None).map(|module| module.into());
@@ -216,8 +237,9 @@ mod native {
                     let mut message = MSG::default();
                     let _ = PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE);
                     THREAD.store(GetCurrentThreadId(), Ordering::Release);
-                    let _ = ready.send(Ok(()));
-                    while GetMessageW(&mut message, None, 0, 0).0 > 0 {}
+                    if ready.send(Ok(())).is_ok() {
+                        while GetMessageW(&mut message, None, 0, 0).0 > 0 {}
+                    }
                     let _ = UnhookWindowsHookEx(hook);
                     THREAD.store(0, Ordering::Release);
                 }
@@ -229,28 +251,19 @@ mod native {
         started
             .recv_timeout(Duration::from_secs(3))
             .map_err(|e| e.to_string())??;
+        *EVENTS.lock().map_err(|e| e.to_string())? = Some(events);
+        DOWN.store(0, Ordering::Relaxed);
+        FLOOR_DOWN.store(0, Ordering::Relaxed);
         std::thread::spawn(move || {
             while THREAD.load(Ordering::Acquire) != 0 {
-                let Ok((hwnd, key)) = receiver.recv_timeout(Duration::from_millis(250)) else {
-                    continue;
+                let (hwnd, key) = match receiver.recv_timeout(Duration::from_millis(250)) {
+                    Ok(event) => event,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => break,
                 };
                 if let Ok(settings) = crate::config::load() {
                     if unsafe { game_is_foreground(hwnd, &settings) } {
-                        crate::logs::record(
-                            &app,
-                            "debug",
-                            "journal.shortcut",
-                            "收到游戏前台地图快捷键 / Journal shortcut received",
-                            serde_json::json!({"hwnd":hwnd,"key":key}),
-                        );
-                        let _ = app.emit(
-                            if key == FLOOR_KEY.load(Ordering::Relaxed) {
-                                "journal-floor-shortcut"
-                            } else {
-                                "journal-recognition-shortcut"
-                            },
-                            serde_json::json!({"hwnd": hwnd}),
-                        );
+                        on_shortcut(hwnd, key);
                     }
                 }
             }
@@ -267,11 +280,32 @@ mod native {
     }
 }
 
-pub(crate) fn start(app: tauri::AppHandle, settings: &Value) -> Result<(), String> {
-    configure(settings)?;
+pub(crate) fn ensure_started(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(windows)]
-    native::start(app)?;
+    native::start(move |hwnd, key| {
+        use tauri::Emitter;
+        crate::logs::record(
+            &app,
+            "debug",
+            "journal.shortcut",
+            "收到游戏前台地图快捷键 / Journal shortcut received",
+            serde_json::json!({"hwnd":hwnd,"key":key}),
+        );
+        let _ = app.emit(
+            if key == FLOOR_KEY.load(Ordering::Relaxed) {
+                "journal-floor-shortcut"
+            } else {
+                "journal-recognition-shortcut"
+            },
+            serde_json::json!({"hwnd": hwnd}),
+        );
+    })?;
     Ok(())
+}
+pub(crate) fn start(app: tauri::AppHandle, settings: &Value) -> Result<(), String> {
+    validate(settings)?;
+    ensure_started(app)?;
+    configure(settings)
 }
 pub(crate) fn stop() {
     #[cfg(windows)]
@@ -282,6 +316,39 @@ pub(crate) fn stop() {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "Requires an interactive Windows desktop; observes input without injecting it"]
+    fn listener_can_start_after_conflict_and_reconfigure_without_restart() {
+        let mut settings =
+            json!({"app":{"engine_hotkey":"F6","recognition_hotkey":"P","floor_hotkey":"F6"}});
+        assert!(validate(&settings).is_err());
+        assert_eq!(THREAD.load(Ordering::Acquire), 0);
+        struct Cleanup;
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                KEY.store(0, Ordering::Relaxed);
+                FLOOR_KEY.store(0, Ordering::Relaxed);
+                native::stop();
+            }
+        }
+        let _cleanup = Cleanup;
+        native::start(|_, _| {}).unwrap();
+        let thread = THREAD.load(Ordering::Acquire);
+        assert_ne!(thread, 0);
+        settings["app"]["floor_hotkey"] = json!("L");
+        configure(&settings).unwrap();
+        native::start(|_, _| panic!("Existing listener should be reused")).unwrap();
+        assert_eq!(THREAD.load(Ordering::Acquire), thread);
+        assert_eq!(KEY.load(Ordering::Relaxed), b'P' as u32);
+        assert_eq!(FLOOR_KEY.load(Ordering::Relaxed), b'L' as u32);
+        settings["app"]["recognition_hotkey"] = json!("O");
+        settings["app"]["floor_hotkey"] = json!("F7");
+        configure(&settings).unwrap();
+        assert_eq!(THREAD.load(Ordering::Acquire), thread);
+        assert_eq!(KEY.load(Ordering::Relaxed), b'O' as u32);
+        assert_eq!(FLOOR_KEY.load(Ordering::Relaxed), 0x76);
+    }
     #[test]
     fn changing_shortcut_while_held_does_not_lose_the_next_press() {
         let held = AtomicU32::new(0);

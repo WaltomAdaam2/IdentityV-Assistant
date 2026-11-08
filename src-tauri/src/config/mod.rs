@@ -53,6 +53,7 @@ pub fn load() -> Result<Value, String> {
 
 fn migrate(settings: &mut Value) -> bool {
     let before = settings.clone();
+    crate::journal_shortcut::migrate(settings);
     if let Some(app) = settings.get_mut("app").and_then(Value::as_object_mut) {
         app.remove("check_component_updates_on_launch");
         if !app
@@ -175,6 +176,34 @@ mod tests {
     fn bundled_default_configuration_is_valid_json() {
         let settings: Value = serde_json::from_str(DEFAULT_SETTINGS).expect("default config");
         assert!(settings.get("engine").is_some());
+    }
+
+    #[test]
+    fn missing_floor_shortcut_preserves_occupied_user_keys() {
+        for (engine, recognition, floor) in [
+            ("F3", "P", "F6"),
+            ("F6", "P", "L"),
+            ("F6", "L", "F7"),
+            ("F3", "F6", "L"),
+            ("Ctrl+F6", "P", "F6"),
+        ] {
+            let mut settings =
+                json!({"app":{"engine_hotkey":engine,"recognition_hotkey":recognition}});
+            migrate(&mut settings);
+            assert_eq!(settings["app"]["engine_hotkey"], engine);
+            assert_eq!(settings["app"]["recognition_hotkey"], recognition);
+            assert_eq!(settings["app"]["floor_hotkey"], floor);
+            assert!(crate::journal_shortcut::validate(&settings).is_ok());
+            assert!(!migrate(&mut settings));
+        }
+        let mut explicit =
+            json!({"app":{"engine_hotkey":"F6","recognition_hotkey":"P","floor_hotkey":"L"}});
+        migrate(&mut explicit);
+        assert_eq!(explicit["app"]["floor_hotkey"], "L");
+        explicit["app"]["floor_hotkey"] = json!("F6");
+        migrate(&mut explicit);
+        assert_eq!(explicit["app"]["floor_hotkey"], "F6");
+        assert!(crate::journal_shortcut::validate(&explicit).is_err());
     }
 
     #[test]

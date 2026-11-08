@@ -225,7 +225,8 @@ def _score(template: Template, weights: np.ndarray, explored: np.ndarray,
     return Match(template.key, score, coverage, unexplained, region, mass)
 
 
-def _query(image: np.ndarray, region: Region, audit=None) -> tuple[np.ndarray, np.ndarray, Region] | None:
+def _query(image: np.ndarray, region: Region, audit=None,
+           icon_scale: float = 1.0) -> tuple[np.ndarray, np.ndarray, Region] | None:
     def reason(value, **metrics):
         if audit is not None:
             audit.update(reason=value, **metrics)
@@ -249,6 +250,25 @@ def _query(image: np.ndarray, region: Region, audit=None) -> tuple[np.ndarray, n
     edges = _features(image)
     explored = cv2.dilate(surface, np.ones((7, 7), np.uint8))
     edges[explored == 0] = 0
+    # Neutral-colored chest/player/objective glyphs survive the color filter.
+    # Ignore only small, bright, disconnected edges wholly inside mapped rooms;
+    # retain room boundaries, dark structural holes and long interior walls.
+    contours, _ = cv2.findContours(surface, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filled = np.zeros_like(surface)
+    cv2.drawContours(filled, contours, -1, 1, -1)
+    interior = cv2.distanceTransform(filled, cv2.DIST_L2, 3)
+    brightness = np.max(_bgr(image), axis=2)
+    _, components, boxes, _ = cv2.connectedComponentsWithStats((edges != 0).astype(np.uint8), 8)
+    ignored = 0
+    for label, (x, y, w, h, _) in enumerate(boxes[1:], 1):
+        if max(w, h) > 32 * icon_scale or brightness[y:y+h, x:x+w].max() < 160:
+            continue
+        pixels = components[y:y+h, x:x+w] == label
+        if np.min(interior[y:y+h, x:x+w][pixels]) >= 2 * icon_scale:
+            ignored += int(np.count_nonzero(pixels))
+            edges[y:y+h, x:x+w][pixels] = 0
+    if audit is not None:
+        audit["ignored_symbol_edges"] = ignored
     # Avoid treating a panel's outer rectangular rim as map geometry.
     edges[:2] = edges[-2:] = 0
     edges[:, :2] = edges[:, -2:] = 0
@@ -363,7 +383,7 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
     def inspect(region):
         audit = {"proposal": vars(region)}
         started = perf_counter()
-        query = _query(region.crop(frame), region, audit)
+        query = _query(region.crop(frame), region, audit, frame.shape[1] / 1600)
         if diagnostic:
             diagnostic({"stage": "region_check", **audit, "elapsed_ms": round((perf_counter() - started) * 1000)})
         return query
