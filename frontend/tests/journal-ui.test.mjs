@@ -33,6 +33,7 @@ test("live recognition shows full capture, resolved metadata and crop, retaining
     const full = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450"><rect width="800" height="450" fill="tan"/></svg>');
     evaluate(`window.__launcherTest.emitRecognitionPreview(${JSON.stringify({request_id:id,preview:full,preview_kind:"full"})})`);
     wait("document.querySelector('.journal-matching-preview figcaption')?.textContent==='已截图，正在分析…'");
+    assert.equal(evaluate("document.querySelector('.journal-recognition [role=status]').textContent"), "正在分析截图…");
     evaluate(`window.__launcherTest.emitRecognitionProgress(${JSON.stringify({request_id:id,stage:"locating",completed:0,total:0,season:"s0",difficulty:"nightmare",floor:"1"})})`);
     wait("document.querySelector('.journal-footer small').textContent.includes('噩梦 · 一楼')");
     assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition')"), false);
@@ -88,6 +89,10 @@ test("S1 preserves S0 view preferences, uses selected difficulty, and cycles B1 
     assert.deepEqual(evaluate("(({season,difficulty,display})=>({season,difficulty,display}))(window.__launcherTest.recognitionRequest)"), {season:"s1",difficulty:"nightmare",display:"pure"});
     evaluate("window.__launcherTest.emitRecognitionProgress({request_id:window.__launcherTest.recognitionRequest.requestId,stage:'floor',completed:0,total:0})");
     browser("wait", "--text", "正在判断地图楼层…");
+    assert.match(evaluate("document.querySelector('.journal-footer small').textContent"), /S1 磷光症 · 噩梦 · 楼层识别中 · 纯净/);
+    evaluate("window.__launcherTest.emitRecognitionProgress({request_id:window.__launcherTest.recognitionRequest.requestId,stage:'locating',completed:0,total:0,season:'s1',difficulty:'nightmare',floor:'2'})");
+    wait("document.querySelector('.journal-footer small').textContent.includes('噩梦 · 地下2层 · 纯净')");
+    assert.equal(evaluate("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition' && c.args.requestId===window.__launcherTest.recognitionRequest.requestId)"), false);
     evaluate("window.__launcherTest.finishRecognition({keys:['td:1'],difficulty:'nightmare',floor:'2',preview:null,warnings:[]})");
     wait("document.querySelectorAll('.journal-map').length===1");
     wait("window.__launcherTest.calls.filter(c=>c.command==='journal_read_image').at(-1)?.args.path==='b2.png'");
@@ -188,7 +193,7 @@ test("filter changes and page leave cancel recognition and discard late results"
     click("困难"); click("识别一楼地图");
     wait("window.__launcherTest.calls.filter(c=>c.command==='journal_recognize').length===2");
     click("概览");
-    wait("window.__launcherTest.calls.filter(c=>c.command==='journal_cancel_recognition').length===2");
+    wait("window.__launcherTest.calls.some(c=>c.command==='journal_cancel_recognition' && c.args.reason==='page_left')");
     evaluate("window.__launcherTest.finishRecognition({keys:['rf:1'],preview:null,warnings:[]})");
     click("加页手记"); wait("!!document.querySelector('.journal')");
     assert.equal(evaluate("!!document.querySelector('.journal-recognition')"), false);
@@ -359,10 +364,12 @@ test("repeated P cancels the helper, waits for release, and only starts the late
     evaluate("window.__launcherTest.finishRecognition({difficulty:'hard',keys:['rf:1'],preview:null,warnings:[]})");
     wait("document.querySelectorAll('.journal-map').length===1");
     assert.equal(evaluate("document.querySelector('.journal-map-name').textContent"),"右前 · 地图 1");
-    click("查看右前 · 地图 1"); browser("press","F6");
+    click("查看右前 · 地图 1"); wait("!!document.querySelector('.journal-detail img')");
+    click("进入地图"); wait("!!document.querySelector('.journal-full-preview:modal img')");
+    browser("press","F6");
     wait("window.__launcherTest.calls.some(c=>c.command==='journal_read_image' && c.args.path==='right-upper.png')");
     browser("press","F6");
-    wait("document.querySelector('.journal-floor-switch button[aria-pressed=true]').textContent==='1F'");
+    wait("document.querySelector('.journal-preview-floors button[aria-pressed=true]').textContent==='1F'");
   } finally { browser("close"); }
 });
 

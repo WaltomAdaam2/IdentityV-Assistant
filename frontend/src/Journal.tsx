@@ -268,7 +268,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
           {library.directory && <p className="journal-directory">{library.directory}</p>}
         </div></div>
       </aside>
-      <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy || recognizing}>
+      <section className="panel journal-viewer" aria-label={zh ? "地图浏览" : "Map viewer"} aria-busy={busy}>
         {recognition.status !== "idle" && <div className="journal-recognition">
           <div className="journal-recognition-heading"><h2>{isS1 ? (recognition.context?.floor ? (zh ? `地下${recognition.context.floor}层识图结果` : `B${recognition.context.floor} matches`) : (zh ? "当前楼层识图结果" : "Current-floor matches")) : (zh ? "一楼识图结果" : "First-floor matches")}</h2>
             <div className="journal-options">{recognizing
@@ -277,7 +277,7 @@ export default function Journal({ language, settings: savedSettings, onSettingsC
             </div>
           </div>
           <p role="status">{recognizing
-            ? ({ capturing: zh ? "正在截图…" : "Capturing…", difficulty: zh ? "正在判断地图难度…" : "Detecting difficulty…", floor: zh ? "正在判断地图楼层…" : "Detecting floor…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
+            ? ({ capturing: recognition.preview ? (zh ? "正在分析截图…" : "Analyzing capture…") : (zh ? "正在截图…" : "Capturing…"), difficulty: zh ? "正在判断地图难度…" : "Detecting difficulty…", floor: zh ? "正在判断地图楼层…" : "Detecting floor…", locating: zh ? "正在定位地图…" : "Locating the map…", matching: zh ? "正在匹配地图…" : "Matching maps…" }[recognition.progress?.stage ?? "capturing"])
               + (recognition.progress?.total ? ` ${recognition.progress.completed} / ${recognition.progress.total}` : "")
             : messageLanguage(recognition.error, language) || (recognition.result?.keys.length
               ? (recognition.result.keys.length > 1 ? (zh ? "按匹配顺序最多显示 4 张候选，请核对；也可继续探索后重新识别。" : "Up to 4 candidates in matching order. Check a map, or explore further and recognize again.") : (zh ? "点击候选查看地图；楼层按钮只切换看图。" : "Choose the candidate to view it; floor buttons only change the view."))

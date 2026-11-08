@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from capture.wgc_capture import WindowsGraphicsCapture
+from config.loader import load_config
 from config.schema import EngineConfig
 from ipc.messages import event
 from vision.journal_difficulty import detect_difficulty, detect_s1_floor
@@ -38,7 +39,7 @@ def capture_window(config: EngineConfig, window_handle: int | None = None) -> np
 
 
 def run_recognition(request: dict, config: EngineConfig,
-                    emit: Callable[..., None], capture=capture_window) -> dict:
+                    emit: Callable[..., None], capture=capture_window, load_templates=None) -> dict:
     started = perf_counter()
     context = {"season": request.get("season", "s0"),
                "difficulty": request.get("difficulty") if request.get("difficulty") in ("hard", "nightmare") else None,
@@ -66,17 +67,21 @@ def run_recognition(request: dict, config: EngineConfig,
             emit("journal_recognition_preview", preview=value, preview_kind="region", region=vars(region))
 
     items = request.get("templates")
-    if "templates_by_difficulty" not in request and (not isinstance(items, list) or not items):
+    deferred = request.get("defer_templates", False)
+    if not deferred and "templates_by_difficulty" not in request and (not isinstance(items, list) or not items):
         raise ValueError("当前分类没有可识别的一楼地图 / No eligible first-floor maps in this category")
     progress("capturing", 0, 0)
+    capture_started = perf_counter()
     frame = capture(config, request.get("window_handle"))
+    diagnostic({"stage": "captured", "elapsed_ms": round((perf_counter() - started) * 1000),
+                "capture_ms": round((perf_counter() - capture_started) * 1000)})
     preview = make_preview(frame)
     if preview:
         emit("journal_recognition_preview", preview=preview, preview_kind="full")
     diagnostic_image("full", frame)
     difficulty = None
     floor = "1"
-    if "templates_by_difficulty" in request:
+    if deferred or "templates_by_difficulty" in request:
         if request.get("season") == "s1":
             difficulty = request.get("difficulty")
             if difficulty not in ("hard", "nightmare"):
@@ -98,7 +103,8 @@ def run_recognition(request: dict, config: EngineConfig,
             if difficulty not in ("hard", "nightmare"):
                 raise ValueError("请选择地图难度 / Select a map difficulty")
             diagnostic({"stage": "difficulty_selected", "difficulty": difficulty, "mode": "manual", "season": "s0"})
-        items = request["templates_by_difficulty"].get(difficulty, [])
+        pools = load_templates() if deferred else request["templates_by_difficulty"]
+        items = pools.get(difficulty, [])
         if request.get("season") == "s1":
             items = [item for item in items if item.get("floor") == floor]
         if not items:
@@ -151,16 +157,28 @@ def make_preview(crop):
     return "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii") if ok else None
 
 
-def main(config: EngineConfig) -> int:
+def main(config_path: Path) -> int:
     request_id = ""
 
     def emit(kind: str, **payload: object) -> None:
         print(json.dumps(event(kind, request_id=request_id, **payload), ensure_ascii=False), flush=True)
 
     try:
+        # Load the native library while idle, without opening a capture session.
+        WindowsGraphicsCapture()
+        emit("journal_recognition_ready")
         request = json.loads(sys.stdin.readline(4 * 1024 * 1024))
         request_id = request["request_id"]
-        result = run_recognition(request, config, emit)
+        # A prepared helper may have waited through settings changes.
+        config = load_config(config_path)
+
+        def load_templates():
+            message = json.loads(sys.stdin.readline(4 * 1024 * 1024))
+            if message.get("request_id") != request_id:
+                raise ValueError("Recognition template request ID mismatch")
+            return message["templates_by_difficulty"]
+
+        result = run_recognition(request, config, emit, load_templates=load_templates)
         emit("journal_recognition_result", **result)
         return 0
     except Exception as error:

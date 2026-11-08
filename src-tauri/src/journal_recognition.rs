@@ -21,6 +21,8 @@ struct Requests {
     cancelled_before_start: HashSet<String>,
     latest: Option<RecognitionDiagnostics>,
     cancel_reason: Option<String>,
+    prepared: Option<tokio::process::Child>,
+    shutting_down: bool,
 }
 
 #[derive(Clone)]
@@ -213,6 +215,9 @@ impl RecognitionState {
     fn begin(&self, id: &str) -> Result<(RequestGuard, watch::Receiver<bool>), String> {
         uuid::Uuid::parse_str(id).map_err(|_| "Invalid recognition request ID")?;
         let mut state = self.0.lock().unwrap();
+        if state.shutting_down {
+            return Err("助手正在退出 / Assistant is shutting down".into());
+        }
         if state.cancelled_before_start.remove(id) {
             return Err("识图已取消 / Recognition cancelled".into());
         }
@@ -238,11 +243,71 @@ impl RecognitionState {
     }
     pub fn cancel_active(&self) {
         let mut state = self.0.lock().unwrap();
+        state.shutting_down = true;
         if let Some((_, sender)) = &state.active {
             let _ = sender.send(true);
             state.cancel_reason = Some("application_shutdown".into());
         }
     }
+
+    pub async fn stop_prepared(&self) -> Result<(), String> {
+        let child = self.0.lock().unwrap().prepared.take();
+        if let Some(mut child) = child {
+            child.kill().await.map_err(|e| e.to_string())?;
+            child.wait().await.map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    pub fn resume_after_update(&self) {
+        self.0.lock().unwrap().shutting_down = false;
+    }
+}
+
+fn spawn_helper(app: &AppHandle) -> Result<tokio::process::Child, String> {
+    let path =
+        crate::engine::locate_engine(&app.path().resource_dir().map_err(|e| e.to_string())?)?;
+    crate::engine::engine_command(&path)
+        .arg("--config")
+        .arg(crate::config::active_path()?)
+        .arg("--recognize-journal")
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("OPENCV_IO_MAX_IMAGE_PIXELS", "16777216")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|error| format!("无法启动识图进程 / Could not start recognition: {error}"))
+}
+
+pub fn prewarm(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<RecognitionState>();
+        let mut requests = state.0.lock().unwrap();
+        if requests.shutting_down || requests.prepared.is_some() {
+            return;
+        }
+        match spawn_helper(&app) {
+            Ok(child) => {
+                crate::logs::record(
+                    &app,
+                    "debug",
+                    "journal.recognition",
+                    "正在预热截图进程 / Preparing capture helper",
+                    json!({"stage":"prewarming", "pid":child.id(), "capture_started":false}),
+                );
+                requests.prepared = Some(child);
+            }
+            Err(error) => crate::logs::record(
+                &app,
+                "warning",
+                "journal.recognition",
+                &error,
+                json!({"stage":"prewarm_failed"}),
+            ),
+        }
+    });
 }
 
 #[tauri::command]
@@ -323,11 +388,6 @@ pub async fn journal_recognize(
         );
     })?;
     let evidence = crate::diagnostic_files::root().and_then(|root| {
-        diagnostic_warning(
-            &app,
-            &request_id,
-            crate::diagnostic_files::prune(&root, chrono::Utc::now()),
-        );
         state.start_diagnostics(
             &request_id,
             json!({"season":season,"difficulty":difficulty,"requested_difficulty":difficulty,"display":display,
@@ -355,6 +415,7 @@ pub async fn journal_recognize(
         .await
     };
     let outcome = work.await;
+    prewarm(app.clone());
     let elapsed = started.elapsed().as_millis();
     let status = if outcome.is_ok() {
         "completed"
@@ -425,58 +486,32 @@ async fn recognize(
     window_handle: Option<isize>,
     mut cancelled: watch::Receiver<bool>,
 ) -> Result<Value, String> {
-    let maps_app = app.clone();
-    let request_season = season.clone();
-    let request_difficulty = difficulty.clone();
-    let templates = tauri::async_runtime::spawn_blocking(move || {
-        crate::journal::ensure_builtins(&maps_app)?;
-        if !["hard", "nightmare"].contains(&difficulty.as_str())
-            && !(season == "s0" && difficulty == "auto")
-        {
-            return Err("无效地图难度 / Invalid map difficulty".to_string());
-        }
-        // Manual mode indexes only its selected pool; S0 Auto needs both.
-        let hard = if difficulty == "auto" || difficulty == "hard" {
-            crate::journal::recognition_templates(&season, "hard", &display)?
-        } else {
-            json!([])
-        };
-        let nightmare = if difficulty == "auto" || difficulty == "nightmare" {
-            crate::journal::recognition_templates(&season, "nightmare", &display)?
-        } else {
-            json!([])
-        };
-        Ok::<_, String>(json!({"hard":hard,"nightmare":nightmare}))
-    })
-    .await
-    .map_err(|error| error.to_string())??;
-    crate::logs::record(
-        app,
-        "debug",
-        "journal.recognition",
-        "地图模板索引就绪 / Map template pools indexed",
-        json!({"request_id":id,"hard":templates["hard"].as_array().map(Vec::len),"nightmare":templates["nightmare"].as_array().map(Vec::len)}),
-    );
-    let path = crate::engine::locate_engine(
-        &app.path()
-            .resource_dir()
-            .map_err(|error| error.to_string())?,
-    )?;
+    if !["s0", "s1"].contains(&season.as_str())
+        || !["pure", "route"].contains(&display.as_str())
+        || (!["hard", "nightmare"].contains(&difficulty.as_str())
+            && !(season == "s0" && difficulty == "auto"))
+    {
+        return Err("无效地图筛选 / Invalid map filters".into());
+    }
     if *cancelled.borrow() {
         return Err("识图已取消 / Recognition cancelled".into());
     }
-    let mut child = crate::engine::engine_command(&path)
-        .arg("--config")
-        .arg(crate::config::active_path()?)
-        .arg("--recognize-journal")
-        .env("PYTHONIOENCODING", "utf-8")
-        .env("OPENCV_IO_MAX_IMAGE_PIXELS", "16777216")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| format!("无法启动识图进程 / Could not start recognition: {error}"))?;
+    let mut child = {
+        let mut requests = state.0.lock().unwrap();
+        if requests.shutting_down {
+            return Err("助手正在退出 / Assistant is shutting down".into());
+        }
+        match requests.prepared.take() {
+            Some(mut child) => {
+                if child.try_wait().map_err(|e| e.to_string())?.is_none() {
+                    child
+                } else {
+                    spawn_helper(app)?
+                }
+            }
+            _ => spawn_helper(app)?,
+        }
+    };
     crate::logs::record(
         app,
         "debug",
@@ -497,107 +532,173 @@ async fn recognize(
             }
         });
         let mut input = child.stdin.take().ok_or("Missing recognition input")?;
-        let request = json!({"request_id": id, "season":request_season, "difficulty":request_difficulty,
-            "templates_by_difficulty": templates, "window_handle": window_handle});
+        let request = json!({"request_id": id, "season":season, "difficulty":difficulty,
+            "defer_templates": true, "window_handle": window_handle});
         input
             .write_all(format!("{request}\n").as_bytes())
             .await
             .map_err(|error| error.to_string())?;
-        drop(input);
-        let mut output = BufReader::new(child.stdout.take().ok_or("Missing recognition output")?);
-        let mut result = None;
-        loop {
-            let mut line = String::new();
-            let read = (&mut output)
-                .take(96 * 1024 * 1024)
-                .read_line(&mut line)
+        // Capture is requested before indexing. Read previews concurrently so
+        // neither template preparation nor writing its response hides the frame.
+        let send_templates = async {
+            let maps_app = app.clone();
+            let maps_id = id.to_string();
+            let templates = tauri::async_runtime::spawn_blocking(move || {
+                diagnostic_warning(
+                    &maps_app,
+                    &maps_id,
+                    crate::diagnostic_files::root()
+                        .and_then(|root| crate::diagnostic_files::prune(&root, chrono::Utc::now())),
+                );
+                crate::journal::ensure_builtins(&maps_app)?;
+                let hard = if difficulty == "auto" || difficulty == "hard" {
+                    crate::journal::recognition_templates(&season, "hard", &display)?
+                } else {
+                    json!([])
+                };
+                let nightmare = if difficulty == "auto" || difficulty == "nightmare" {
+                    crate::journal::recognition_templates(&season, "nightmare", &display)?
+                } else {
+                    json!([])
+                };
+                Ok::<_, String>(json!({"hard":hard,"nightmare":nightmare}))
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+            crate::logs::record(
+                app,
+                "debug",
+                "journal.recognition",
+                "地图模板索引就绪 / Map template pools indexed",
+                json!({"request_id":id,"hard":templates["hard"].as_array().map(Vec::len),"nightmare":templates["nightmare"].as_array().map(Vec::len)}),
+            );
+            let message = json!({"request_id":id, "templates_by_difficulty":templates});
+            input
+                .write_all(format!("{message}\n").as_bytes())
                 .await
-                .map_err(|error| error.to_string())?;
-            if read == 0 {
-                break;
-            }
-            if read >= 96 * 1024 * 1024 {
-                return Err("Recognition response exceeds limit".into());
-            }
-            let message: Value = serde_json::from_str(&line)
-                .map_err(|error| format!("Invalid recognition response: {error}"))?;
-            if message["request_id"] != id {
-                return Err("Recognition request ID mismatch".into());
-            }
-            match message["type"].as_str() {
-                Some("journal_recognition_progress") => {
-                    let stage = message["stage"].as_str().unwrap_or("unknown");
-                    let label = match stage {
-                        "capturing" => "正在截图 / Capturing game window",
-                        "difficulty" => "正在判断地图难度 / Detecting map difficulty",
-                        "floor" => "正在判断地图楼层 / Detecting map floor",
-                        "locating" => "正在定位地图 / Locating map region",
-                        "matching" => "正在匹配地图 / Matching maps",
-                        _ => "识图进度 / Recognition progress",
-                    };
-                    crate::logs::record(
-                        app,
-                        if stage == "matching" && message["completed"].as_u64().unwrap_or(0) > 0 {
-                            "debug"
-                        } else {
-                            "info"
-                        },
-                        "journal.recognition",
-                        label,
-                        json!({"request_id":id,"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}),
-                    );
-                    state.record(id, json!({"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}));
-                    let _ = app.emit("journal-recognition-progress", &message);
+                .map_err(|e| e.to_string())?;
+            drop(input);
+            Ok::<_, String>(())
+        };
+        let receive = async {
+            let mut output =
+                BufReader::new(child.stdout.take().ok_or("Missing recognition output")?);
+            let mut result = None;
+            loop {
+                let mut line = String::new();
+                let read = (&mut output)
+                    .take(96 * 1024 * 1024)
+                    .read_line(&mut line)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                if read == 0 {
+                    break;
                 }
-                Some("journal_recognition_image") => {
-                    diagnostic_warning(app, id, state.retain_image(id, &message));
-                    let metadata = json!({"request_id":id,"stage":format!("{}_image",message["image_kind"].as_str().unwrap_or("")),
-                    "width":message["width"],"height":message["height"],"elapsed_ms":message["elapsed_ms"]});
-                    state.record(id, metadata.clone());
+                if read >= 96 * 1024 * 1024 {
+                    return Err("Recognition response exceeds limit".into());
+                }
+                let message: Value = serde_json::from_str(&line)
+                    .map_err(|error| format!("Invalid recognition response: {error}"))?;
+                if message["type"] == "journal_recognition_ready" && message["request_id"] == "" {
                     crate::logs::record(
                         app,
                         "debug",
                         "journal.recognition",
-                        "收到识图截图 / Recognition image received",
-                        metadata,
+                        "截图进程已就绪 / Capture helper ready",
+                        json!({"request_id":id,"stage":"ready","prepared_at":message["timestamp"]}),
                     );
+                    continue;
                 }
-                Some("journal_recognition_diagnostic") => {
-                    state.record(id, message.clone());
-                    crate::logs::record(
-                        app,
-                        "debug",
-                        "journal.recognition",
-                        "识图分析详情 / Recognition analysis",
-                        message,
-                    );
-                }
-                Some("journal_recognition_preview") => {
-                    let preview = message["preview"].as_str().unwrap_or("");
-                    if preview.len() > 1024 * 1024
-                        || !preview.starts_with("data:image/jpeg;base64,")
-                    {
-                        return Err("Invalid recognition preview".into());
-                    }
-                    let _ = app.emit("journal-recognition-preview", &message);
-                }
-                Some("log") => crate::logs::emit(app, message),
-                Some("journal_recognition_result") => result = Some(message),
-                Some("error") => {
+                if message["type"] == "error" && message["request_id"] == "" {
                     return Err(message["message"]
                         .as_str()
-                        .unwrap_or("Recognition failed")
-                        .to_string())
+                        .unwrap_or("Capture helper could not initialize")
+                        .to_string());
                 }
-                _ => return Err("Unexpected recognition response".into()),
+                if message["request_id"] != id {
+                    return Err("Recognition request ID mismatch".into());
+                }
+                match message["type"].as_str() {
+                    Some("journal_recognition_progress") => {
+                        let stage = message["stage"].as_str().unwrap_or("unknown");
+                        let label = match stage {
+                            "capturing" => "正在截图 / Capturing game window",
+                            "difficulty" => "正在判断地图难度 / Detecting map difficulty",
+                            "floor" => "正在判断地图楼层 / Detecting map floor",
+                            "locating" => "正在定位地图 / Locating map region",
+                            "matching" => "正在匹配地图 / Matching maps",
+                            _ => "识图进度 / Recognition progress",
+                        };
+                        crate::logs::record(
+                            app,
+                            if stage == "matching" && message["completed"].as_u64().unwrap_or(0) > 0
+                            {
+                                "debug"
+                            } else {
+                                "info"
+                            },
+                            "journal.recognition",
+                            label,
+                            json!({"request_id":id,"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}),
+                        );
+                        state.record(id, json!({"stage":stage,"completed":message["completed"],"total":message["total"],"elapsed_ms":message["elapsed_ms"]}));
+                        let _ = app.emit("journal-recognition-progress", &message);
+                    }
+                    Some("journal_recognition_image") => {
+                        diagnostic_warning(app, id, state.retain_image(id, &message));
+                        let metadata = json!({"request_id":id,"stage":format!("{}_image",message["image_kind"].as_str().unwrap_or("")),
+                    "width":message["width"],"height":message["height"],"elapsed_ms":message["elapsed_ms"]});
+                        state.record(id, metadata.clone());
+                        crate::logs::record(
+                            app,
+                            "debug",
+                            "journal.recognition",
+                            "收到识图截图 / Recognition image received",
+                            metadata,
+                        );
+                    }
+                    Some("journal_recognition_diagnostic") => {
+                        state.record(id, message.clone());
+                        crate::logs::record(
+                            app,
+                            "debug",
+                            "journal.recognition",
+                            "识图分析详情 / Recognition analysis",
+                            message,
+                        );
+                    }
+                    Some("journal_recognition_preview") => {
+                        let preview = message["preview"].as_str().unwrap_or("");
+                        if preview.len() > 1024 * 1024
+                            || !preview.starts_with("data:image/jpeg;base64,")
+                        {
+                            return Err("Invalid recognition preview".into());
+                        }
+                        let _ = app.emit("journal-recognition-preview", &message);
+                        if message["preview_kind"] == "full" {
+                            prewarm(app.clone());
+                        }
+                    }
+                    Some("log") => crate::logs::emit(app, message),
+                    Some("journal_recognition_result") => result = Some(message),
+                    Some("error") => {
+                        return Err(message["message"]
+                            .as_str()
+                            .unwrap_or("Recognition failed")
+                            .to_string())
+                    }
+                    _ => return Err("Unexpected recognition response".into()),
+                }
             }
-        }
-        let status = child.wait().await.map_err(|error| error.to_string())?;
-        let _ = stderr_reader.await;
-        if !status.success() {
-            return Err("识图进程异常退出 / Recognition process exited unexpectedly".into());
-        }
-        result.ok_or_else(|| "识图未返回结果 / Recognition returned no result".into())
+            let status = child.wait().await.map_err(|error| error.to_string())?;
+            let _ = stderr_reader.await;
+            if !status.success() {
+                return Err("识图进程异常退出 / Recognition process exited unexpectedly".into());
+            }
+            result.ok_or_else(|| "识图未返回结果 / Recognition returned no result".to_string())
+        };
+        let (_, result) = tokio::try_join!(send_templates, receive)?;
+        Ok(result)
     };
     let outcome = tokio::select! {
         biased;
@@ -620,6 +721,59 @@ async fn recognize(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "child process fixture"]
+    fn prepared_helper_fixture() {
+        let mut line = String::new();
+        let _ = std::io::stdin().read_line(&mut line);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn shutdown_cancels_active_and_reaps_prepared_helper() {
+        use windows::Win32::{
+            Foundation::{CloseHandle, WAIT_OBJECT_0},
+            System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE},
+        };
+        tauri::async_runtime::block_on(async {
+            let child = tokio::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "journal_recognition::tests::prepared_helper_fixture",
+                ])
+                .creation_flags(0x08000000)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap();
+            let handle =
+                unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, child.id().unwrap()).unwrap() };
+            let state = RecognitionState::default();
+            state.0.lock().unwrap().prepared = Some(child);
+            let (_guard, cancelled) = state.begin(&uuid::Uuid::new_v4().to_string()).unwrap();
+            state.cancel_active();
+            state.stop_prepared().await.unwrap();
+            assert!(*cancelled.borrow());
+            assert!(state.0.lock().unwrap().prepared.is_none());
+            assert!(state.begin(&uuid::Uuid::new_v4().to_string()).is_err());
+            let ended = tokio::time::timeout(Duration::from_secs(5), async {
+                while unsafe { WaitForSingleObject(handle, 0) } != WAIT_OBJECT_0 {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await;
+            unsafe {
+                CloseHandle(handle).unwrap();
+            }
+            assert!(ended.is_ok(), "Prepared helper survived shutdown");
+            drop(_guard);
+            state.resume_after_update();
+            assert!(state.begin(&uuid::Uuid::new_v4().to_string()).is_ok());
+        });
+    }
+
     #[test]
     fn large_diagnostic_checkpoint_is_complete_and_redacted_before_replacement() {
         let root = tempfile::tempdir().unwrap();

@@ -421,6 +421,9 @@ pub async fn install_update(
     let supervisor = app.state::<crate::engine::EngineSupervisor>();
     let result = async {
         supervisor.prepare_update().await?;
+        let recognition = app.state::<crate::journal_recognition::RecognitionState>();
+        recognition.cancel_active();
+        recognition.stop_prepared().await?;
         app.state::<crate::launcher::Launcher>().shutdown().await?;
         app.state::<crate::power::PowerManager>()
             .apply(false, false)?;
@@ -433,6 +436,9 @@ pub async fn install_update(
     .await;
     if let Err(error) = &result {
         supervisor.finish_update();
+        app.state::<crate::journal_recognition::RecognitionState>()
+            .resume_after_update();
+        crate::journal_recognition::prewarm(app.clone());
         app.state::<crate::launcher::Launcher>().resume();
         if let Ok(settings) = crate::config::load() {
             let _ = app.state::<crate::power::PowerManager>().apply(

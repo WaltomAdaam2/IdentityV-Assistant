@@ -58,15 +58,15 @@ async def run() -> int:
         from core.package_check import check_package
         check_package()
         return 0
+    if args.recognize_journal:
+        from app.journal_recognition import main
+        return main(args.config)
     try:
         config = load_config(args.config)
     except ValueError as error:
         # stdout is unavailable until the writer exists; stderr preserves IPC integrity.
         print(f"CONFIG_INVALID: {error}", file=sys.stderr)
         return 2
-    if args.recognize_journal:
-        from app.journal_recognition import main
-        return main(config)
     from app.engine import AutomationEngine
     engine = AutomationEngine(config)
     await engine.run()

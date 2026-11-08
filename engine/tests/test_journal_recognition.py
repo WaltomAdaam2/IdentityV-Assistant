@@ -98,6 +98,47 @@ def test_no_match_still_returns_full_capture_for_diagnostics(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_deferred_templates_wait_only_after_capture_and_floor_update(monkeypatch):
+    events = []
+    monkeypatch.setattr(service, "detect_s1_floor", lambda _: ("3", {}))
+    monkeypatch.setattr(service, "recognize", lambda *args, **kwargs: [])
+    def templates():
+        assert any(kind == "journal_recognition_preview" and data["preview_kind"] == "full" for kind, data in events)
+        assert any(kind == "journal_recognition_progress" and data["floor"] == "3" for kind, data in events)
+        return {"nightmare": [{"key": "td:1", "floor": "3", "path": "unused.png"}]}
+    result = service.run_recognition({"season": "s1", "difficulty": "nightmare", "defer_templates": True},
+        parse_config({}), lambda kind, **data: events.append((kind, data)),
+        capture=lambda *_: np.zeros((20, 30, 3), np.uint8), load_templates=templates)
+    assert result["floor"] == "3"
+
+
+def test_prepared_helper_loads_current_config_when_requested(monkeypatch, tmp_path):
+    import io
+    import json
+    path = tmp_path / "config.json"
+    path.write_text("{}", encoding="utf-8")
+    loaded = []
+    class RequestInput(io.StringIO):
+        def readline(self, *args):
+            assert not loaded
+            path.write_text('{"updated":true}', encoding="utf-8")
+            return super().readline(*args)
+    def load_config(actual):
+        loaded.append(json.loads(actual.read_text(encoding="utf-8")))
+        return parse_config({})
+    monkeypatch.setattr(service, "WindowsGraphicsCapture", lambda: None)
+    monkeypatch.setattr(service, "load_config", load_config)
+    monkeypatch.setattr(service, "run_recognition", lambda *args, **kwargs: {"keys": []})
+    monkeypatch.setattr(service.sys, "stdin", RequestInput('{"request_id":"request"}\n'))
+    output = io.StringIO()
+    monkeypatch.setattr(service.sys, "stdout", output)
+    assert service.main(path) == 0
+    assert loaded == [{"updated": True}]
+    messages = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert [message["type"] for message in messages] == ["journal_recognition_ready", "journal_recognition_result"]
+    assert messages[0]["request_id"] == ""
+
+
 def test_offline_replay_uses_exported_pixels_templates_and_feedback(tmp_path):
     import importlib.util
     import json

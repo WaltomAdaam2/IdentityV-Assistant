@@ -33,8 +33,12 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
     if (!latest.current.ready) return;
     const ticket = ++sequence.current;
     const previous = pending.current;
+    const filters = latest.current.filters;
+    const autoDifficulty = filters.season === "s0" && filters.auto_difficulty !== false;
+    const context = { season: filters.season, difficulty: autoDifficulty ? null : filters.difficulty,
+      floor: filters.season === "s0" && !autoDifficulty ? "1" : null };
     request.current = null; // Ignore old progress/results while its helper exits.
-    setView({ ...empty, status: "busy" });
+    setView({ ...empty, status: "busy", context });
     if (previous) {
       await journalApi.cancel(previous.id, "restarted").catch(() => {});
       await previous.result.catch(() => {});
@@ -42,11 +46,8 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
     if (ticket !== sequence.current) return;
     const id = crypto.randomUUID();
     request.current = id;
-    const filters = latest.current.filters;
-    const autoDifficulty = filters.season === "s0" && filters.auto_difficulty !== false;
     setView({ ...empty, status: "busy", progress: { request_id: id, stage: "capturing", completed: 0, total: 0 },
-      context: { season: filters.season, difficulty: autoDifficulty ? null : filters.difficulty,
-        floor: filters.season === "s0" && !autoDifficulty ? "1" : null } });
+      context });
     try {
       const resultPromise = journalApi.recognize(id, filters, windowHandle);
       pending.current = { id, result: resultPromise };
