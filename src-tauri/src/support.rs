@@ -147,9 +147,11 @@ fn merge_known(target: &mut Value, source: &Value) {
 }
 
 pub fn backup(settings: &Value) -> Result<Value, String> {
+    let mut settings = settings.clone();
+    crate::journal_shortcut::migrate(&mut settings);
     let mut known = defaults();
-    merge_known(&mut known, settings);
-    migrate_position(&mut known, settings);
+    merge_known(&mut known, &settings);
+    migrate_position(&mut known, &settings);
     validate_tree(&known, &defaults(), "settings")?;
     Ok(
         json!({"format":"identityv-assistant-settings","schema_version":1,
@@ -171,8 +173,10 @@ fn import_backup(value: &Value) -> Result<Value, String> {
         return Err("此备份来自更新的助手版本 / Backup requires a newer assistant".into());
     }
     validate_tree(&value["settings"], &defaults(), "settings")?;
+    let mut settings = value["settings"].clone();
+    crate::journal_shortcut::migrate(&mut settings);
     let mut result = defaults();
-    merge_known(&mut result, &value["settings"]);
+    merge_known(&mut result, &settings);
     migrate_position(&mut result, &value["settings"]);
     // Parse the hotkey before any desktop effect or file replacement.
     crate::journal_shortcut::validate(&result)?;
@@ -461,6 +465,23 @@ mod tests {
         assert!(import_backup(&value).is_err());
         value["settings"]["game_window"]["process_names"] = json!(["dwrg.exe"]);
         assert!(import_backup(&value).is_ok());
+    }
+
+    #[test]
+    fn old_backup_does_not_assign_floor_key_to_existing_engine_key() {
+        let mut value = backup(&defaults()).unwrap();
+        let app = value["settings"]["app"].as_object_mut().unwrap();
+        app.insert("engine_hotkey".into(), json!("F6"));
+        app.remove("floor_hotkey");
+        let restored = import_backup(&value).unwrap();
+        assert_eq!(restored["app"]["engine_hotkey"], "F6");
+        assert_eq!(restored["app"]["floor_hotkey"], "L");
+        assert_eq!(
+            backup(&value["settings"]).unwrap()["settings"]["app"]["floor_hotkey"],
+            "L"
+        );
+        value["settings"]["app"]["floor_hotkey"] = json!("F6");
+        assert!(import_backup(&value).is_err());
     }
 
     #[test]

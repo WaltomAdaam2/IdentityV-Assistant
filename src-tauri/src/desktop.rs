@@ -74,10 +74,10 @@ pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
     let manager = app.state::<DesktopSettings>();
     let mut registered = manager.hotkey.lock().unwrap();
     let old = crate::config::load()?;
-    let (old_hotkey, old_scale, old_startup) = preferences(&old)?;
-    // A failed startup registration must not block unrelated setting saves.
-    // Retry registration when the user actually chooses another shortcut.
-    let changed = registered.as_deref().unwrap_or(&old_hotkey) != hotkey;
+    let (_, old_scale, old_startup) = preferences(&old)?;
+    // A corrected conflict must recover both registrations in this session.
+    crate::journal_shortcut::ensure_started(app.clone())?;
+    let changed = registered.as_deref() != Some(hotkey.as_str());
     // Reserve the replacement first: an occupied key must leave the old key usable.
     if changed {
         app.global_shortcut()
