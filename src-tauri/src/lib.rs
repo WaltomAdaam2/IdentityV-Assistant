@@ -130,6 +130,7 @@ pub fn run() {
             launcher::manager::start_monitor(app.handle().clone());
             let maps_app = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || { let _ = journal::ensure_builtins(&maps_app); });
+            journal_recognition::prewarm(app.handle().clone());
             if let Err(error) = desktop::initialize(app.handle(), &settings) {
                 logs::emit(app.handle(), json!({"version":1,"type":"error","timestamp":chrono::Utc::now().to_rfc3339(),"code":"DESKTOP_SETTINGS_FAILED","message":error,"recoverable":true,"details":{}}));
             }

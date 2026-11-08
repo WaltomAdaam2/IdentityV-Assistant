@@ -273,6 +273,19 @@ pub fn quit(app: &AppHandle) {
         .inner()
         .clone();
     tauri::async_runtime::spawn(async move {
+        if let Err(error) = app
+            .state::<crate::journal_recognition::RecognitionState>()
+            .stop_prepared()
+            .await
+        {
+            crate::logs::record(
+                &app,
+                "error",
+                "journal.recognition",
+                &error,
+                serde_json::json!({"stage":"prewarm_shutdown_failed"}),
+            );
+        }
         if let Err(error) = app.state::<crate::launcher::Launcher>().shutdown().await {
             crate::logs::emit(
                 &app,

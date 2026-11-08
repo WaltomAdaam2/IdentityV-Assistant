@@ -415,13 +415,13 @@ def recognize(frame: np.ndarray, templates: Iterable[Template], cancel: Event | 
             continue
         distinct.append(query)
     queries = distinct
+    if preview:
+        preview(queries[0][2])
     if image:
         for index, query in enumerate(queries):
             image(f"region_{index}", query[2].crop(frame))
             image(f"edges_{index}", (query[0] * 255).astype(np.uint8))
             image(f"mask_{index}", query[1] * 255)
-    if preview:
-        preview(queries[0][2])
     samples = [_coarse_weights(query[0], cancel) for query in queries]
     # Many templates select the same refinement scales. Cache by actual output
     # dimensions/interpolation, with a byte bound rather than a map-count bound.

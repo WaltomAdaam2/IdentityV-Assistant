@@ -31,6 +31,10 @@ def test_s0_difficulty_mode_selects_only_its_pool(monkeypatch, mode, expected):
     indexed = next(data for kind, data in events if data.get("stage") == "indexed")
     assert indexed["template_keys"] == (["lf:1"] if expected == "hard" else ["rf:2"])
     assert result["floor"] == "1"
+    updates = [data for kind, data in events if kind == "journal_recognition_progress"]
+    assert updates[-1]["difficulty"] == expected
+    assert updates[-1]["floor"] == "1"
+    assert updates[0]["difficulty"] == (None if mode == "auto" else expected)
 
 
 def test_window_capture_uses_only_wgc_and_preserves_layout(monkeypatch):
@@ -72,8 +76,11 @@ def test_one_shot_returns_candidates_and_memory_preview_without_capture_files(tm
     assert any(name.startswith("mask_") for name in images)
     assert "template_0" in images
     preview_at = next(i for i, (kind, _) in enumerate(events) if kind == "journal_recognition_preview")
+    full_image_at = next(i for i, (kind, _) in enumerate(events) if kind == "journal_recognition_image")
+    crop_at = next(i for i, (kind, data) in enumerate(events) if kind == "journal_recognition_preview" and data["preview_kind"] == "region")
     matching_at = next(i for i, (kind, data) in enumerate(events) if kind == "journal_recognition_progress" and data["stage"] == "matching")
-    assert preview_at < matching_at
+    assert events[preview_at][1]["preview_kind"] == "full"
+    assert preview_at < full_image_at < crop_at < matching_at
     audits = [data for kind, data in events if kind == "journal_recognition_diagnostic"]
     assert any(data["stage"] == "region_check" for data in audits)
     assert any(data["stage"] == "template_region" and data["attempts"] > 0 and data["closest"] for data in audits)
@@ -89,6 +96,47 @@ def test_no_match_still_returns_full_capture_for_diagnostics(tmp_path):
     assert result["keys"] == []
     assert [data["image_kind"] for kind, data in events if kind == "journal_recognition_image"] == ["full"]
     assert list(tmp_path.iterdir()) == []
+
+
+def test_deferred_templates_wait_only_after_capture_and_floor_update(monkeypatch):
+    events = []
+    monkeypatch.setattr(service, "detect_s1_floor", lambda _: ("3", {}))
+    monkeypatch.setattr(service, "recognize", lambda *args, **kwargs: [])
+    def templates():
+        assert any(kind == "journal_recognition_preview" and data["preview_kind"] == "full" for kind, data in events)
+        assert any(kind == "journal_recognition_progress" and data["floor"] == "3" for kind, data in events)
+        return {"nightmare": [{"key": "td:1", "floor": "3", "path": "unused.png"}]}
+    result = service.run_recognition({"season": "s1", "difficulty": "nightmare", "defer_templates": True},
+        parse_config({}), lambda kind, **data: events.append((kind, data)),
+        capture=lambda *_: np.zeros((20, 30, 3), np.uint8), load_templates=templates)
+    assert result["floor"] == "3"
+
+
+def test_prepared_helper_loads_current_config_when_requested(monkeypatch, tmp_path):
+    import io
+    import json
+    path = tmp_path / "config.json"
+    path.write_text("{}", encoding="utf-8")
+    loaded = []
+    class RequestInput(io.StringIO):
+        def readline(self, *args):
+            assert not loaded
+            path.write_text('{"updated":true}', encoding="utf-8")
+            return super().readline(*args)
+    def load_config(actual):
+        loaded.append(json.loads(actual.read_text(encoding="utf-8")))
+        return parse_config({})
+    monkeypatch.setattr(service, "WindowsGraphicsCapture", lambda: None)
+    monkeypatch.setattr(service, "load_config", load_config)
+    monkeypatch.setattr(service, "run_recognition", lambda *args, **kwargs: {"keys": []})
+    monkeypatch.setattr(service.sys, "stdin", RequestInput('{"request_id":"request"}\n'))
+    output = io.StringIO()
+    monkeypatch.setattr(service.sys, "stdout", output)
+    assert service.main(path) == 0
+    assert loaded == [{"updated": True}]
+    messages = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert [message["type"] for message in messages] == ["journal_recognition_ready", "journal_recognition_result"]
+    assert messages[0]["request_id"] == ""
 
 
 def test_offline_replay_uses_exported_pixels_templates_and_feedback(tmp_path):

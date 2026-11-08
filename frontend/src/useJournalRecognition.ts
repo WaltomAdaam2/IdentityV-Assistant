@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { journalApi, type JournalSettings, type RecognitionProgress, type RecognitionResult } from "./journalData";
+import { journalApi, type JournalSettings, type RecognitionContext, type RecognitionProgress, type RecognitionResult } from "./journalData";
 
 export interface RecognitionView {
   status: "idle" | "busy" | "done" | "error";
@@ -9,8 +9,10 @@ export interface RecognitionView {
   result: RecognitionResult | null;
   error: string;
   preview: string | null;
+  previewKind: "full" | "region";
+  context: RecognitionContext | null;
 }
-const empty: RecognitionView = { status: "idle", progress: null, result: null, error: "", preview: null };
+const empty: RecognitionView = { status: "idle", progress: null, result: null, error: "", preview: null, previewKind: "full", context: null };
 
 export function useJournalRecognition(filters: JournalSettings, active: boolean, ready: boolean,
   onShortcut: () => boolean, onError: (message: string) => void, onDifficulty: (difficulty: string) => void) {
@@ -31,8 +33,12 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
     if (!latest.current.ready) return;
     const ticket = ++sequence.current;
     const previous = pending.current;
+    const filters = latest.current.filters;
+    const autoDifficulty = filters.season === "s0" && filters.auto_difficulty !== false;
+    const context = { season: filters.season, difficulty: autoDifficulty ? null : filters.difficulty,
+      floor: filters.season === "s0" && !autoDifficulty ? "1" : null };
     request.current = null; // Ignore old progress/results while its helper exits.
-    setView({ ...empty, status: "busy" });
+    setView({ ...empty, status: "busy", context });
     if (previous) {
       await journalApi.cancel(previous.id, "restarted").catch(() => {});
       await previous.result.catch(() => {});
@@ -40,19 +46,22 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
     if (ticket !== sequence.current) return;
     const id = crypto.randomUUID();
     request.current = id;
-    setView({ ...empty, status: "busy", progress: { request_id: id, stage: "capturing", completed: 0, total: 0 } });
+    setView({ ...empty, status: "busy", progress: { request_id: id, stage: "capturing", completed: 0, total: 0 },
+      context });
     try {
-      const resultPromise = journalApi.recognize(id, latest.current.filters, windowHandle);
+      const resultPromise = journalApi.recognize(id, filters, windowHandle);
       pending.current = { id, result: resultPromise };
       const result = await resultPromise;
       if (request.current === id) {
         if (result.difficulty) latest.current.onDifficulty(result.difficulty);
-        setView({ ...empty, status: "done", result: {...result, request_id: id} });
+        setView(value => ({ ...value, status: "done", result: {...result, request_id: id},
+          context: { season: filters.season, difficulty: result.difficulty ?? value.context?.difficulty ?? null,
+            floor: result.floor ?? value.context?.floor ?? null } }));
       }
     } catch (reason) {
       if (request.current === id) {
         const error = String(reason);
-        setView({ ...empty, status: "error", error });
+        setView(value => ({ ...value, status: "error", error }));
         latest.current.onError(error);
       }
     } finally {
@@ -72,11 +81,13 @@ export function useJournalRecognition(filters: JournalSettings, active: boolean,
     if (!isTauri()) return;
     let disposed = false;
     const subscriptions = [
-      listen<{request_id: string; preview: string}>("journal-recognition-preview", ({ payload }) => {
-        if (!disposed && request.current === payload.request_id) setView(value => ({ ...value, preview: payload.preview }));
+      listen<{request_id: string; preview: string; preview_kind?: "full" | "region"}>("journal-recognition-preview", ({ payload }) => {
+        if (!disposed && request.current === payload.request_id) setView(value => ({ ...value, preview: payload.preview, previewKind: payload.preview_kind ?? "region" }));
       }),
       listen<RecognitionProgress>("journal-recognition-progress", ({ payload }) => {
-        if (!disposed && request.current === payload.request_id) setView(value => ({ ...value, progress: payload }));
+        if (!disposed && request.current === payload.request_id) setView(value => ({ ...value, progress: payload,
+          context: value.context ? { season: payload.season ?? value.context.season,
+            difficulty: payload.difficulty ?? value.context.difficulty, floor: payload.floor ?? value.context.floor } : null }));
       }),
       listen<{ hwnd: number }>("journal-recognition-shortcut", ({ payload }) => {
         if (!disposed && latest.current.ready && latest.current.onShortcut()) void start(payload.hwnd);
