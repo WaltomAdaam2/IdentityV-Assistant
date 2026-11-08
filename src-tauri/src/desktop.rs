@@ -74,15 +74,27 @@ pub fn save(app: &AppHandle, settings: &Value) -> Result<(), String> {
     let manager = app.state::<DesktopSettings>();
     let mut registered = manager.hotkey.lock().unwrap();
     let old = crate::config::load()?;
-    let (_, old_scale, old_startup) = preferences(&old)?;
+    let (old_hotkey, old_scale, old_startup) = preferences(&old)?;
     // A corrected conflict must recover both registrations in this session.
     crate::journal_shortcut::ensure_started(app.clone())?;
-    let changed = registered.as_deref() != Some(hotkey.as_str());
+    let mut changed = registered.as_deref() != Some(hotkey.as_str());
     // Reserve the replacement first: an occupied key must leave the old key usable.
     if changed {
-        app.global_shortcut()
-            .register(hotkey.as_str())
-            .map_err(|e| format!("快捷键已被占用或无法注册：{e}"))?;
+        if let Err(error) = app.global_shortcut().register(hotkey.as_str()) {
+            if registered.is_some() || hotkey != old_hotkey {
+                return Err(format!("快捷键已被占用或无法注册：{error}"));
+            }
+            // Retry a failed startup registration, but preserve unrelated saves
+            // while another application still owns the unchanged engine key.
+            changed = false;
+            crate::logs::record(
+                app,
+                "warning",
+                "desktop.shortcut",
+                "引擎快捷键仍不可用，继续保存其他设置 / Engine shortcut unavailable; saving other settings",
+                serde_json::json!({"key":hotkey,"error":error.to_string()}),
+            );
+        }
     }
     let mut startup_changed = false;
     let result = (|| {
