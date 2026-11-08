@@ -67,6 +67,35 @@ def test_whole_window_localization_and_ambiguous_identities():
     assert all(match.region.x > 450 for match in matches)
 
 
+@pytest.mark.parametrize("zoom", [0.75, 1.0, 1.5])
+def test_interior_map_symbols_do_not_replace_wall_geometry(zoom):
+    panel = _bgr(map_image())
+    frame = np.zeros((900, 1600, 3), np.uint8)
+    frame[220:540, 700:1060] = panel
+    templates = [prepare_template("correct", map_image()),
+                 prepare_template("similar_rooms", map_image(2)),
+                 prepare_template("wrong_layout", np.rot90(map_image(), 2))]
+    clean = recognize(cv2.resize(frame, None, fx=zoom, fy=zoom), templates)
+    for x, y in [(47, 45), (185, 48), (300, 80), (65, 200), (205, 180), (300, 265)]:
+        cv2.rectangle(panel, (x - 8, y - 6), (x + 8, y + 6), (210, 210, 210), 2)
+        cv2.line(panel, (x, y - 6), (x, y + 6), (210, 210, 210), 2)
+    frame[220:540, 700:1060] = panel
+    frame = cv2.resize(frame, None, fx=zoom, fy=zoom)
+    hits = recognize(frame, templates)
+    assert hits[0].key == "correct"
+    assert "wrong_layout" not in [hit.key for hit in hits]
+    assert [hit.key for hit in hits] == [hit.key for hit in clean]
+
+
+def test_symbol_filter_preserves_dark_holes_and_long_interior_walls():
+    panel = _bgr(map_image())
+    cv2.rectangle(panel, (165, 40), (180, 55), (0, 0, 0), -1)
+    cv2.line(panel, (43, 190), (100, 190), (210, 210, 210), 2)
+    edges, _, region = _query(panel, Region(0, 0, 360, 320))
+    assert np.count_nonzero(edges[38-region.y:57-region.y, 163-region.x:182-region.x]) > 30
+    assert np.count_nonzero(edges[187-region.y:194-region.y, 41-region.x:103-region.x]) > 60
+
+
 def test_scaled_query_reuse_preserves_all_candidate_geometry(monkeypatch):
     frame = _bgr(map_image())
     templates = [prepare_template(str(index), map_image(index % 2)) for index in range(6)]
